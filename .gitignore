@@ -1,0 +1,23 @@
+# Nothing from Pioneer DJ / AlphaTheta is committed: firmware, anything
+# unpacked from it, manuals, or the vendor's source archive.
+*.UPD
+*.upd
+*.iso
+*.sfs
+*.mot
+*.pdf
+*.tar.gz
+*.raw
+EP113_Main_R
+/rootfs/
+/extract/
+
+# Reverse-engineering projects and generated output
+/ghidra/
+*.gpr
+*.rep/
+/shots/
+/run/
+*.log
+__pycache__/
+*.so
