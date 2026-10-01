@@ -86,6 +86,7 @@ class Deck:
         self.down = None                 # what the mouse holds: (kind, ...)
         self.keys_down = {}              # keyboard key -> bit held
         self.knob_step = [knob.at for knob in L.KNOBS]
+        self.slider = 0.5                # the tempo slider: 0 top (-) to 1 bottom (+)
         self.drag_y = 0
         self.moved = False
         self.hover = ""
@@ -167,6 +168,9 @@ class Deck:
         if pos[0] >= self.face_w:
             return None
         x, y = self.to_units(pos)
+        fx0, fy0, fx1, fy1 = L.SLIDER_FRAME
+        if fx0 <= x <= fx1 and fy0 <= y <= fy1:
+            return ("slider",)
         for i, knob in enumerate(L.KNOBS):
             if knob.hit(x, y):
                 return ("knob", i)
@@ -180,12 +184,15 @@ class Deck:
             return ""
         if what[0] == "lcd":
             return f"screen  {what[1] - 1}, {what[2] - 1}"
+        if what[0] == "slider":
+            return "tempo slider  \u00b7  drag; right-click for the centre"
         if what[0] == "bit":
             byte, bit = what[1]
             return f"unknown button  id {L.BUTTON_IDS[what[1]]:#04x}  frame byte {byte} bit {bit}"
         if what[0] == "knob":
             knob = L.KNOBS[what[1]]
-            how = f"encoder {knob.enc}" if knob.enc is not None else "not identified yet"
+            how = f"encoder {knob.enc}" if knob.enc is not None else \
+                f"frame word {knob.word:#x}" if knob.word is not None else "not identified yet"
             return "  ·  ".join(filter(None, [knob.name.replace("_", " "), how,
                                                  knob.keycap and f"keys {knob.keycap}"]))
         key = L.KEYS[what[1]]
@@ -205,15 +212,39 @@ class Deck:
         self.knob_step[i] += delta
         if knob.look == "pot":
             self.knob_step[i] = max(0, min(L.POT_STEPS, self.knob_step[i]))
+            if knob.word is not None:
+                self.link.send(f"word {knob.word} {self.knob_step[i] * 1023 // L.POT_STEPS}")
         if knob.enc is not None:
             self.link.send(f"enc {knob.enc} {delta}")
+
+    def analogue(self):
+        """Sends where the pots and the slider stand: the app only knows
+        what the panel tells it."""
+        for i, knob in enumerate(L.KNOBS):
+            if knob.word is not None:
+                self.link.send(f"word {knob.word} {self.knob_step[i] * 1023 // L.POT_STEPS}")
+        self.link.send(f"word {L.SLIDER_REF} {L.SLIDER_CENTRE}")
+        self.link.send(f"word {L.SLIDER_WORD} {self.slider_value()}")
+
+    def slider_value(self):
+        if abs(self.slider - 0.5) < 0.012:   # the centre click
+            return L.SLIDER_CENTRE
+        return int(round(self.slider * 1023))
+
+    def slide(self, pos):
+        _, y = self.to_units(pos)
+        _, top, bottom = L.SLIDER
+        self.slider = min(1.0, max(0.0, (y - top) / (bottom - top)))
+        self.link.send(f"word {L.SLIDER_WORD} {self.slider_value()}")
 
     def press(self, pos):
         what = self.find(pos)
         if not what:
             return
         self.down = what
-        if what[0] == "lcd":
+        if what[0] == "slider":
+            self.slide(pos)
+        elif what[0] == "lcd":
             self.link.send(f"touch 1 {what[1]} {what[2]}")
         elif what[0] == "bit":
             self.link.send(f"bit {what[1][0]} {what[1][1]} 1")
@@ -258,6 +289,8 @@ class Deck:
             p = self.lcd_point(pos)
             if p:
                 self.link.send(f"touch 2 {p[0]} {p[1]}")
+        elif self.down and self.down[0] == "slider":
+            self.slide(pos)
         elif self.down and self.down[0] == "knob":
             steps = int((self.drag_y - pos[1]) / DRAG_PX)
             if steps:
@@ -300,6 +333,8 @@ class Deck:
                 self.screen.blit(strip, (-L.LCD_ORIGIN[0], y - L.LCD_ORIGIN[1]))
             elif item[0] == "lamps":
                 self.lamps = item[1]
+            elif item[0] == "up":
+                self.analogue()
             elif item[0] == "down":
                 self.lamps = bytes(128)
                 if self.player:
@@ -340,7 +375,8 @@ class Deck:
                 win.blit(surf, (x, y))
         cap = self.cap
         sx, st, sb = L.SLIDER
-        win.blit(cap, cap.get_rect(center=(int(sx * self.scale), int((st + sb) / 2 * self.scale))))
+        win.blit(cap, cap.get_rect(center=(int(sx * self.scale),
+                                           int((st + (sb - st) * self.slider) * self.scale))))
         if self.dock:
             self.draw_dock()
         self.draw_status()
@@ -426,6 +462,10 @@ def main():
                 deck.press(e.pos)
             elif e.type == pygame.MOUSEBUTTONUP and e.button == 1:
                 deck.release(e.pos)
+            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 3:
+                if deck.find(e.pos) == ("slider",):
+                    deck.slider = 0.5
+                    deck.analogue()
             elif e.type == pygame.MOUSEMOTION:
                 deck.motion(e.pos)
             elif e.type == pygame.MOUSEWHEEL:

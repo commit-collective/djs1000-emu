@@ -231,7 +231,11 @@ static unsigned short crc_x25(const unsigned char *p, unsigned n)
  *               PadCalibration.xml, 217-454: the reading where a hit
  *               begins); full velocity is near 840 with the one run.sh makes
  *   0x36-0x55   pads 0-15, second 16-bit value: above 59 while it is held
- *   0x56-0x60   six 16-bit analogue values
+ *   0x56, 0x58  tempo slider: the centre's reference, and the position
+ *               (0 the - end, 1023 the + end)
+ *   0x5A        FX LEVEL/DEPTH, 0-1023
+ *   0x5C        another 0-1023 reading (pot 0, linearised by a table)
+ *   0x5E, 0x60  the screen's touch panel, raw x and y
  *   0x7C        CRC-16/X-25 of bytes 0..0x7B
  *
  * It is changed by keys in the app's window (XNextEvent below) and by
@@ -856,6 +860,10 @@ static int open_common(const char *sym, const char *path, int flags, int mode)
             fake_spi[sv[0]] = s;
             if (strstr(s->name, "subucom_spi0.1")) {
                 panel_spi = s;
+                /* The tempo slider at its centre: its reading (0x58) and the
+                 * centre's reference (0x56). */
+                panel_word(0x56, 512);
+                panel_word(0x58, 512);
             }
         }
     }

@@ -206,7 +206,7 @@ def _draw_key(c, key, level, rgb, down):
         _key_shape(c, key, lit or (74, 75, 80))
         fill = (20, 20, 22) if not down else (58, 60, 66)
         if key.name == "fx_on":
-            fill = _mix(fill, key.color, 0.55 if not lit else 1.0)
+            fill = _mix(fill, key.color, 0.3 if not lit else 1.0)
         _key_shape(c, key, fill, inset=3)
         if key.label:
             cx, cy, _ = key.circle

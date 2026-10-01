@@ -41,7 +41,7 @@ Working:
 Not yet:
 
 - the headphone output is not played, and the inputs read silence
-- the analogue controls (tempo slider, touch strip, levels)
+- the touch strip and INPUT LEVEL
 - MIDI, Pro DJ Link, the network
 
 ## Quick start

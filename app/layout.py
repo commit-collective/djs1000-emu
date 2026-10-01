@@ -26,6 +26,10 @@ KNOB_TRAY = ((305, 532), (1185, 532), (1128, 668), (362, 668))
 PAD_FRAME = (370, 773, 1123, 1500)
 SLIDER_FRAME = (1265, 800, 1360, 1380)
 SLIDER = (1313, 860, 1320)              # x, top and bottom of the cap's travel
+# The tempo slider in the panel's frame: its position, 0 at the top (-) to
+# 1023 at the bottom (+), and the reading it is compared with, which the
+# panel sends as the centre's.
+SLIDER_WORD, SLIDER_REF, SLIDER_CENTRE = 0x58, 0x56, 512
 STRIP = (122, 886, 238, 1296)           # the touch strip's well
 USB_PORT = (36, 160, 128, 245)
 
@@ -84,6 +88,7 @@ class Knob:
     enc: int | None = None
     push: tuple | None = None           # the bit its push switch sets
     keycap: str = ""
+    word: int | None = None             # a pot's 0-1023 value in the frame
     look: str = "knob"                  # knob (an encoder), selector, pot
     at: int = 0                         # a pot's position at start, 0-POT_STEPS
 
@@ -133,8 +138,8 @@ KEYS = [
     Key("standby", "dome", circle=(1379, 104, 9), bit=(5, 4)),
     Key("usb_stop", "dome", circle=(80, 346, 24), bit=(1, 0)),
     Key("usb_lamp", "led", box=(150, 88, 164, 102), lamp=0x00, color=WHITE),
-    # FX and the strip. FX ON/OFF is the one bit left over, not seen to act.
-    Key("fx_on", "dome", circle=(258, 666, 40), bit=(6, 7), color=BLUE),
+    # FX and the strip. FX ON/OFF's lamp blinks while the effect is off.
+    Key("fx_on", "dome", circle=(258, 666, 40), bit=(6, 7), lamp=0x06, color=BLUE),
     Key("mute", "rect", box=(415, 698, 553, 736), label="MUTE", bit=(1, 4), lamp=0x17),
     Key("hot_slice", "rect", box=(589, 698, 729, 736), label="HOT SLICE", bit=(1, 5),
         lamp=0x18),
@@ -158,10 +163,9 @@ KEYS = [
     Key("tempo_range", "dome", circle=(1313, 727, 19), bit=(6, 4), keycap="-"),
     Key("tempo_reset", "dome", circle=(1179, 1090, 23), bit=(6, 3)),
     Key("tempo_reset_lamp", "led", box=(1222, 1086, 1238, 1094), lamp=0x1D, color=LIME),
-    # Which of the two bits is - and which + is a guess.
-    Key("nudge_minus", "rect", box=(1222, 1452, 1302, 1494), label="\u2013", bit=(6, 1),
+    Key("nudge_minus", "rect", box=(1222, 1452, 1302, 1494), label="\u2013", bit=(6, 2),
         color=AMBER, font=30),
-    Key("nudge_plus", "rect", box=(1326, 1452, 1406, 1494), label="+", bit=(6, 2),
+    Key("nudge_plus", "rect", box=(1326, 1452, 1406, 1494), label="+", bit=(6, 1),
         color=AMBER, font=30),
     Key("scene", "rect", box=(1187, 1608, 1278, 1644), label="SCENE", bit=(2, 6),
         lamp=0x47),
@@ -197,7 +201,7 @@ KEYS += [Key(f"pad_{n + 1}", "pad",
 KNOBS = [
     Knob("selector", (1215, 298, 62), enc=0, push=(1, 1), keycap=", . Enter", look="selector"),
     Knob("input_level", (1400, 204, 28), look="pot"),
-    Knob("fx_level", (97, 664, 42), look="pot", at=15),
+    Knob("fx_level", (97, 664, 42), word=0x5A, look="pot", at=15),
 ] + [Knob(f"knob_{i + 1}", (x, 612, 40), enc=i + 1, keycap=f"F{i + 1}")
      for i, x in enumerate((436, 560, 684, 808, 932, 1056))]
 
