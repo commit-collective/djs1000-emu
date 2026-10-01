@@ -230,7 +230,7 @@ static unsigned char shot[SHOT_W * SHOT_H * 4];
 static int shot_w, shot_h;
 static void *x_dpy;          /* the app's display and window, for x_click() */
 static unsigned long x_win;
-static int power_ms;         /* ms since the first draw; -1 once the power line is released */
+static int power_ms;         /* DJSDEV_POWER_PULSE: ms since the first draw; -1 once released */
 
 int XPutImage(void *dpy, unsigned long d, void *gc, void *image, int sx, int sy, int dx, int dy,
               unsigned w, unsigned h)
@@ -392,9 +392,8 @@ static void *panel_thread(void *arg)
  *   L, X, -, S             LIVE SAMPLING, FX, TEMPO RANGE, SYNC
  *                          (byte 5 bits 6-7, byte 6 bits 4-5)
  * All found with tools/probe.py. Byte 5 bit 4 (button id 0) is tied to
- * power/standby: a press makes the app request standby ("transition
- * Standby!", tx byte 0x6C bit 1, the app's routine), and the panel is ignored
- * until it has been seen at 1.
+ * power/standby: a press and release puts the app in standby ("transition
+ * Standby!", tx byte 0x6C bit 1, the app's routine). No key is bound to it.
  * (JUCE itself takes the arrows and Page Up/Down for its lists.)
  */
 int XNextEvent(void *display, void *event)
@@ -474,12 +473,13 @@ static void *spi_thread(void *arg)
         if (!s->on) {
             continue;
         }
-        /* Power/standby line (byte 5 bit 4): the app ignores the whole panel
-         * until it has seen this bit go from 1 to 0, so it starts at 1 and
-         * drops five seconds after the app first draws. From then on the app
-         * keeps asking the panel for standby (tx byte 0x6C bit 1); nothing
-         * answers that here. */
-        if (s->rx_bytes == SPI_FRAME && power_ms >= 0) {
+        /* Power/standby key (byte 5 bit 4), only with DJSDEV_POWER_PULSE=1:
+         * held from the start and released five seconds after the app first
+         * draws, which puts the app in standby (it then keeps asking the
+         * panel for it, tx byte 0x6C bit 1; nothing answers that here). This
+         * was the way to wake the panel while the audio device failed to
+         * open; it is kept for looking at standby itself. */
+        if (s->rx_bytes == SPI_FRAME && power_ms >= 0 && getenv("DJSDEV_POWER_PULSE")) {
             if (!x_dpy) {
                 panel_bit(5, 4, 1);
             } else if ((power_ms += s->interval ? s->interval : 10) >= 5000) {
@@ -756,21 +756,31 @@ int setsockopt(int fd, int level, int name, const void *val, unsigned len)
 
 /* The board's sound card is an AK4452 DAC, opened as "hw:ak4452audio,N"
  * (0: headphones and input, 1: master). It goes to the ALSA PCM named by
- * DJSDEV_PCM instead, "null" (discard) by default. */
+ * DJSDEV_PCM instead, "null" (discard, and silence on the inputs) by default.
+ *
+ * The app's ALSA code (open at) sizes its buffers from the channel
+ * ranges the devices report. It asks for 4 outputs in all and gives each of
+ * the two output devices as many as it accepts, so the board's must take
+ * exactly 2 each (the AK4452 is a stereo DAC). With the 1-32 that "null"
+ * reports the first device takes all 4, the second is given channels past
+ * the end of the output buffer, and the audio thread crashes copying them
+ *; and if the input cannot be opened the
+ * whole device fails to open, nothing gets a sample rate, and the startup
+ * project load never finishes. So the ranges are narrowed to the board's. */
+#define STAND_PCMS 16
+static void *stand_pcm[STAND_PCMS];      /* handles opened in place of the AK4452 */
+static int stand_stream[STAND_PCMS];
+static void *ranged_params;              /* the hw_params last filled from one of them */
+static int ranged_chans;
+
 int snd_pcm_open(void **pcm, const char *name, int stream, int mode)
 {
     int (*real)(void **, const char *, int, int) = dlsym(RTLD_NEXT, "snd_pcm_open");
     const char *to;
-    int r;
+    int r, i;
 
     if (!name || !strstr(name, "ak4452audio")) {
         return real(pcm, name, stream, mode);
-    }
-    /* No inputs unless DJSDEV_CAPTURE=1: with capture on "null" the app's
-     * audio thread copies from an unallocated channel and crashes. */
-    if (stream == 1 /* SND_PCM_STREAM_CAPTURE */ && !getenv("DJSDEV_CAPTURE")) {
-        fprintf(stderr, "[djsdev] snd_pcm_open(%s, capture) refused\n", name);
-        return -19; /* -ENODEV */
     }
     to = getenv("DJSDEV_PCM");
     if (!to || !*to) {
@@ -778,7 +788,68 @@ int snd_pcm_open(void **pcm, const char *name, int stream, int mode)
     }
     r = real(pcm, to, stream, mode);
     fprintf(stderr, "[djsdev] snd_pcm_open(%s, %s) -> %s = %d\n", name, stream ? "capture" : "playback", to, r);
+    if (r >= 0) {
+        for (i = 0; i < STAND_PCMS; i++) {
+            if (!stand_pcm[i] || stand_pcm[i] == *pcm) {
+                stand_pcm[i] = *pcm;
+                stand_stream[i] = stream;
+                break;
+            }
+        }
+    }
     return r;
+}
+
+int snd_pcm_close(void *pcm)
+{
+    int (*real)(void *) = dlsym(RTLD_NEXT, "snd_pcm_close");
+    int i;
+
+    for (i = 0; i < STAND_PCMS; i++) {
+        if (stand_pcm[i] == pcm) {
+            stand_pcm[i] = 0;
+        }
+    }
+    return real(pcm);
+}
+
+int snd_pcm_hw_params_any(void *pcm, void *params)
+{
+    int (*real)(void *, void *) = dlsym(RTLD_NEXT, "snd_pcm_hw_params_any");
+    int i;
+
+    if (ranged_params == params) {
+        ranged_params = 0;
+    }
+    for (i = 0; i < STAND_PCMS; i++) {
+        if (pcm && stand_pcm[i] == pcm) {
+            ranged_params = params;
+            ranged_chans = 2;   /* stereo in, stereo out */
+        }
+    }
+    return real(pcm, params);
+}
+
+int snd_pcm_hw_params_get_channels_min(const void *params, unsigned *val)
+{
+    int (*real)(const void *, unsigned *) = dlsym(RTLD_NEXT, "snd_pcm_hw_params_get_channels_min");
+
+    if (params != ranged_params) {
+        return real(params, val);
+    }
+    *val = ranged_chans;
+    return 0;
+}
+
+int snd_pcm_hw_params_get_channels_max(const void *params, unsigned *val)
+{
+    int (*real)(const void *, unsigned *) = dlsym(RTLD_NEXT, "snd_pcm_hw_params_get_channels_max");
+
+    if (params != ranged_params) {
+        return real(params, val);
+    }
+    *val = ranged_chans;
+    return 0;
 }
 
 int close(int fd)

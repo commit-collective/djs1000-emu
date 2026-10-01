@@ -33,9 +33,9 @@ Working:
 
 Not yet:
 
-- **projects** (create, save, open): the workaround that wakes the panel
-  puts the app in standby, see [docs/power-standby.md](docs/power-standby.md)
-- **sound**: the output goes to ALSA's `null` device, inputs are off
+- **saving and opening projects**: CREATE NEW works, but there is no
+  storage to save to yet (USB)
+- **sound**: the outputs go to ALSA's `null` device, the inputs read silence
 - the pads, and about 39 buttons that are mapped to bits but not named
 - MIDI, USB storage, Pro DJ Link, the network
 
@@ -51,7 +51,7 @@ scripts/setup.sh /path/to/DJS1000.UPD    # once: builds ~/djs/root
 scripts/run.sh 3600                      # seconds; the window takes 2-3 minutes
 ```
 
-Wait five seconds after the window appears, then:
+The app starts on its PROJECT menu (P closes it). Keys:
 
 | key | control |
 |---|---|
