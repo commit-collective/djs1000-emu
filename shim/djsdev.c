@@ -41,9 +41,18 @@ typedef __builtin_va_list va_list;
 #define SOCK_STREAM 1
 #define SOCK_DGRAM 2
 #define MSG_DONTWAIT 0x40
+#define MSG_NOSIGNAL 0x4000
+#define AF_INET 2
 
 extern void *dlsym(void *handle, const char *name);
 extern int socketpair(int domain, int type, int proto, int sv[2]);
+extern int listen(int fd, int backlog);
+extern int accept(int fd, void *addr, unsigned *len);
+extern int atoi(const char *s);
+int socket(int domain, int type, int proto);
+int bind(int fd, const void *addr, unsigned len);
+int setsockopt(int fd, int level, int name, const void *val, unsigned len);
+int close(int fd);
 extern ssize_t recv(int fd, void *buf, size_t n, int flags);
 extern ssize_t send(int fd, const void *buf, size_t n, int flags);
 extern int pthread_create(pthread_t *t, const void *attr, void *(*fn)(void *), void *arg);
@@ -264,6 +273,8 @@ static void panel_enc(unsigned n, int delta)
 #define SHOT_H 768
 static unsigned char shot[SHOT_W * SHOT_H * 4];
 static int shot_w, shot_h;
+static volatile int dirty_lock;      /* guards dirty_y0/y1 (a spinlock) */
+static int dirty_y0 = SHOT_H, dirty_y1;   /* rows drawn since the deck was last sent them */
 static void *x_dpy;          /* the app's display and window, for x_click() */
 static unsigned long x_win;
 static int power_ms;         /* DJSDEV_POWER_PULSE: ms since the first draw; -1 once released */
@@ -301,6 +312,7 @@ int XPutImage(void *dpy, unsigned long d, void *gc, void *image, int sx, int sy,
                 o[0] = s[0];
                 o[1] = s[1];
                 o[2] = s[2];
+                o[3] = 0xFF;
             }
         }
         if (dx + (int)w > shot_w) {
@@ -309,6 +321,15 @@ int XPutImage(void *dpy, unsigned long d, void *gc, void *image, int sx, int sy,
         if (dy + (int)h > shot_h) {
             shot_h = dy + h;
         }
+        while (__sync_lock_test_and_set(&dirty_lock, 1)) {
+        }
+        if (dy < dirty_y0) {
+            dirty_y0 = dy;
+        }
+        if (dy + (int)h > dirty_y1) {
+            dirty_y1 = dy + h;
+        }
+        __sync_lock_release(&dirty_lock);
     }
     return real(dpy, d, gc, image, sx, sy, dx, dy, w, h);
 }
@@ -345,6 +366,33 @@ static void x_click(int x, int y, int button)
     }
 }
 
+/* One step of a touch: kind 1 press, 2 move (held), 0 release. */
+static void x_touch(int kind, int x, int y)
+{
+    int ev[24];
+
+    if (!x_dpy) {
+        return;
+    }
+    memset(ev, 0, sizeof(ev));
+    ev[0] = kind == 1 ? 4 : kind == 2 ? 6 : 5;   /* ButtonPress / MotionNotify / ButtonRelease */
+    ev[2] = 1;
+    ev[3] = (int)x_dpy;
+    ev[4] = (int)x_win;
+    ev[8] = x;
+    ev[9] = y;
+    ev[10] = x;
+    ev[11] = y;
+    ev[12] = kind == 1 ? 0 : 0x100;              /* Button1Mask */
+    ev[13] = kind == 2 ? 0 : 1;                  /* button (is_hint for a motion) */
+    ev[14] = 1;
+    XLockDisplay(x_dpy);
+    /* ButtonPressMask / PointerMotionMask | Button1MotionMask | ButtonMotionMask / ButtonReleaseMask */
+    XSendEvent(x_dpy, x_win, 1, kind == 1 ? 4 : kind == 2 ? 0x2140 : 8, ev);
+    XFlush(x_dpy);
+    XUnlockDisplay(x_dpy);
+}
+
 static void shot_write(void)
 {
     void *f = fopen("/tmp/djsshot.tmp", "w");
@@ -374,6 +422,41 @@ static void shot_write(void)
  *   click <x> <y> [button]     mouse press and release at screenshot coordinates
  *   usb <0|1>                  unplug / plug the USB drive
  */
+static void panel_command(const char *line)
+{
+    int a = 0, b = 0, c = 0;
+
+    if (!strncmp(line, "shot", 4)) {
+        shot_write();
+    } else if (sscanf(line, "touch %i %i %i", &a, &b, &c) == 3) {
+        x_touch(a, b, c);
+        if (a == 2) {
+            return;     /* not logged: there are many */
+        }
+    } else if (sscanf(line, "click %i %i %i", &a, &b, &c) >= 2) {
+        x_click(a, b, c ? c : 1);
+    } else if (sscanf(line, "usb %i", &a) == 1) {
+        usb_plug(a);
+    } else if (sscanf(line, "bit %i %i %i", &a, &b, &c) == 3) {
+        panel_bit(a, b, c);
+    } else if (sscanf(line, "tap %i %i", &a, &b) == 2) {
+        panel_bit(a, b, 1);
+        usleep(150000);
+        panel_bit(a, b, 0);
+    } else if (sscanf(line, "enc %i %i", &a, &b) == 2) {
+        panel_enc(a, b);
+    } else if (sscanf(line, "pad %i %i %i", &a, &b, &c) == 3 && a >= 0 && a < 16) {
+        panel_word(0x16 + 2 * a, b);
+        panel_word(0x36 + 2 * a, c);
+    } else if (sscanf(line, "word %i %i", &a, &b) == 2) {
+        panel_word(a, b);
+    } else {
+        fprintf(stderr, "[djsdev] panel command not understood: %s", line);
+        return;
+    }
+    fprintf(stderr, "[djsdev] panel: %s", line);
+}
+
 static void *panel_thread(void *arg)
 {
     static const char path[] = "/tmp/djspanel";
@@ -389,32 +472,160 @@ static void *panel_thread(void *arg)
     }
     fprintf(stderr, "[djsdev] panel commands on %s\n", path);
     while (fgets(line, sizeof(line), f)) {
-        int a = 0, b = 0, c = 0;
+        panel_command(line);
+    }
+    return 0;
+}
 
-        if (!strncmp(line, "shot", 4)) {
-            shot_write();
-        } else if (sscanf(line, "click %i %i %i", &a, &b, &c) >= 2) {
-            x_click(a, b, c ? c : 1);
-        } else if (sscanf(line, "usb %i", &a) == 1) {
-            usb_plug(a);
-        } else if (sscanf(line, "bit %i %i %i", &a, &b, &c) == 3) {
-            panel_bit(a, b, c);
-        } else if (sscanf(line, "tap %i %i", &a, &b) == 2) {
-            panel_bit(a, b, 1);
-            usleep(150000);
-            panel_bit(a, b, 0);
-        } else if (sscanf(line, "enc %i %i", &a, &b) == 2) {
-            panel_enc(a, b);
-        } else if (sscanf(line, "pad %i %i %i", &a, &b, &c) == 3 && a >= 0 && a < 16) {
-            panel_word(0x16 + 2 * a, b);
-            panel_word(0x36 + 2 * a, c);
-        } else if (sscanf(line, "word %i %i", &a, &b) == 2) {
-            panel_word(a, b);
-        } else {
-            fprintf(stderr, "[djsdev] panel command not understood: %s", line);
+/*
+ * The virtual deck's link (app/virtual_djs.py): one TCP client at a time on
+ * 127.0.0.1:$DJSDEV_PORT (7310). It sends the same command lines as the pipe
+ * takes, and is sent, each with an 8-byte header:
+ *
+ *   'S' 0, y, rows, width (LE16 each)   then rows*width*4 bytes of BGRX:
+ *                                       rows of the screen copy that changed
+ *   'L' and 7 zeros                     then the 128-byte frame the app sends
+ *                                       the panel (the lamps), when it changes
+ *
+ * A new client is sent the whole screen and the current frame.
+ */
+static volatile int deck_fd = -1;
+static volatile int deck_fresh;
+static Spi *panel_spi;
+
+static int deck_send(int fd, const void *buf, unsigned n)
+{
+    const char *p = buf;
+
+    while (n) {
+        ssize_t r = send(fd, p, n, MSG_NOSIGNAL);
+
+        if (r <= 0) {
+            return -1;
+        }
+        p += r;
+        n -= r;
+    }
+    return 0;
+}
+
+static void *deck_sender(void *arg)
+{
+    static unsigned char last[SPI_FRAME];
+    unsigned char hdr[8], tx[SPI_FRAME];
+    int fd, y0, y1, y, bad;
+
+    (void)arg;
+    for (;;) {
+        usleep(15000);
+        fd = deck_fd;
+        if (fd < 0) {
             continue;
         }
-        fprintf(stderr, "[djsdev] panel: %s", line);
+        while (__sync_lock_test_and_set(&dirty_lock, 1)) {
+        }
+        y0 = dirty_y0;
+        y1 = dirty_y1;
+        dirty_y0 = SHOT_H;
+        dirty_y1 = 0;
+        __sync_lock_release(&dirty_lock);
+        if (deck_fresh) {
+            deck_fresh = 0;
+            y0 = 0;
+            y1 = shot_h;
+            memset(last, 0xFF, sizeof(last));
+        }
+        bad = 0;
+        if (y1 > y0 && shot_w) {
+            memset(hdr, 0, sizeof(hdr));
+            hdr[0] = 'S';
+            hdr[2] = y0 & 0xFF;
+            hdr[3] = y0 >> 8;
+            hdr[4] = (y1 - y0) & 0xFF;
+            hdr[5] = (y1 - y0) >> 8;
+            hdr[6] = shot_w & 0xFF;
+            hdr[7] = shot_w >> 8;
+            bad = deck_send(fd, hdr, 8);
+            for (y = y0; y < y1 && !bad; y++) {
+                bad = deck_send(fd, shot + y * SHOT_W * 4, shot_w * 4);
+            }
+        }
+        if (!bad && panel_spi) {
+            memcpy(tx, panel_spi->tx, SPI_FRAME);
+            if (memcmp(tx, last, SPI_FRAME)) {
+                memcpy(last, tx, SPI_FRAME);
+                memset(hdr, 0, sizeof(hdr));
+                hdr[0] = 'L';
+                bad = deck_send(fd, hdr, 8) || deck_send(fd, tx, SPI_FRAME);
+            }
+        }
+        if (bad && deck_fd == fd) {
+            deck_fd = -1;
+        }
+    }
+    return 0;
+}
+
+static void *deck_server(void *arg)
+{
+    const char *e = getenv("DJSDEV_PORT");
+    int port = e && *e ? atoi(e) : 7310, one = 1, ls, fd;
+    unsigned char addr[16];
+    char buf[512], line[128];
+    unsigned n = 0;
+    pthread_t t;
+
+    (void)arg;
+    if (port <= 0) {
+        return 0;
+    }
+    memset(addr, 0, sizeof(addr));
+    addr[0] = AF_INET;
+    addr[2] = port >> 8;
+    addr[3] = port & 0xFF;
+    addr[4] = 127;
+    addr[7] = 1;
+    ls = socket(AF_INET, SOCK_STREAM, 0);
+    setsockopt(ls, 1 /* SOL_SOCKET */, 2 /* SO_REUSEADDR */, &one, sizeof(one));
+    if (ls < 0 || bind(ls, addr, sizeof(addr)) < 0 || listen(ls, 1) < 0) {
+        fprintf(stderr, "[djsdev] deck link: cannot listen on 127.0.0.1:%d\n", port);
+        return 0;
+    }
+    fprintf(stderr, "[djsdev] deck link on 127.0.0.1:%d\n", port);
+    pthread_create(&t, 0, deck_sender, 0);
+    for (;;) {
+        fd = accept(ls, 0, 0);
+        if (fd < 0) {
+            usleep(100000);
+            continue;
+        }
+        setsockopt(fd, 6 /* IPPROTO_TCP */, 1 /* TCP_NODELAY */, &one, sizeof(one));
+        fprintf(stderr, "[djsdev] deck link: connected\n");
+        deck_fresh = 1;
+        deck_fd = fd;
+        n = 0;
+        for (;;) {
+            ssize_t r = recv(fd, buf, sizeof(buf), 0);
+            int i;
+
+            if (r <= 0 || deck_fd != fd) {
+                break;
+            }
+            for (i = 0; i < r; i++) {
+                if (n < sizeof(line) - 2) {
+                    line[n++] = buf[i];
+                }
+                if (buf[i] == '\n') {
+                    line[n] = 0;
+                    panel_command(line);
+                    n = 0;
+                }
+            }
+        }
+        deck_fd = -1;
+        usleep(100000);      /* let the sender finish with it */
+        close(fd);
+        fprintf(stderr, "[djsdev] deck link: closed\n");
     }
     return 0;
 }
@@ -566,6 +777,9 @@ static int open_common(const char *sym, const char *path, int flags, int mode)
             s->peer = sv[1];
             s->rx_bytes = SPI_FRAME;
             fake_spi[sv[0]] = s;
+            if (strstr(s->name, "subucom_spi0.1")) {
+                panel_spi = s;
+            }
         }
     }
     fprintf(stderr, "[djsdev] %s(%s, 0x%x) = %d\n", sym, path, flags, sv[0]);
@@ -646,6 +860,7 @@ static int spi_ioctl(Spi *s, unsigned long req, void *arg)
                 pthread_create(&t, 0, spi_thread, s);
                 if (!panel_started++) {
                     pthread_create(&t, 0, panel_thread, 0);
+                    pthread_create(&t, 0, deck_server, 0);
                 }
             }
         }

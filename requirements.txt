@@ -1,0 +1,9 @@
+# Python packages for the virtual deck (app/virtual_djs.py). The tools in
+# tools/ use only the standard library.
+#
+#   python -m pip install -r requirements.txt
+#
+# pygame-ce draws the window, Pillow the face. Tested with pygame-ce 2.5.8
+# and Pillow 10.2 on Python 3.10 (Windows).
+pygame-ce>=2.5
+Pillow>=9.2

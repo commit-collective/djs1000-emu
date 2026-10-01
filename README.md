@@ -31,13 +31,17 @@ Working:
   the 16 step keys and the buttons found so far, from the keyboard
 - projects: CREATE NEW, and SAVE to a USB drive, which is the folder
   `~/djs/usb` (put samples in `PIONEER DJ SAMPLER/Samples` there)
+- a virtual deck: the machine's face in a window, with the app's screen and
+  lamps and its controls under the mouse, see
+  [docs/virtual-deck.md](docs/virtual-deck.md)
 - screenshots and scripted input, for exploring it without watching
 
 Not yet:
 
 - **sound**: the outputs go to ALSA's `null` device, the inputs read silence
-- the pads, and about 39 buttons that are mapped to bits but not named
-- MIDI, USB storage, Pro DJ Link, the network
+- about 25 buttons that are mapped to bits but not named (PLAY, SHIFT,
+  MODE ...), and the analogue controls (tempo slider, touch strip, levels)
+- MIDI, Pro DJ Link, the network
 
 ## Quick start
 
@@ -51,7 +55,15 @@ scripts/setup.sh /path/to/DJS1000.UPD    # once: builds ~/djs/root
 scripts/run.sh 3600                      # seconds; the window takes 2-3 minutes
 ```
 
-The app starts on its PROJECT menu (P closes it). Keys:
+The app starts on its PROJECT menu (P closes it). Then either run the
+virtual deck on the host,
+
+```sh
+python -m pip install -r requirements.txt
+python app/virtual_djs.py
+```
+
+or use the keyboard in the app's own window:
 
 | key | control |
 |---|---|
@@ -69,9 +81,10 @@ The app starts on its PROJECT menu (P closes it). Keys:
 | | |
 |---|---|
 | `shim/djsdev.c` | the stand-ins for the board's devices, and the keyboard, screenshot and command hooks |
+| `app/` | the virtual deck |
 | `scripts/setup.sh`, `scripts/run.sh` | update file → root filesystem; run the app |
 | `tools/` | `decrypt_upd.py`, `shot.py` (screenshot), `probe.py` (find what an input does), `xref.py` (where a string is used) |
-| `docs/` | what has been worked out: [the update file](docs/update-format.md), [hardware and software](docs/hardware.md), [the emulation](docs/emulation.md), [the panel protocol](docs/panel-protocol.md), [power and standby](docs/power-standby.md), [tools](docs/tools.md) |
+| `docs/` | what has been worked out: [the update file](docs/update-format.md), [hardware and software](docs/hardware.md), [the emulation](docs/emulation.md), [the panel protocol](docs/panel-protocol.md), [the virtual deck](docs/virtual-deck.md), [power and standby](docs/power-standby.md), [tools](docs/tools.md) |
 
 ## Credits
 
