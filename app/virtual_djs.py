@@ -20,10 +20,10 @@ panel's would:
 The master output plays on the system's default sound device, or on the
 one whose name contains --audio's NAME (--list-audio prints them).
 
-Controls whose place in the panel's frame is not known yet are drawn but do
-nothing. The frame's button bits that no control uses are in the grid under
-the large screen, with every two-level lamp beside them: press one and see
-what the app does, to find out which control it is (docs/panel-protocol.md).
+Every button is bound; the tempo slider, the touch strip and the two level
+knobs are drawn but do nothing yet. Under the large screen is a cell for
+every two-level lamp by id, as the app sets it: some lamps are not matched
+to a control yet (docs/panel-protocol.md).
 
 Needs pygame-ce and Pillow (requirements.txt).
 """
@@ -54,14 +54,14 @@ DRAG_PX = 7                              # mouse travel for one encoder step
 
 # Keyboard keys for controls that are not drawn as a Key or Knob.
 EXTRA_KEYS = {
-    pygame.K_BACKSPACE: ("bit", (1, 3)),
-    pygame.K_c: ("bit", (1, 2)),         # cancel in dialogs (button id 5)
+    pygame.K_BACKSPACE: ("bit", (1, 2)),
     pygame.K_RETURN: ("bit", (1, 1)),
     pygame.K_KP_ENTER: ("bit", (1, 1)),
     pygame.K_COMMA: ("enc", (0, -1)),
     pygame.K_PERIOD: ("enc", (0, 1)),
 }
-KEYCAPS = {"Esc": pygame.K_ESCAPE, "-": pygame.K_MINUS}
+KEYCAPS = {"Esc": pygame.K_ESCAPE, "-": pygame.K_MINUS, "Space": pygame.K_SPACE,
+           "Left Shift": pygame.K_LSHIFT}
 
 
 def surface(img):
@@ -136,7 +136,7 @@ class Deck:
                             cell, 30)
             self.grid.append((r, bit))
         rows = (len(self.unknown) + per_row - 1) // per_row
-        self.lamp_y = y + rows * (30 + gap) + 30
+        self.lamp_y = y + rows * (30 + gap) + (30 if rows else 0)
         self.lamp_cells = []
         for i, lamp in enumerate(sorted(L.LAMPS)):
             r = pygame.Rect(x + (i % per_row) * (cell + gap),
@@ -279,7 +279,7 @@ class Deck:
         kind, arg = act
         if kind == "enc":
             if down:
-                delta = -arg[1] if (event.mod & pygame.KMOD_SHIFT) else arg[1]
+                delta = -arg[1] if (event.mod & pygame.KMOD_RSHIFT) else arg[1]
                 for i, knob in enumerate(L.KNOBS):
                     if knob.enc == arg[0]:
                         self.turn(i, delta)
@@ -353,11 +353,11 @@ class Deck:
         else:
             win.blit(pygame.transform.smoothscale(self.screen, self.dock.size), self.dock)
         pygame.draw.rect(win, (46, 47, 51), self.dock.inflate(2, 2), 1)
-        if not self.grid:
-            return
-        label = self.font.render("Buttons not identified yet (id, frame byte.bit) "
-                                 "— hold one and watch the screen", True, (170, 172, 178))
-        win.blit(label, (self.dock.left, self.grid_y - 22))
+        if self.grid:
+            label = self.font.render("Buttons not identified yet (id, frame byte.bit) "
+                                     "— hold one and watch the screen", True,
+                                     (170, 172, 178))
+            win.blit(label, (self.dock.left, self.grid_y - 22))
         held = self.down[1] if self.down and self.down[0] == "bit" else None
         for r, bit in self.grid:
             pygame.draw.rect(win, (70, 72, 80) if bit == held else (26, 27, 30), r, border_radius=4)
@@ -370,7 +370,7 @@ class Deck:
         win.blit(label, (self.dock.left, self.lamp_y - 22))
         for r, lamp in self.lamp_cells:
             level = L.lamp_level(self.lamps, lamp)
-            fill = ((26, 27, 30), (90, 80, 20), (170, 150, 30), (255, 225, 60))[level]
+            fill = ((26, 27, 30), (110, 96, 24), (255, 225, 60))[level]
             pygame.draw.rect(win, fill, r, border_radius=4)
             t = self.small.render(f"{lamp:02x}", True, (10, 10, 10) if level > 1 else (200, 203, 208))
             win.blit(t, t.get_rect(center=r.center))

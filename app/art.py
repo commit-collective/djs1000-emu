@@ -143,9 +143,9 @@ def _symbol(c, key, color):
 
 
 def _draw_key(c, key, level, rgb, down):
-    """One key on a canvas. level 0-3 is its lamp, rgb its colour lamp's
-    (r, g, b) or None."""
-    lit = _mix((0, 0, 0), key.color, (0, 0.45, 0.75, 1.0)[level]) if level else None
+    """One key on a canvas. level is its lamp (0 off, 1 dim, 2 bright), rgb
+    its colour lamp's (r, g, b) or None."""
+    lit = _mix((0, 0, 0), key.color, (0, 0.5, 1.0)[level]) if level else None
     kind = key.kind
     if kind in ("pad", "step"):
         color = lamp_color(rgb) if rgb else None
@@ -310,9 +310,6 @@ def face(scale):
     sx0, sy0, sx1, sy1 = L.STRIP
     c.rect((sx0 + 20, sy0 + 12, sx0 + 90, sy1 - 12), radius=3, fill=(40, 41, 45))
     c.rect((sx0 + 26, sy0 + 20, sx0 + 84, sy1 - 20), radius=2, fill=(26, 27, 30))
-    for i in range(8):
-        y = 928 + i * 42
-        c.rect((224, y, 231, y + 32), radius=2, fill=(18, 60, 104))
     for y in (922, 1006, 1090, 1174):
         c.line([(248, y + 6), (258, y + 6), (258, y + 30)], (200, 203, 208), 2)
         c.line([(258, y + 52), (258, y + 76), (248, y + 76)], (200, 203, 208), 2)
@@ -332,7 +329,6 @@ def face(scale):
         c.line([(sx + 8, y), (sx + half, y)], (150, 152, 158), 1.5)
     for i in range(21):
         c.circle(1250, st + (sb - st) * i / 20, 1.6, fill=(170, 172, 178))
-    c.rect((1222, 1086, 1238, 1094), radius=2, fill=(150, 200, 30))
     # NUDGE's bezel, step marks and frames.
     c.rect((1216, 1446, 1412, 1500), radius=22, fill=(12, 12, 14), outline=(52, 53, 57), width=2)
     c.rect((1238, 566, 1392, 656), radius=40, fill=(24, 24, 27))

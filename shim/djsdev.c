@@ -703,8 +703,9 @@ static void *deck_server(void *arg)
  *   Enter / keypad Enter   main encoder push (held while the key is down)
  *   , and .                main encoder one step back / forward
  *   F1-F6                  encoders 1-6 one step forward, with Shift back
- *   Escape / Backspace     BACK (byte 1 bit 3)
- *   C                      cancel in dialogs and sub-lists (byte 1 bit 2)
+ *   Escape / Backspace     BACK (byte 1 bit 2)
+ *   H                      HOME (byte 1 bit 3)
+ *   Space, B, N            PLAY/PAUSE, STOP, REC (byte 2 bits 3, 2, 1)
  *   1-8, Q-I               step keys 1-8 (byte 3 bits 0-7), 9-16 (byte 4)
  *   P                      PROJECT (byte 5 bit 5): opens and closes its menu
  *   L, X, -, S             LIVE SAMPLING, FX, TEMPO RANGE, SYNC
@@ -738,9 +739,15 @@ int XNextEvent(void *display, void *event)
     } else if (type == 2 && (code == 59 || code == 60)) {
         panel_enc(0, code == 60 ? 1 : -1);
     } else if (code == 9 || code == 22) {   /* Escape, Backspace: BACK */
-        panel_bit(1, 3, type == 2);
-    } else if (code == 54) {                /* C: cancel (dialogs, sub-lists) */
         panel_bit(1, 2, type == 2);
+    } else if (code == 43) {                /* H: HOME */
+        panel_bit(1, 3, type == 2);
+    } else if (code == 65) {                /* Space: PLAY/PAUSE */
+        panel_bit(2, 3, type == 2);
+    } else if (code == 56) {                /* B: STOP */
+        panel_bit(2, 2, type == 2);
+    } else if (code == 57) {                /* N: REC */
+        panel_bit(2, 1, type == 2);
     } else if (code >= 10 && code <= 17) {  /* 1-8: step keys 1-8 */
         panel_bit(3, code - 10, type == 2);
     } else if (code >= 24 && code <= 31) {  /* Q-I: step keys 9-16 */

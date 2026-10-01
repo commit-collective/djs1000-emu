@@ -9,8 +9,8 @@ A control's `bit` is its place in the frame the panel sends the app
 (docs/panel-protocol.md): (byte, bit). `lamp` is the id of its two-level lamp
 in the frame the app sends back, `rgb` the index of its colour lamp. A control
 with no `bit` is drawn but does nothing yet: its bit has not been identified.
-The two-level lamps are taken to carry their button's id, which holds for
-the ones seen lit (PROJECT, SAMPLING, SYNC, MASTER, TEMPO range).
+A lamp's id is not its button's: each was matched by pressing the button
+and seeing which lamp answered.
 """
 
 from dataclasses import dataclass
@@ -123,46 +123,68 @@ PAD_RGB, STEP_RGB = 0, 16
 KEYS = [
     # The display block.
     Key("project", "rect", box=(222, 126, 330, 172), label="PROJECT", bit=(5, 5),
-        lamp=2, color=LIME, keycap="P"),
+        lamp=0x01, color=LIME, keycap="P"),
     Key("sampling", "rect", box=(222, 248, 330, 292), label="SAMPLING", bit=(5, 6),
-        lamp=3, color=WHITE, keycap="L"),
-    Key("fx", "rect", box=(226, 330, 330, 372), label="FX", bit=(5, 7), lamp=4,
+        lamp=0x02, color=WHITE, keycap="L"),
+    Key("fx", "rect", box=(226, 330, 330, 372), label="FX", bit=(5, 7), lamp=0x03,
         color=BLUE, keycap="X"),
-    Key("back", "dome", box=(1150, 131, 1212, 166), bit=(1, 3), lamp=6, keycap="Esc"),
-    Key("home", "dome", circle=(1268, 149, 19), lamp=5, color=RED),
+    Key("back", "dome", box=(1150, 131, 1212, 166), bit=(1, 2), keycap="Esc"),
+    Key("home", "dome", circle=(1268, 149, 19), bit=(1, 3), color=RED, keycap="H"),
     Key("standby", "dome", circle=(1379, 104, 9), bit=(5, 4)),
-    Key("usb_stop", "dome", circle=(80, 346, 24)),
-    # FX and the strip.
-    Key("fx_on", "dome", circle=(258, 666, 40), color=BLUE),
-    Key("mute", "rect", box=(415, 698, 553, 736), label="MUTE"),
-    Key("hot_slice", "rect", box=(589, 698, 729, 736), label="HOT SLICE"),
-    Key("slice", "rect", box=(763, 698, 903, 736), label="SLICE"),
-    Key("scale", "rect", box=(938, 698, 1078, 736), label="SCALE"),
-    Key("mode", "rect", box=(98, 796, 192, 835), label="MODE"),
-    Key("hold", "dome", circle=(312, 1090, 20)),
-    Key("shift", "rect", box=(133, 1343, 225, 1378), label="SHIFT"),
-    Key("rec", "dome", circle=(179, 1472, 30), color=RED, symbol="rec"),
-    Key("stop", "big", circle=(179, 1625, 64), symbol="stop"),
-    Key("play", "big", circle=(179, 1803, 64), symbol="play", color=GREEN),
-    # The right column.
-    Key("sync", "dome", circle=(1272, 611, 27), label="SYNC", bit=(6, 5), lamp=0x14,
-        font=12, keycap="S"),
+    Key("usb_stop", "dome", circle=(80, 346, 24), bit=(1, 0)),
+    Key("usb_lamp", "led", box=(150, 88, 164, 102), lamp=0x00, color=WHITE),
+    # FX and the strip. FX ON/OFF is the one bit left over, not seen to act.
+    Key("fx_on", "dome", circle=(258, 666, 40), bit=(6, 7), color=BLUE),
+    Key("mute", "rect", box=(415, 698, 553, 736), label="MUTE", bit=(1, 4), lamp=0x17),
+    Key("hot_slice", "rect", box=(589, 698, 729, 736), label="HOT SLICE", bit=(1, 5),
+        lamp=0x18),
+    Key("slice", "rect", box=(763, 698, 903, 736), label="SLICE", bit=(1, 6), lamp=0x19),
+    Key("scale", "rect", box=(938, 698, 1078, 736), label="SCALE", bit=(1, 7), lamp=0x1A),
+    Key("mode", "rect", box=(98, 796, 192, 835), label="MODE", bit=(2, 5), keycap="M"),
+    Key("hold", "dome", circle=(312, 1090, 20), bit=(2, 4), lamp=0x0B, color=WHITE),
+    Key("shift", "rect", box=(133, 1343, 225, 1378), label="SHIFT", bit=(2, 0),
+        keycap="Left Shift"),
+    Key("rec", "dome", circle=(179, 1472, 30), bit=(2, 1), lamp=0x14, color=RED,
+        symbol="rec", keycap="N"),
+    Key("stop", "big", circle=(179, 1625, 64), bit=(2, 2), lamp=0x15, symbol="stop",
+        keycap="B"),
+    Key("play", "big", circle=(179, 1803, 64), bit=(2, 3), lamp=0x16, symbol="play",
+        color=GREEN, keycap="Space"),
+    # The right column. No lamp has been matched to SYNC and MASTER.
+    Key("sync", "dome", circle=(1272, 611, 27), label="SYNC", bit=(6, 5), font=12,
+        keycap="S"),
     Key("master", "dome", circle=(1355, 611, 27), label="MASTER", bit=(6, 6),
-        lamp=0x15, color=ORANGE, font=11),
-    Key("tempo_range", "dome", circle=(1313, 727, 19), bit=(6, 4), lamp=0x16,
-        keycap="-"),
-    Key("tempo_reset", "dome", circle=(1179, 1090, 23), color=LIME),
-    Key("nudge_minus", "rect", box=(1222, 1452, 1302, 1494), label="–", color=AMBER,
-        font=30),
-    Key("nudge_plus", "rect", box=(1326, 1452, 1406, 1494), label="+", color=AMBER,
-        font=30),
-    Key("scene", "rect", box=(1187, 1608, 1278, 1644), label="SCENE"),
-    Key("pattern", "rect", box=(1349, 1608, 1440, 1644), label="PATTERN"),
+        color=ORANGE, font=11),
+    Key("tempo_range", "dome", circle=(1313, 727, 19), bit=(6, 4), keycap="-"),
+    Key("tempo_reset", "dome", circle=(1179, 1090, 23), bit=(6, 3)),
+    Key("tempo_reset_lamp", "led", box=(1222, 1086, 1238, 1094), lamp=0x1D, color=LIME),
+    # Which of the two bits is - and which + is a guess.
+    Key("nudge_minus", "rect", box=(1222, 1452, 1302, 1494), label="\u2013", bit=(6, 1),
+        color=AMBER, font=30),
+    Key("nudge_plus", "rect", box=(1326, 1452, 1406, 1494), label="+", bit=(6, 2),
+        color=AMBER, font=30),
+    Key("scene", "rect", box=(1187, 1608, 1278, 1644), label="SCENE", bit=(2, 6),
+        lamp=0x47),
+    Key("pattern", "rect", box=(1349, 1608, 1440, 1644), label="PATTERN", bit=(2, 7),
+        lamp=0x48),
 ]
-KEYS += [Key(f"bar_{i + 1}", "bar", box=(x - 23, 1785, x + 23, 1855), color=BLUE)
+# The four bar keys and the lamp over each (0x43 is lit on bar 1 of a one-bar
+# pattern). The keys' bits and own lamps are taken in order, not seen to act.
+KEYS += [Key(f"bar_{i + 1}", "bar", box=(x - 23, 1785, x + 23, 1855), bit=(5, i),
+             lamp=0x3F + i, color=BLUE)
          for i, x in enumerate((1205, 1277, 1350, 1422))]
-KEYS += [Key(f"bar_led_{i + 1}", "led", box=(x - 24, 1746, x + 24, 1756), color=LIME)
+KEYS += [Key(f"bar_led_{i + 1}", "led", box=(x - 24, 1746, x + 24, 1756), lamp=0x43 + i,
+             color=LIME)
          for i, x in enumerate((1205, 1277, 1350, 1422))]
+# MODE's four lamps, in the order MODE steps through them.
+KEYS += [Key(f"mode_led_{name}", "led", box=(198, y - 5, 204, y + 5), lamp=0x07 + i,
+             color=LIME)
+         for i, (name, y) in enumerate((("pitch", 781), ("repeat", 804), ("user1", 827),
+                                        ("user2", 850)))]
+# The strip's eight lamps: taken to be ids 0x0c-0x13 from the bottom up.
+KEYS += [Key(f"strip_led_{i + 1}", "led", box=(224, 1222 - i * 42, 231, 1254 - i * 42),
+             lamp=0x0C + i, color=BLUE)
+         for i in range(8)]
 KEYS += [Key(f"step_{n + 1}", "step",
              box=(STEP_X[n % 8] - 29, STEP_Y[n // 8] - 55, STEP_X[n % 8] + 29, STEP_Y[n // 8] + 55),
              bit=(3 + n // 8, n % 8), rgb=STEP_RGB + n, keycap=STEP_KEYS[n])
@@ -252,9 +274,10 @@ LAMPS = {
 
 
 def lamp_level(frame, lamp):
-    """0-3: the level of a two-level lamp in the app's frame."""
+    """How a two-level lamp is lit: 0 off, 1 dim, 2 bright. The frame holds
+    0 for off, 3 for dim and 1 for bright (the table at)."""
     byte, shift = LAMPS[lamp]
-    return (frame[byte] >> shift) & 3
+    return (0, 2, 2, 1)[(frame[byte] >> shift) & 3]
 
 
 def rgb_lamp(frame, index):

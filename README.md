@@ -41,8 +41,7 @@ Working:
 Not yet:
 
 - the headphone output is not played, and the inputs read silence
-- about 25 buttons that are mapped to bits but not named (PLAY, SHIFT,
-  MODE ...), and the analogue controls (tempo slider, touch strip, levels)
+- the analogue controls (tempo slider, touch strip, levels)
 - MIDI, Pro DJ Link, the network
 
 ## Quick start
@@ -69,11 +68,11 @@ or use the keyboard in the app's own window:
 
 | key | control |
 |---|---|
-| Escape / Backspace | BACK |
+| Escape / Backspace, H | BACK, HOME |
+| Space, B, N | PLAY/PAUSE, STOP, REC |
 | Enter, `,` / `.` | main encoder push / turn |
 | F1–F6 (Shift: other direction) | the six knobs under the screen |
 | P | PROJECT |
-| C | cancel (dialogs, sub-lists) |
 | 1–8, Q W E R T Y U I | step keys 1–16 |
 | L, X, S, `-` | LIVE SAMPLING, FX, SYNC, TEMPO RANGE |
 | mouse | touchscreen |
