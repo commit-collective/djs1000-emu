@@ -39,6 +39,7 @@ typedef __builtin_va_list va_list;
 #define MAX_FD 1024
 #define AF_UNIX 1
 #define SOCK_STREAM 1
+#define SOCK_DGRAM 2
 #define MSG_DONTWAIT 0x40
 
 extern void *dlsym(void *handle, const char *name);
@@ -47,6 +48,8 @@ extern ssize_t recv(int fd, void *buf, size_t n, int flags);
 extern ssize_t send(int fd, const void *buf, size_t n, int flags);
 extern int pthread_create(pthread_t *t, const void *attr, void *(*fn)(void *), void *arg);
 extern int usleep(unsigned int us);
+extern size_t strlen(const char *s);
+extern int access(const char *path, int mode);
 extern int fprintf(void *stream, const char *fmt, ...);
 extern int strcmp(const char *a, const char *b);
 extern int strncmp(const char *a, const char *b, size_t n);
@@ -70,7 +73,7 @@ extern void *memset(void *d, int c, size_t n);
 extern void *stderr;
 
 /* What each device is backed by. */
-enum { DEV_ZERO, DEV_SOCK, DEV_SPI };
+enum { DEV_ZERO, DEV_SOCK, DEV_SPI, DEV_MSG };
 
 static const struct {
     const char *path;
@@ -83,9 +86,12 @@ static const struct {
     { "/dev/cdc_spi2.0", DEV_SPI },     /* codec link, same ioctl set */
     { "/dev/din_midi", DEV_SOCK },
     { "/dev/ttymxc1", DEV_SOCK },
+    { "/proc/udev_usb1", DEV_MSG },     /* USB drive mounted / unmounted */
+    { "/proc/udev_usbctn1", DEV_MSG },  /* USB port: connect / disconnect */
     { 0, 0 },
 };
 #define GPIODRV 1
+#define UDEV_USB 7
 
 /* SUBUCOM_IOC_* (subucom_spi.h): type 'p', nr below; _IOR reads, _IOW writes. */
 #define SPI_FRAME 128
@@ -112,6 +118,36 @@ static Spi *fake_spi[MAX_FD];
 static Spi spis[4];
 static int nspis;
 static int gpio_logged;
+static int usb_fd = -1;      /* the app's descriptor on /proc/udev_usb1 */
+
+/*
+ * The USB drive. On the unit, udev mounts a drive on /media/usb1/sda1 and
+ * writes "mount /media/usb1/sda1" to /proc/udev_usb1, a message queue in
+ * Pioneer's kernel (fs/proc/udev_usb.c): each write is one message, read()
+ * waits for the next one, and the app reads it in UsbMountManager
+ *. On removal udev writes "umount <path>". The app also writes
+ * to the queue itself ("do_umount ..." for USB STOP, then calls umount()).
+ *
+ * Here the queue is a datagram socket pair, and the drive is the folder
+ * run.sh binds on /media/usb1/sda1: it is plugged in when the app opens the
+ * queue (unless DJSDEV_USB=0), and by the "usb 1" / "usb 0" commands.
+ */
+#define USB_PATH "/media/usb1/sda1"
+
+static void usb_plug(int in)
+{
+    const char *msg = in ? "mount " USB_PATH : "umount " USB_PATH;
+
+    if (usb_fd < 0) {
+        return;
+    }
+    if (in && access(USB_PATH, 0)) {
+        fprintf(stderr, "[djsdev] usb: no %s\n", USB_PATH);
+        return;
+    }
+    send(fake_peer[usb_fd], msg, strlen(msg), MSG_DONTWAIT);
+    fprintf(stderr, "[djsdev] usb: %s\n", msg);
+}
 
 static ssize_t (*real_read)(int, void *, size_t);
 static ssize_t (*real_write)(int, const void *, size_t);
@@ -120,7 +156,7 @@ static int fake_match(const char *path)
 {
     int i;
 
-    if (!path || strncmp(path, "/dev/", 5)) {
+    if (!path || (strncmp(path, "/dev/", 5) && strncmp(path, "/proc/udev_", 11))) {
         return -1;
     }
     for (i = 0; FAKE_DEVS[i].path; i++) {
@@ -336,6 +372,7 @@ static void shot_write(void)
  *   word <offset> <value>      any 16-bit field
  *   shot                       write the screen copy to /tmp/djsshot.raw
  *   click <x> <y> [button]     mouse press and release at screenshot coordinates
+ *   usb <0|1>                  unplug / plug the USB drive
  */
 static void *panel_thread(void *arg)
 {
@@ -358,6 +395,8 @@ static void *panel_thread(void *arg)
             shot_write();
         } else if (sscanf(line, "click %i %i %i", &a, &b, &c) >= 2) {
             x_click(a, b, c ? c : 1);
+        } else if (sscanf(line, "usb %i", &a) == 1) {
+            usb_plug(a);
         } else if (sscanf(line, "bit %i %i %i", &a, &b, &c) == 3) {
             panel_bit(a, b, c);
         } else if (sscanf(line, "tap %i %i", &a, &b) == 2) {
@@ -510,7 +549,7 @@ static int open_common(const char *sym, const char *path, int flags, int mode)
     if (FAKE_DEVS[i].kind == DEV_ZERO) {
         sv[0] = real("/dev/zero", 2 /* O_RDWR */);
         sv[1] = -1;
-    } else if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0) {
+    } else if (socketpair(AF_UNIX, FAKE_DEVS[i].kind == DEV_MSG ? SOCK_DGRAM : SOCK_STREAM, 0, sv) < 0) {
         fprintf(stderr, "[djsdev] %s(%s): socketpair failed\n", sym, path);
         return -1;
     }
@@ -530,6 +569,14 @@ static int open_common(const char *sym, const char *path, int flags, int mode)
         }
     }
     fprintf(stderr, "[djsdev] %s(%s, 0x%x) = %d\n", sym, path, flags, sv[0]);
+    if (i == UDEV_USB && sv[0] >= 0 && sv[0] < MAX_FD) {
+        const char *e = getenv("DJSDEV_USB");
+
+        usb_fd = sv[0];
+        if (!e || *e != '0') {
+            usb_plug(1);
+        }
+    }
     return sv[0];
 }
 
@@ -704,6 +751,12 @@ ssize_t write(int fd, const void *buf, size_t n)
     if (!real_write) {
         real_write = dlsym(RTLD_NEXT, "write");
     }
+    /* A message queue hands a written message to its own reader. */
+    if (dev && !strncmp(dev, "/proc/udev_", 11)) {
+        r = send(fake_peer[fd], buf, n, MSG_DONTWAIT);
+        fprintf(stderr, "[djsdev] write(%s) \"%.*s\"\n", dev, (int)n, (const char *)buf);
+        return r < 0 ? r : (ssize_t)n;
+    }
     r = real_write(fd, buf, n);
     if (dev) {
         fprintf(stderr, "[djsdev] write(%s, %u) = %d\n", dev, n, r);
@@ -717,7 +770,6 @@ ssize_t write(int fd, const void *buf, size_t n)
  * crashes. Give it a socket that never receives anything, and
  * accept bind/setsockopt/ioctl on it. */
 #define AF_PACKET 17
-#define SOCK_DGRAM 2
 static const char PACKET_NAME[] = "AF_PACKET socket";
 
 int socket(int domain, int type, int proto)
@@ -852,6 +904,24 @@ int snd_pcm_hw_params_get_channels_max(const void *params, unsigned *val)
     return 0;
 }
 
+/* Unmounting needs privileges the app does not have here; the drive is a
+ * folder anyway. */
+int umount2(const char *path, int flags)
+{
+    int (*real)(const char *, int) = dlsym(RTLD_NEXT, "umount2");
+
+    if (path && !strncmp(path, "/media/", 7)) {
+        fprintf(stderr, "[djsdev] umount(%s) = 0\n", path);
+        return 0;
+    }
+    return real(path, flags);
+}
+
+int umount(const char *path)
+{
+    return umount2(path, 0);
+}
+
 int close(int fd)
 {
     int (*real)(int) = dlsym(RTLD_NEXT, "close");
@@ -860,6 +930,9 @@ int close(int fd)
         fprintf(stderr, "[djsdev] close(%s)\n", fake_name[fd]);
         if (fake_spi[fd]) {
             fake_spi[fd]->on = 0;
+        }
+        if (fd == usb_fd) {
+            usb_fd = -1;
         }
         fake_name[fd] = 0;
         fake_spi[fd] = 0;

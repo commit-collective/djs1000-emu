@@ -23,6 +23,10 @@ mkdir -p "$ROOT/opt/djsemu" "$ROOT/mnt/debug" "$ROOT/var/log" "$ROOT/root/data" 
 # here: fresh browse/ and project/ working folders, and the mount points.
 rm -rf "$ROOT/root/pdj/browse" "$ROOT/root/pdj/project"
 mkdir -p "$ROOT/root/pdj/browse" "$ROOT/root/pdj/project" "$ROOT/mnt/usb" "$ROOT/mnt/emmc"
+# The USB drive: a folder on the host ($DJS_USB, default $DJS_HOME/usb), which
+# the shim reports as a drive mounted on /media/usb1/sda1.
+USB="${DJS_USB:-$DJS/usb}"
+mkdir -p "$USB" "$ROOT/media/usb1/sda1"
 rm -f "$ROOT/tmp/djspanel" "$ROOT"/tmp/djsshot.*
 arm-linux-gnueabihf-gcc -O2 -fPIC -shared -nostdlib -mfloat-abi=softfp -marm \
     -o "$ROOT/opt/djsemu/libdjsdev.so" "$REPO/shim/djsdev.c" \
@@ -34,5 +38,5 @@ cd "$DJS"
 QENV="-E DISPLAY=${DISPLAY:-:0} -E HOME=/root -E PATH=/usr/bin:/bin:/usr/sbin:/sbin"
 QENV="$QENV -E LD_LIBRARY_PATH=/usr/lib:/lib -E LD_PRELOAD=/opt/djsemu/libdjsdev.so"
 exec timeout "$secs" proot -q "qemu-arm-static $QENV $*" -r "$ROOT" \
-    -b /dev -b /proc -b /sys -b /tmp/.X11-unix -w /root/pdj \
+    -b /dev -b /proc -b /sys -b /tmp/.X11-unix -b "$USB:/media/usb1/sda1" -w /root/pdj \
     /root/pdj/EP113_Main_R

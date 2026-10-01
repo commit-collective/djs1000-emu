@@ -29,12 +29,12 @@ Working:
 - the app starts and runs for as long as you leave it, in a window
 - its screen, touch (mouse), the main encoder and its push, the six knobs,
   the 16 step keys and the buttons found so far, from the keyboard
+- projects: CREATE NEW, and SAVE to a USB drive, which is the folder
+  `~/djs/usb` (put samples in `PIONEER DJ SAMPLER/Samples` there)
 - screenshots and scripted input, for exploring it without watching
 
 Not yet:
 
-- **saving and opening projects**: CREATE NEW works, but there is no
-  storage to save to yet (USB)
 - **sound**: the outputs go to ALSA's `null` device, the inputs read silence
 - the pads, and about 39 buttons that are mapped to bits but not named
 - MIDI, USB storage, Pro DJ Link, the network
