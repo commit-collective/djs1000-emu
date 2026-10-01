@@ -90,7 +90,11 @@ class _Canvas:
         return (*self.p(b[0], b[1]), *self.p(b[2], b[3]))
 
     def rect(self, b, radius=0, fill=None, outline=None, width=0):
-        self.d.rounded_rectangle(self.box(b), radius=radius * self.k, fill=fill, outline=outline,
+        x0, y0, x1, y1 = self.box(b)
+        x1, y1 = max(x1, x0 + 1), max(y1, y0 + 1)
+        # Pillow refuses corners that do not fit: keep them inside a small shape.
+        radius = max(0, min(radius * self.k, (x1 - x0 - 2) / 2, (y1 - y0 - 2) / 2))
+        self.d.rounded_rectangle((x0, y0, x1, y1), radius=radius, fill=fill, outline=outline,
                                  width=max(1, int(round(width * self.k))) if outline else 0)
 
     def circle(self, cx, cy, r, fill=None, outline=None, width=0):
