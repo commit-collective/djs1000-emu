@@ -23,6 +23,19 @@ mkdir -p "$ROOT/opt/djsemu" "$ROOT/mnt/debug" "$ROOT/var/log" "$ROOT/root/data" 
 # here: fresh browse/ and project/ working folders, and the mount points.
 rm -rf "$ROOT/root/pdj/browse" "$ROOT/root/pdj/project"
 mkdir -p "$ROOT/root/pdj/browse" "$ROOT/root/pdj/project" "$ROOT/mnt/usb" "$ROOT/mnt/emmc"
+# The pads' factory calibration, which lives on the unit's data partition:
+# for each pad, the sensor reading at which a hit begins (217-454). Without
+# it the app takes every pad as held down for ever, and blinks them all red.
+CAL="$ROOT/root/data/PadCalibration.xml"
+if [ ! -s "$CAL" ]; then
+    {
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n\n<PadCalibrationData'
+        for k in Final Provisional1 Provisional2 Provisional3; do
+            for n in $(seq -w 1 16); do printf ' Pad%s_%s="336"' "$n" "$k"; done
+        done
+        printf '/>\n'
+    } > "$CAL"
+fi
 # The USB drive: a folder on the host ($DJS_USB, default $DJS_HOME/usb), which
 # the shim reports as a drive mounted on /media/usb1/sda1.
 USB="${DJS_USB:-$DJS/usb}"

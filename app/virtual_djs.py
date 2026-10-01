@@ -3,6 +3,7 @@
 """The virtual DJS-1000: the running app drawn as the machine, in one window.
 
     python app/virtual_djs.py [--host 127.0.0.1] [--port 7310]
+                              [--audio NAME | --no-audio] [--list-audio]
 
 Start the app first (scripts/run.sh); the window shows it as soon as it is
 there, and again after a restart. The face's screen is the app's own, its
@@ -15,6 +16,9 @@ panel's would:
                    selector
   screen           the mouse is a finger, on the face and on the large copy
   keyboard         the keys printed in the status line under the mouse
+
+The master output plays on the system's default sound device, or on the
+one whose name contains --audio's NAME (--list-audio prints them).
 
 Controls whose place in the panel's frame is not known yet are drawn but do
 nothing. The frame's button bits that no control uses are in the grid under
@@ -37,6 +41,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import art  # noqa: E402
+import audio  # noqa: E402
 import layout as L  # noqa: E402
 from link import Link  # noqa: E402
 
@@ -68,8 +73,9 @@ def surface(img):
 
 
 class Deck:
-    def __init__(self, link, size):
+    def __init__(self, link, size, player=None):
         self.link = link
+        self.player = player
         self.win = pygame.display.set_mode(size, pygame.RESIZABLE)
         pygame.display.set_caption(TITLE)
         self.font = pygame.font.SysFont("arial", 14)
@@ -79,7 +85,7 @@ class Deck:
         self.lamps = bytes(128)
         self.down = None                 # what the mouse holds: (kind, ...)
         self.keys_down = {}              # keyboard key -> bit held
-        self.knob_step = [0] * len(L.KNOBS)
+        self.knob_step = [knob.at for knob in L.KNOBS]
         self.drag_y = 0
         self.moved = False
         self.hover = ""
@@ -197,6 +203,8 @@ class Deck:
     def turn(self, i, delta):
         knob = L.KNOBS[i]
         self.knob_step[i] += delta
+        if knob.look == "pot":
+            self.knob_step[i] = max(0, min(L.POT_STEPS, self.knob_step[i]))
         if knob.enc is not None:
             self.link.send(f"enc {knob.enc} {delta}")
 
@@ -215,10 +223,12 @@ class Deck:
         else:
             key = L.KEYS[what[1]]
             if key.pad is not None:
-                # Two pressure readings of 0-1023; harder towards the bottom.
+                # How hard, of 1023: a hit begins at the pad's calibration
+                # (336) and is at full velocity near 840. Harder towards the
+                # bottom of the pad.
                 _, y = self.to_units(pos)
                 y0, y1 = key.box[1], key.box[3]
-                v = int(480 + 520 * min(1.0, max(0.0, (y - y0) / (y1 - y0))))
+                v = int(460 + 400 * min(1.0, max(0.0, (y - y0) / (y1 - y0))))
                 self.link.send(f"pad {key.pad} {v} {v}")
             elif key.bit:
                 self.link.send(f"bit {key.bit[0]} {key.bit[1]} 1")
@@ -292,6 +302,8 @@ class Deck:
                 self.lamps = item[1]
             elif item[0] == "down":
                 self.lamps = bytes(128)
+                if self.player:
+                    self.player.reset()
 
     # ---- drawing --------------------------------------------------------
 
@@ -323,7 +335,7 @@ class Deck:
         for i, knob in enumerate(L.KNOBS):
             down = bool(self.down and self.down == ("knob", i)) or \
                 (knob.push in held_bits and knob.push is not None)
-            if knob.look == "selector" or self.knob_step[i]:
+            if knob.look != "knob":
                 surf, x, y = self.sprite(art.knob_sprite, i, self.scale, self.knob_step[i], down)
                 win.blit(surf, (x, y))
         cap = self.cap
@@ -370,10 +382,12 @@ class Deck:
         state = "connected" if self.link.connected else \
             f"waiting for the app on {self.link.addr[0]}:{self.link.addr[1]} (scripts/run.sh)"
         color = (150, 220, 120) if self.link.connected else (240, 180, 70)
+        if self.link.connected:
+            state += f"  \u00b7  sound: {self.player.name}" if self.player else "  \u00b7  no sound"
         t = self.font.render(state, True, color)
         self.win.blit(t, (10, bar.top + 5))
         t = self.font.render(self.hover, True, (225, 228, 232))
-        self.win.blit(t, (max(self.face_w // 2, 380), bar.top + 5))
+        self.win.blit(t, (max(self.face_w * 3 // 5, 460), bar.top + 5))
 
 
 def main():
@@ -381,17 +395,24 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=7310)
     ap.add_argument("--height", type=int, default=0, help="window height in pixels")
+    ap.add_argument("--audio", metavar="NAME", help="play on the device whose name has NAME in it")
+    ap.add_argument("--no-audio", action="store_true", help="do not play the app's sound")
+    ap.add_argument("--list-audio", action="store_true", help="print the playback devices and quit")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
     args = ap.parse_args()
 
     pygame.init()
+    if args.list_audio:
+        print("\n".join(audio.devices()))
+        return
+    player = None if args.no_audio else audio.Player(audio.pick(args.audio))
     desk_w, desk_h = pygame.display.get_desktop_sizes()[0]
     h = args.height or min(desk_h - 110, 1060)
     face_w = int(L.W * (h - STATUS_H) / L.H)
     w = min(desk_w - 40, face_w + L.LCD_W + 2 * DOCK_PAD)
-    link = Link(args.host, args.port)
-    deck = Deck(link, (w, h))
+    link = Link(args.host, args.port, audio=player.feed if player else None)
+    deck = Deck(link, (w, h), player)
     clock = pygame.time.Clock()
     started = pygame.time.get_ticks()
     running = True
@@ -418,6 +439,8 @@ def main():
             running = False
         clock.tick(FPS)
     link.close()
+    if player:
+        player.close()
     pygame.quit()
 
 

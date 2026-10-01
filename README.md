@@ -26,11 +26,13 @@ is not affiliated with Pioneer DJ or AlphaTheta.
 
 Working:
 
-- the app starts and runs for as long as you leave it, in a window
+- the app starts in about half a minute and runs for as long as you leave
+  it, in a window
 - its screen, touch (mouse), the main encoder and its push, the six knobs,
   the 16 step keys and the buttons found so far, from the keyboard
-- projects: CREATE NEW, and SAVE to a USB drive, which is the folder
-  `~/djs/usb` (put samples in `PIONEER DJ SAMPLER/Samples` there)
+- projects: CREATE NEW, OPEN and SAVE on a USB drive, which is the folder
+  `~/djs/usb`; samples load from `PIONEER DJ SAMPLER/Samples` there
+- the pads play, and the master output sounds through the virtual deck
 - a virtual deck: the machine's face in a window, with the app's screen and
   lamps and its controls under the mouse, see
   [docs/virtual-deck.md](docs/virtual-deck.md)
@@ -38,7 +40,7 @@ Working:
 
 Not yet:
 
-- **sound**: the outputs go to ALSA's `null` device, the inputs read silence
+- the headphone output is not played, and the inputs read silence
 - about 25 buttons that are mapped to bits but not named (PLAY, SHIFT,
   MODE ...), and the analogue controls (tempo slider, touch strip, levels)
 - MIDI, Pro DJ Link, the network
@@ -52,7 +54,7 @@ X display.
 sudo apt install qemu-user-static binfmt-support proot squashfs-tools \
     p7zip-full gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl
 scripts/setup.sh /path/to/DJS1000.UPD    # once: builds ~/djs/root
-scripts/run.sh 3600                      # seconds; the window takes 2-3 minutes
+scripts/run.sh 3600                      # seconds; the window takes half a minute
 ```
 
 The app starts on its PROJECT menu (P closes it). Then either run the

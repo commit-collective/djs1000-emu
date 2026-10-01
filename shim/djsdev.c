@@ -49,6 +49,8 @@ extern int socketpair(int domain, int type, int proto, int sv[2]);
 extern int listen(int fd, int backlog);
 extern int accept(int fd, void *addr, unsigned *len);
 extern int atoi(const char *s);
+struct timespec { long tv_sec; long tv_nsec; };
+extern int clock_gettime(int clock, struct timespec *ts);
 int socket(int domain, int type, int proto);
 int bind(int fd, const void *addr, unsigned len);
 int setsockopt(int fd, int level, int name, const void *val, unsigned len);
@@ -224,8 +226,11 @@ static unsigned short crc_x25(const unsigned char *p, unsigned n)
  *               byte 1 bit 1 = main encoder push, byte 6 bit 0 = a switch
  *   0x08-0x12   encoders 1-6: 16-bit counters (the app takes differences)
  *   0x14        encoder 0, the main rotary selector: 16-bit counter
- *   0x16-0x35   pads 0-15, first 16-bit value
- *   0x36-0x55   pads 0-15, second 16-bit value
+ *   0x16-0x35   pads 0-15, first 16-bit value: how hard, 0-1023. The app
+ *               scales it by the pad's calibration (/root/data/
+ *               PadCalibration.xml, 217-454: the reading where a hit
+ *               begins); full velocity is near 840 with the one run.sh makes
+ *   0x36-0x55   pads 0-15, second 16-bit value: above 59 while it is held
  *   0x56-0x60   six 16-bit analogue values
  *   0x7C        CRC-16/X-25 of bytes 0..0x7B
  *
@@ -246,6 +251,22 @@ static void panel_bit(unsigned byte, unsigned bit, int on)
     }
 }
 
+/* A frame is taken whole (spi_reply), so a 16-bit value, or a pad's two,
+ * must not be caught half written: the app would take a pad going to 900 as
+ * a hit at 132. */
+static volatile int panel_busy;
+
+static void panel_lock(void)
+{
+    while (__sync_lock_test_and_set(&panel_busy, 1)) {
+    }
+}
+
+static void panel_unlock(void)
+{
+    __sync_lock_release(&panel_busy);
+}
+
 static void panel_word(unsigned off, int value)
 {
     if (off < 0x7B) {
@@ -259,7 +280,9 @@ static void panel_enc(unsigned n, int delta)
     if (n < 7) {
         unsigned off = ENC_OFFSET[n];
 
+        panel_lock();
         panel_word(off, (short)(panel[off] | panel[off + 1] << 8) + delta);
+        panel_unlock();
     }
 }
 
@@ -446,10 +469,14 @@ static void panel_command(const char *line)
     } else if (sscanf(line, "enc %i %i", &a, &b) == 2) {
         panel_enc(a, b);
     } else if (sscanf(line, "pad %i %i %i", &a, &b, &c) == 3 && a >= 0 && a < 16) {
+        panel_lock();
         panel_word(0x16 + 2 * a, b);
         panel_word(0x36 + 2 * a, c);
+        panel_unlock();
     } else if (sscanf(line, "word %i %i", &a, &b) == 2) {
+        panel_lock();
         panel_word(a, b);
+        panel_unlock();
     } else {
         fprintf(stderr, "[djsdev] panel command not understood: %s", line);
         return;
@@ -486,11 +513,19 @@ static void *panel_thread(void *arg)
  *                                       rows of the screen copy that changed
  *   'L' and 7 zeros                     then the 128-byte frame the app sends
  *                                       the panel (the lamps), when it changes
+ *   'A' 0, frames (LE16), 4 zeros       then frames*8 bytes: the master output,
+ *                                       stereo float32 at 44.1 kHz
  *
  * A new client is sent the whole screen and the current frame.
  */
 static volatile int deck_fd = -1;
 static volatile int deck_fresh;
+
+/* The master output, as the app writes it: stereo float frames in a ring the
+ * audio thread fills (audio_put) and the deck link's sender empties. */
+#define RING_FRAMES 16384               /* a power of two; 370 ms */
+static float ring[RING_FRAMES * 2];
+static volatile unsigned ring_w, ring_r;
 static Spi *panel_spi;
 
 static int deck_send(int fd, const void *buf, unsigned n)
@@ -514,12 +549,45 @@ static void *deck_sender(void *arg)
     static unsigned char last[SPI_FRAME];
     unsigned char hdr[8], tx[SPI_FRAME];
     int fd, y0, y1, y, bad;
+    unsigned tick;
 
     (void)arg;
-    for (;;) {
-        usleep(15000);
+    for (tick = 0;; tick++) {
+        usleep(5000);
         fd = deck_fd;
         if (fd < 0) {
+            ring_r = ring_w;
+            continue;
+        }
+        /* Sound every 5 ms, in runs that do not wrap. */
+        bad = 0;
+        while (!bad && ring_r != ring_w) {
+            unsigned r = ring_r, at = r % RING_FRAMES, n = ring_w - r;
+
+            if (n > RING_FRAMES) {          /* overrun: keep the newest */
+                ring_r = ring_w - RING_FRAMES / 2;
+                continue;
+            }
+            if (n > RING_FRAMES - at) {
+                n = RING_FRAMES - at;
+            }
+            if (n > 4096) {
+                n = 4096;
+            }
+            memset(hdr, 0, sizeof(hdr));
+            hdr[0] = 'A';
+            hdr[2] = n & 0xFF;
+            hdr[3] = n >> 8;
+            bad = deck_send(fd, hdr, 8) || deck_send(fd, ring + at * 2, n * 8);
+            ring_r = r + n;
+        }
+        if (bad) {
+            if (deck_fd == fd) {
+                deck_fd = -1;
+            }
+            continue;
+        }
+        if (tick % 3 && !deck_fresh) {      /* screen and lamps every 15 ms */
             continue;
         }
         while (__sync_lock_test_and_set(&dirty_lock, 1)) {
@@ -531,11 +599,11 @@ static void *deck_sender(void *arg)
         __sync_lock_release(&dirty_lock);
         if (deck_fresh) {
             deck_fresh = 0;
+            ring_r = ring_w;
             y0 = 0;
             y1 = shot_h;
             memset(last, 0xFF, sizeof(last));
         }
-        bad = 0;
         if (y1 > y0 && shot_w) {
             memset(hdr, 0, sizeof(hdr));
             hdr[0] = 'S';
@@ -703,7 +771,9 @@ static void spi_reply(Spi *s)
     /* Built aside and copied in one go: the app may read() meanwhile. */
     memset(f, 0, SPI_FRAME);
     if (s->rx_bytes == SPI_FRAME) {
+        panel_lock();
         memcpy(f, (const void *)panel, 0x7C);
+        panel_unlock();
     }
     f[0] = 0x01;
     c = crc_x25(f, 0x7C);
@@ -1039,6 +1109,7 @@ static void *stand_pcm[STAND_PCMS];      /* handles opened in place of the AK445
 static int stand_stream[STAND_PCMS];
 static void *ranged_params;              /* the hw_params last filled from one of them */
 static int ranged_chans;
+static void *master_pcm;                 /* the handle opened in place of hw:ak4452audio,1 */
 
 int snd_pcm_open(void **pcm, const char *name, int stream, int mode)
 {
@@ -1056,6 +1127,9 @@ int snd_pcm_open(void **pcm, const char *name, int stream, int mode)
     r = real(pcm, to, stream, mode);
     fprintf(stderr, "[djsdev] snd_pcm_open(%s, %s) -> %s = %d\n", name, stream ? "capture" : "playback", to, r);
     if (r >= 0) {
+        if (!stream && strstr(name, ",1")) {
+            master_pcm = *pcm;
+        }
         for (i = 0; i < STAND_PCMS; i++) {
             if (!stand_pcm[i] || stand_pcm[i] == *pcm) {
                 stand_pcm[i] = *pcm;
@@ -1067,6 +1141,98 @@ int snd_pcm_open(void **pcm, const char *name, int stream, int mode)
     return r;
 }
 
+/*
+ * Playback. "null" takes what it is given at once, so the app's audio thread
+ * (wait, write both outputs, read the input, run the callback)
+ * would spin as fast as the CPU allows: time in the app would run fast and a
+ * core would be burnt. The board's DAC takes 44100 frames a second, so the
+ * write to the master output waits for that. What is written there is also
+ * kept for the virtual deck, which plays it.
+ */
+#define RATE 44100
+static long long pace_us;               /* when the master output is due its next frame */
+static unsigned pace_rem;
+static unsigned long stat_frames;
+static float stat_peak;
+static long long stat_us;
+
+/* (Divisions are by constants and 32 bits wide: there is no libgcc here.) */
+static long long now_us(void)
+{
+    struct timespec ts;
+
+    clock_gettime(1 /* CLOCK_MONOTONIC */, &ts);
+    return ts.tv_sec * 1000000ll + (unsigned long)ts.tv_nsec / 1000;
+}
+
+/* frames of sound for the master output: left and right are `step` floats apart. */
+static void audio_put(const float *l, const float *r, unsigned step, unsigned long frames)
+{
+    long long now = now_us();
+    unsigned long i, us = frames * 1000000ul;   /* a block is at most a few thousand frames */
+    unsigned w = ring_w;
+
+    for (i = 0; i < frames; i++, l += step, r += step) {
+        float a = *l < 0 ? -*l : *l, b = *r < 0 ? -*r : *r;
+
+        ring[(w % RING_FRAMES) * 2] = *l;
+        ring[(w % RING_FRAMES) * 2 + 1] = *r;
+        w++;
+        if (a > stat_peak) {
+            stat_peak = a;
+        }
+        if (b > stat_peak) {
+            stat_peak = b;
+        }
+    }
+    ring_w = w;
+
+    /* Real time: sleep until this block is due; start over after a stall. */
+    if (pace_us < now - 100000) {
+        pace_us = now;
+    }
+    pace_us += us / RATE;
+    pace_rem += us % RATE;
+    if (pace_rem >= RATE) {
+        pace_rem -= RATE;
+        pace_us++;
+    }
+    if (pace_us > now) {
+        usleep((unsigned)(pace_us - now));
+    }
+
+    stat_frames += frames;
+    if (now - stat_us >= 10000000) {
+        if (stat_us && (stat_peak > 0.0001f || getenv("DJSDEV_AUDIO_LOG"))) {
+            fprintf(stderr, "[djsdev] audio: %lu frames in %u ms, peak %d/1000\n",
+                    stat_frames, (unsigned)(now - stat_us) / 1000, (int)(stat_peak * 1000));
+        }
+        stat_us = now;
+        stat_frames = 0;
+        stat_peak = 0;
+    }
+}
+
+long snd_pcm_writei(void *pcm, const void *buf, unsigned long frames)
+{
+    long (*real)(void *, const void *, unsigned long) = dlsym(RTLD_NEXT, "snd_pcm_writei");
+
+    if (pcm == master_pcm) {
+        audio_put(buf, (const float *)buf + 1, 2, frames);
+    }
+    return real(pcm, buf, frames);
+}
+
+long snd_pcm_writen(void *pcm, void **bufs, unsigned long frames)
+{
+    long (*real)(void *, void **, unsigned long) = dlsym(RTLD_NEXT, "snd_pcm_writen");
+
+    if (pcm == master_pcm) {
+        audio_put(bufs[0], bufs[1], 1, frames);
+    }
+    return real(pcm, bufs, frames);
+}
+
 int snd_pcm_close(void *pcm)
 {
     int (*real)(void *) = dlsym(RTLD_NEXT, "snd_pcm_close");
@@ -1076,6 +1242,9 @@ int snd_pcm_close(void *pcm)
         if (stand_pcm[i] == pcm) {
             stand_pcm[i] = 0;
         }
+    }
+    if (pcm == master_pcm) {
+        master_pcm = 0;
     }
     return real(pcm);
 }

@@ -4,8 +4,9 @@
 
 Out: the shim's command lines (bit, enc, pad, touch ...). In, each with an
 8-byte header: 'S' rows of the screen that changed, 'L' the 128-byte frame
-the app sends its panel, which holds the lamps. Toolkit-free; the window
-polls take() for what has arrived.
+the app sends its panel, which holds the lamps, 'A' the master output's
+sound. Toolkit-free; the window polls take() for what has arrived, and the
+sound goes straight to the `audio` callable, from this module's thread.
 """
 
 import socket
@@ -15,8 +16,9 @@ import time
 
 
 class Link:
-    def __init__(self, host="127.0.0.1", port=7310):
+    def __init__(self, host="127.0.0.1", port=7310, audio=None):
         self.addr = (host, port)
+        self.audio = audio
         self.connected = False
         self._sock = None
         self._lock = threading.Lock()
@@ -82,6 +84,10 @@ class Link:
                         self._put(("screen", y, rows, width, self._read(sock, rows * width * 4)))
                     elif kind == ord("L"):
                         self._put(("lamps", self._read(sock, 128)))
+                    elif kind == ord("A"):
+                        data = self._read(sock, y * 8)
+                        if self.audio:
+                            self.audio(data)
                     else:
                         raise ConnectionError("unknown message")
             except (OSError, ConnectionError, struct.error):

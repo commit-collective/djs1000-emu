@@ -84,7 +84,8 @@ class Knob:
     enc: int | None = None
     push: tuple | None = None           # the bit its push switch sets
     keycap: str = ""
-    look: str = "knob"                  # knob, selector, pot
+    look: str = "knob"                  # knob (an encoder), selector, pot
+    at: int = 0                         # a pot's position at start, 0-POT_STEPS
 
     def hit(self, x, y):
         cx, cy, r = self.circle
@@ -106,6 +107,8 @@ class Text:
     bold: bool = True
     color: tuple = (225, 228, 232)
 
+
+POT_STEPS = 30                          # a pot's travel from MIN to MAX
 
 PAD_X = (484, 659, 833, 1008)
 PAD_Y = (1398, 1223, 1048, 873)         # rows from pad 1's upwards
@@ -172,7 +175,7 @@ KEYS += [Key(f"pad_{n + 1}", "pad",
 KNOBS = [
     Knob("selector", (1215, 298, 62), enc=0, push=(1, 1), keycap=", . Enter", look="selector"),
     Knob("input_level", (1400, 204, 28), look="pot"),
-    Knob("fx_level", (97, 664, 42), look="pot"),
+    Knob("fx_level", (97, 664, 42), look="pot", at=15),
 ] + [Knob(f"knob_{i + 1}", (x, 612, 40), enc=i + 1, keycap=f"F{i + 1}")
      for i, x in enumerate((436, 560, 684, 808, 932, 1056))]
 

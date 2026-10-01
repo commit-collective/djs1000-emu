@@ -244,6 +244,8 @@ def _draw_knob(c, knob, angle, down=False):
     c.circle(cx, cy, r - 3, fill=(8, 8, 9))
     c.circle(cx, cy, r * 0.62, fill=(40, 41, 45))
     c.circle(cx, cy, r * 0.5, fill=(22, 22, 25))
+    if knob.look != "pot":                  # an encoder turns without end: no mark
+        return
     c.line([(cx + r * 0.2 * math.cos(angle), cy + r * 0.2 * math.sin(angle)),
             (cx + r * 0.6 * math.cos(angle), cy + r * 0.6 * math.sin(angle))], (235, 238, 245), 3)
 
@@ -254,8 +256,11 @@ def _knob_sprite(index, scale, step, down):
     cx, cy, r = knob.circle
     m = r + 28 if knob.look == "selector" else r + 2
     c = _Canvas(cx - m, cy - m, 2 * m, 2 * m, scale)
-    turn = (2 * math.pi / 12 / 4) if knob.look == "selector" else (2 * math.pi / 24)
-    _draw_knob(c, knob, -math.pi / 2 + step * turn, down)
+    if knob.look == "selector":
+        angle = -math.pi / 2 + step * (2 * math.pi / 12 / 4)
+    else:                                   # a pot: 270 degrees from MIN to MAX
+        angle = math.radians(135 + 270 * step / L.POT_STEPS)
+    _draw_knob(c, knob, angle, down)
     return c.done()
 
 
@@ -263,8 +268,8 @@ def knob_sprite(index, scale, step=0, down=False):
     knob = L.KNOBS[index]
     cx, cy, r = knob.circle
     m = r + 28 if knob.look == "selector" else r + 2
-    period = 4 if knob.look == "selector" else 24
-    return (_knob_sprite(index, scale, step % period, down),
+    step = step % 4 if knob.look == "selector" else max(0, min(L.POT_STEPS, step))
+    return (_knob_sprite(index, scale, step, down),
             int((cx - m) * scale), int((cy - m) * scale))
 
 
@@ -337,8 +342,8 @@ def face(scale):
     for t in L.TEXTS:
         c.text(t.x, t.y, t.text, t.size, fill=t.color, anchor=t.anchor, bold=t.bold)
     for knob in L.KNOBS:
-        if knob.look != "selector":
-            _draw_knob(c, knob, -math.pi / 2)
+        if knob.look == "knob":
+            _draw_knob(c, knob, 0)
     for key in L.KEYS:
         _draw_key(c, key, 0, None, False)
     return c.done().convert("RGB")
