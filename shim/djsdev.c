@@ -517,19 +517,26 @@ static void *panel_thread(void *arg)
  *                                       rows of the screen copy that changed
  *   'L' and 7 zeros                     then the 128-byte frame the app sends
  *                                       the panel (the lamps), when it changes
- *   'A' 0, frames (LE16), 4 zeros       then frames*8 bytes: the master output,
- *                                       stereo float32 at 44.1 kHz
+ *   'A' n, frames (LE16), 4 zeros       then frames*8 bytes: output n (0 master,
+ *                                       1 headphones), stereo float32 at 44.1 kHz
+ *
+ * Besides command lines the deck sends the input's sound: the line
+ * "in <frames>" and then frames*4 bytes, stereo 16-bit at 44.1 kHz.
  *
  * A new client is sent the whole screen and the current frame.
  */
 static volatile int deck_fd = -1;
 static volatile int deck_fresh;
 
-/* The master output, as the app writes it: stereo float frames in a ring the
- * audio thread fills (audio_put) and the deck link's sender empties. */
+/* The two outputs (0 master, 1 headphones), as the app writes them: stereo
+ * float frames in rings the audio thread fills (audio_put) and the deck
+ * link's sender empties. And the input: stereo 16-bit frames the deck sends,
+ * which the app's read takes (snd_pcm_readi). */
 #define RING_FRAMES 16384               /* a power of two; 370 ms */
-static float ring[RING_FRAMES * 2];
-static volatile unsigned ring_w, ring_r;
+static float ring[2][RING_FRAMES * 2];
+static volatile unsigned ring_w[2], ring_r[2];
+static short in_ring[RING_FRAMES * 2];
+static volatile unsigned in_w, in_r;
 static Spi *panel_spi;
 
 static int deck_send(int fd, const void *buf, unsigned n)
@@ -552,7 +559,7 @@ static void *deck_sender(void *arg)
 {
     static unsigned char last[SPI_FRAME];
     unsigned char hdr[8], tx[SPI_FRAME];
-    int fd, y0, y1, y, bad;
+    int fd, y0, y1, y, bad, ch;
     unsigned tick;
 
     (void)arg;
@@ -560,30 +567,34 @@ static void *deck_sender(void *arg)
         usleep(5000);
         fd = deck_fd;
         if (fd < 0) {
-            ring_r = ring_w;
+            ring_r[0] = ring_w[0];
+            ring_r[1] = ring_w[1];
             continue;
         }
         /* Sound every 5 ms, in runs that do not wrap. */
         bad = 0;
-        while (!bad && ring_r != ring_w) {
-            unsigned r = ring_r, at = r % RING_FRAMES, n = ring_w - r;
+        for (ch = 0; ch < 2; ch++) {
+            while (!bad && ring_r[ch] != ring_w[ch]) {
+                unsigned r = ring_r[ch], at = r % RING_FRAMES, n = ring_w[ch] - r;
 
-            if (n > RING_FRAMES) {          /* overrun: keep the newest */
-                ring_r = ring_w - RING_FRAMES / 2;
-                continue;
+                if (n > RING_FRAMES) {          /* overrun: keep the newest */
+                    ring_r[ch] = ring_w[ch] - RING_FRAMES / 2;
+                    continue;
+                }
+                if (n > RING_FRAMES - at) {
+                    n = RING_FRAMES - at;
+                }
+                if (n > 4096) {
+                    n = 4096;
+                }
+                memset(hdr, 0, sizeof(hdr));
+                hdr[0] = 'A';
+                hdr[1] = ch;
+                hdr[2] = n & 0xFF;
+                hdr[3] = n >> 8;
+                bad = deck_send(fd, hdr, 8) || deck_send(fd, ring[ch] + at * 2, n * 8);
+                ring_r[ch] = r + n;
             }
-            if (n > RING_FRAMES - at) {
-                n = RING_FRAMES - at;
-            }
-            if (n > 4096) {
-                n = 4096;
-            }
-            memset(hdr, 0, sizeof(hdr));
-            hdr[0] = 'A';
-            hdr[2] = n & 0xFF;
-            hdr[3] = n >> 8;
-            bad = deck_send(fd, hdr, 8) || deck_send(fd, ring + at * 2, n * 8);
-            ring_r = r + n;
         }
         if (bad) {
             if (deck_fd == fd) {
@@ -603,7 +614,8 @@ static void *deck_sender(void *arg)
         __sync_lock_release(&dirty_lock);
         if (deck_fresh) {
             deck_fresh = 0;
-            ring_r = ring_w;
+            ring_r[0] = ring_w[0];
+            ring_r[1] = ring_w[1];
             y0 = 0;
             y1 = shot_h;
             memset(last, 0xFF, sizeof(last));
@@ -643,8 +655,9 @@ static void *deck_server(void *arg)
     const char *e = getenv("DJSDEV_PORT");
     int port = e && *e ? atoi(e) : 7310, one = 1, ls, fd;
     unsigned char addr[16];
-    char buf[512], line[128];
-    unsigned n = 0;
+    char buf[2048], line[128];
+    unsigned n = 0, raw = 0;            /* raw: bytes of input sound still to come */
+    unsigned char half[4];
     pthread_t t;
 
     (void)arg;
@@ -676,20 +689,36 @@ static void *deck_server(void *arg)
         deck_fresh = 1;
         deck_fd = fd;
         n = 0;
+        raw = 0;
         for (;;) {
             ssize_t r = recv(fd, buf, sizeof(buf), 0);
-            int i;
+            int i, frames;
 
             if (r <= 0 || deck_fd != fd) {
                 break;
             }
             for (i = 0; i < r; i++) {
+                if (raw) {
+                    half[(4 - raw % 4) % 4] = buf[i];
+                    if (--raw % 4 == 0) {
+                        unsigned w = in_w;
+
+                        in_ring[(w % RING_FRAMES) * 2] = (short)(half[0] | half[1] << 8);
+                        in_ring[(w % RING_FRAMES) * 2 + 1] = (short)(half[2] | half[3] << 8);
+                        in_w = w + 1;
+                    }
+                    continue;
+                }
                 if (n < sizeof(line) - 2) {
                     line[n++] = buf[i];
                 }
                 if (buf[i] == '\n') {
                     line[n] = 0;
-                    panel_command(line);
+                    if (sscanf(line, "in %i", &frames) == 1 && frames > 0 && frames <= 65536) {
+                        raw = frames * 4;
+                    } else {
+                        panel_command(line);
+                    }
                     n = 0;
                 }
             }
@@ -1124,7 +1153,8 @@ static void *stand_pcm[STAND_PCMS];      /* handles opened in place of the AK445
 static int stand_stream[STAND_PCMS];
 static void *ranged_params;              /* the hw_params last filled from one of them */
 static int ranged_chans;
-static void *master_pcm;                 /* the handle opened in place of hw:ak4452audio,1 */
+static void *master_pcm;                 /* the handles opened in place of hw:ak4452audio,1, */
+static void *phones_pcm, *input_pcm;     /* of ,0 for playback and of ,0 for capture */
 
 int snd_pcm_open(void **pcm, const char *name, int stream, int mode)
 {
@@ -1142,8 +1172,12 @@ int snd_pcm_open(void **pcm, const char *name, int stream, int mode)
     r = real(pcm, to, stream, mode);
     fprintf(stderr, "[djsdev] snd_pcm_open(%s, %s) -> %s = %d\n", name, stream ? "capture" : "playback", to, r);
     if (r >= 0) {
-        if (!stream && strstr(name, ",1")) {
+        if (stream) {
+            input_pcm = *pcm;
+        } else if (strstr(name, ",1")) {
             master_pcm = *pcm;
+        } else {
+            phones_pcm = *pcm;
         }
         for (i = 0; i < STAND_PCMS; i++) {
             if (!stand_pcm[i] || stand_pcm[i] == *pcm) {
@@ -1180,18 +1214,29 @@ static long long now_us(void)
     return ts.tv_sec * 1000000ll + (unsigned long)ts.tv_nsec / 1000;
 }
 
-/* frames of sound for the master output: left and right are `step` floats apart. */
-static void audio_put(const float *l, const float *r, unsigned step, unsigned long frames)
+/* frames of sound for output ch (0 master, 1 headphones): left and right are
+ * `step` floats apart. The master's sets the pace. */
+static void audio_put(int ch, const float *l, const float *r, unsigned step, unsigned long frames)
 {
-    long long now = now_us();
+    long long now;
     unsigned long i, us = frames * 1000000ul;   /* a block is at most a few thousand frames */
-    unsigned w = ring_w;
+    unsigned w = ring_w[ch];
+
+    if (ch) {
+        for (i = 0; i < frames; i++, l += step, r += step, w++) {
+            ring[ch][(w % RING_FRAMES) * 2] = *l;
+            ring[ch][(w % RING_FRAMES) * 2 + 1] = *r;
+        }
+        ring_w[ch] = w;
+        return;
+    }
+    now = now_us();
 
     for (i = 0; i < frames; i++, l += step, r += step) {
         float a = *l < 0 ? -*l : *l, b = *r < 0 ? -*r : *r;
 
-        ring[(w % RING_FRAMES) * 2] = *l;
-        ring[(w % RING_FRAMES) * 2 + 1] = *r;
+        ring[0][(w % RING_FRAMES) * 2] = *l;
+        ring[0][(w % RING_FRAMES) * 2 + 1] = *r;
         w++;
         if (a > stat_peak) {
             stat_peak = a;
@@ -1200,7 +1245,7 @@ static void audio_put(const float *l, const float *r, unsigned step, unsigned lo
             stat_peak = b;
         }
     }
-    ring_w = w;
+    ring_w[0] = w;
 
     /* Real time: sleep until this block is due; start over after a stall. */
     if (pace_us < now - 100000) {
@@ -1232,18 +1277,49 @@ long snd_pcm_writei(void *pcm, const void *buf, unsigned long frames)
 {
     long (*real)(void *, const void *, unsigned long) = dlsym(RTLD_NEXT, "snd_pcm_writei");
 
-    if (pcm == master_pcm) {
-        audio_put(buf, (const float *)buf + 1, 2, frames);
+    if (pcm == master_pcm || pcm == phones_pcm) {
+        audio_put(pcm == phones_pcm, buf, (const float *)buf + 1, 2, frames);
     }
     return real(pcm, buf, frames);
+}
+
+/* The input. The app reads interleaved frames and takes each sample as 24
+ * bits in a 32-bit word, whatever format was agreed. What the deck
+ * has sent is handed over; silence when there is not enough, and the oldest
+ * is dropped when the deck's clock runs ahead of the app's. */
+long snd_pcm_readi(void *pcm, void *buf, unsigned long frames)
+{
+    long (*real)(void *, void *, unsigned long) = dlsym(RTLD_NEXT, "snd_pcm_readi");
+    int *out = buf;
+    unsigned long i;
+    unsigned r = in_r, have = in_w - r;
+
+    if (pcm != input_pcm) {
+        return real(pcm, buf, frames);
+    }
+    if (have > RING_FRAMES / 4) {           /* over 90 ms waiting: catch up */
+        r = in_w - RING_FRAMES / 16;
+        have = in_w - r;
+    }
+    for (i = 0; i < frames; i++) {
+        if (have >= frames) {
+            out[2 * i] = in_ring[(r % RING_FRAMES) * 2] << 8;
+            out[2 * i + 1] = in_ring[(r % RING_FRAMES) * 2 + 1] << 8;
+            r++;
+        } else {
+            out[2 * i] = out[2 * i + 1] = 0;
+        }
+    }
+    in_r = r;
+    return frames;
 }
 
 long snd_pcm_writen(void *pcm, void **bufs, unsigned long frames)
 {
     long (*real)(void *, void **, unsigned long) = dlsym(RTLD_NEXT, "snd_pcm_writen");
 
-    if (pcm == master_pcm) {
-        audio_put(bufs[0], bufs[1], 1, frames);
+    if (pcm == master_pcm || pcm == phones_pcm) {
+        audio_put(pcm == phones_pcm, bufs[0], bufs[1], 1, frames);
     }
     return real(pcm, bufs, frames);
 }
@@ -1260,6 +1336,12 @@ int snd_pcm_close(void *pcm)
     }
     if (pcm == master_pcm) {
         master_pcm = 0;
+    }
+    if (pcm == phones_pcm) {
+        phones_pcm = 0;
+    }
+    if (pcm == input_pcm) {
+        input_pcm = 0;
     }
     return real(pcm);
 }

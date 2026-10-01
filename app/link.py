@@ -4,9 +4,11 @@
 
 Out: the shim's command lines (bit, enc, pad, touch ...). In, each with an
 8-byte header: 'S' rows of the screen that changed, 'L' the 128-byte frame
-the app sends its panel, which holds the lamps, 'A' the master output's
-sound. Toolkit-free; the window polls take() for what has arrived, and the
-sound goes straight to the `audio` callable, from this module's thread.
+the app sends its panel, which holds the lamps, 'A' an output's sound.
+Toolkit-free; the window polls take() for what has arrived, and the sound
+goes straight to the `audio` callable as (output, data), output 0 the master
+and 1 the headphones, from this module's thread. send_input() sends the
+input's sound the other way.
 """
 
 import socket
@@ -22,6 +24,7 @@ class Link:
         self.connected = False
         self._sock = None
         self._lock = threading.Lock()
+        self._out = threading.Lock()     # one sender at a time: lines and sound
         self._in = []
         self._stop = False
         threading.Thread(target=self._run, daemon=True).start()
@@ -32,7 +35,20 @@ class Link:
         if sock is None:
             return
         try:
-            sock.sendall(line.encode() + b"\n")
+            with self._out:
+                sock.sendall(line.encode() + b"\n")
+        except OSError:
+            pass
+
+    def send_input(self, data):
+        """Sound for the app's input: stereo 16-bit frames at 44.1 kHz."""
+        sock = self._sock
+        if sock is None or len(data) < 4:
+            return
+        data = data[:len(data) - len(data) % 4]
+        try:
+            with self._out:
+                sock.sendall(b"in %d\n" % (len(data) // 4) + data)
         except OSError:
             pass
 
@@ -79,7 +95,7 @@ class Link:
             self._put(("up",))
             try:
                 while True:
-                    kind, _, y, rows, width = struct.unpack("<BBHHH", self._read(sock, 8))
+                    kind, which, y, rows, width = struct.unpack("<BBHHH", self._read(sock, 8))
                     if kind == ord("S"):
                         self._put(("screen", y, rows, width, self._read(sock, rows * width * 4)))
                     elif kind == ord("L"):
@@ -87,7 +103,7 @@ class Link:
                     elif kind == ord("A"):
                         data = self._read(sock, y * 8)
                         if self.audio:
-                            self.audio(data)
+                            self.audio(which, data)
                     else:
                         raise ConnectionError("unknown message")
             except (OSError, ConnectionError, struct.error):

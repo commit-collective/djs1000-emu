@@ -32,7 +32,8 @@ Working:
   the 16 step keys and the buttons found so far, from the keyboard
 - projects: CREATE NEW, OPEN and SAVE on a USB drive, which is the folder
   `~/djs/usb`; samples load from `PIONEER DJ SAMPLER/Samples` there
-- the pads play, and the master output sounds through the virtual deck
+- sound through the virtual deck: the master and headphone outputs play on
+  the host's devices, and the input is fed from a recording device
 - a virtual deck: the machine's face in a window, with the app's screen and
   lamps and its controls under the mouse, see
   [docs/virtual-deck.md](docs/virtual-deck.md)
@@ -40,7 +41,6 @@ Working:
 
 Not yet:
 
-- the headphone output is not played, and the inputs read silence
 - the touch strip and INPUT LEVEL
 - MIDI, Pro DJ Link, the network
 

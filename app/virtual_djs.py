@@ -3,7 +3,8 @@
 """The virtual DJS-1000: the running app drawn as the machine, in one window.
 
     python app/virtual_djs.py [--host 127.0.0.1] [--port 7310]
-                              [--audio NAME | --no-audio] [--list-audio]
+                              [--audio NAME | --no-audio] [--headphones NAME]
+                              [--input NAME | --no-input] [--list-audio]
 
 Start the app first (scripts/run.sh); the window shows it as soon as it is
 there, and again after a restart. The face's screen is the app's own, its
@@ -18,7 +19,9 @@ panel's would:
   keyboard         the keys printed in the status line under the mouse
 
 The master output plays on the system's default sound device, or on the
-one whose name contains --audio's NAME (--list-audio prints them).
+one whose name contains --audio's NAME; the headphone output plays only if
+--headphones names a device for it. The app's input is fed from the system's
+default recording device, or --input's. --list-audio prints the devices.
 
 Every button is bound; the tempo slider, the touch strip and the two level
 knobs are drawn but do nothing yet. Under the large screen is a cell for
@@ -73,9 +76,10 @@ def surface(img):
 
 
 class Deck:
-    def __init__(self, link, size, player=None):
+    def __init__(self, link, size, players=(), recorder=None):
         self.link = link
-        self.player = player
+        self.players = [p for p in players if p]
+        self.recorder = recorder
         self.win = pygame.display.set_mode(size, pygame.RESIZABLE)
         pygame.display.set_caption(TITLE)
         self.font = pygame.font.SysFont("arial", 14)
@@ -337,8 +341,8 @@ class Deck:
                 self.analogue()
             elif item[0] == "down":
                 self.lamps = bytes(128)
-                if self.player:
-                    self.player.reset()
+                for player in self.players:
+                    player.reset()
 
     # ---- drawing --------------------------------------------------------
 
@@ -419,11 +423,14 @@ class Deck:
             f"waiting for the app on {self.link.addr[0]}:{self.link.addr[1]} (scripts/run.sh)"
         color = (150, 220, 120) if self.link.connected else (240, 180, 70)
         if self.link.connected:
-            state += f"  \u00b7  sound: {self.player.name}" if self.player else "  \u00b7  no sound"
+            state += "  \u00b7  " + (" + ".join(p.name for p in self.players) or "no sound")
+            if self.recorder:
+                state += f"  \u00b7  in: {self.recorder.name}"
         t = self.font.render(state, True, color)
+        self.status_w = t.get_width()
         self.win.blit(t, (10, bar.top + 5))
         t = self.font.render(self.hover, True, (225, 228, 232))
-        self.win.blit(t, (max(self.face_w * 3 // 5, 460), bar.top + 5))
+        self.win.blit(t, (max(self.face_w, 10 + self.status_w + 30), bar.top + 5))
 
 
 def main():
@@ -433,22 +440,40 @@ def main():
     ap.add_argument("--height", type=int, default=0, help="window height in pixels")
     ap.add_argument("--audio", metavar="NAME", help="play on the device whose name has NAME in it")
     ap.add_argument("--no-audio", action="store_true", help="do not play the app's sound")
-    ap.add_argument("--list-audio", action="store_true", help="print the playback devices and quit")
+    ap.add_argument("--headphones", metavar="NAME",
+                    help="play the headphone output on the device whose name has NAME in it")
+    ap.add_argument("--input", metavar="NAME",
+                    help="feed the app's input from the recording device whose name has NAME in it")
+    ap.add_argument("--no-input", action="store_true", help="feed the app's input silence")
+    ap.add_argument("--list-audio", action="store_true", help="print the sound devices and quit")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
     args = ap.parse_args()
 
     pygame.init()
     if args.list_audio:
-        print("\n".join(audio.devices()))
+        print("Playback:\n  " + "\n  ".join(audio.devices()))
+        print("Recording:\n  " + "\n  ".join(audio.devices(True)))
         return
-    player = None if args.no_audio else audio.Player(audio.pick(args.audio))
+    master = None if args.no_audio else audio.Player(audio.pick(args.audio))
+    phones = audio.Player(audio.pick(args.headphones)) if args.headphones else None
+    outputs = (master, phones)
+
+    def play(which, data):
+        if which < 2 and outputs[which]:
+            outputs[which].feed(data)
     desk_w, desk_h = pygame.display.get_desktop_sizes()[0]
     h = args.height or min(desk_h - 110, 1060)
     face_w = int(L.W * (h - STATUS_H) / L.H)
     w = min(desk_w - 40, face_w + L.LCD_W + 2 * DOCK_PAD)
-    link = Link(args.host, args.port, audio=player.feed if player else None)
-    deck = Deck(link, (w, h), player)
+    link = Link(args.host, args.port, audio=play)
+    recorder = None
+    if not args.no_input:
+        try:
+            recorder = audio.Recorder(link.send_input, audio.pick(args.input, True))
+        except Exception as e:           # no recording device, or it is refused
+            print(f"no input: {e}", file=sys.stderr)
+    deck = Deck(link, (w, h), outputs, recorder)
     clock = pygame.time.Clock()
     started = pygame.time.get_ticks()
     running = True
@@ -479,9 +504,13 @@ def main():
             running = False
         clock.tick(FPS)
     link.close()
-    if player:
-        player.close()
-    pygame.quit()
+    for dev in (master, phones, recorder):
+        if dev:
+            dev.close()
+    pygame.display.quit()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)                          # not pygame.quit(): see audio.Player.close
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Plays the app's master output on one of the host's sound devices.
+"""The app's sound on the host's sound devices: a Player plays one of its
+outputs, a Recorder feeds its input.
 
 The shim sends the sound as the app writes it (stereo float32, 44.1 kHz) over
 the deck's link; feed() takes it from the link's thread and SDL's audio
@@ -19,25 +20,51 @@ START = RATE * FRAME * 60 // 1000        # sound waiting before playing starts: 
 MOST = RATE * FRAME * 250 // 1000        # more than this waiting: drop the oldest
 
 
-def devices():
-    """The names of the host's playback devices."""
-    return list(sdl_audio.get_audio_device_names(False))
+def devices(capture=False):
+    """The names of the host's playback devices, or of its recording ones."""
+    return list(sdl_audio.get_audio_device_names(capture))
 
 
-def pick(name):
+def pick(name, capture=False):
     """The device whose name contains `name` (any case), or None for the
     system's default."""
     if not name:
         return None
-    for dev in devices():
+    for dev in devices(capture):
         if name.lower() in dev.lower():
             return dev
-    raise SystemExit(f"no playback device matches {name!r}; --list-audio names them")
+    kind = "recording" if capture else "playback"
+    raise SystemExit(f"no {kind} device matches {name!r}; --list-audio names them")
+
+
+class Recorder:
+    """Takes sound from a recording device and hands it to `sink` as stereo
+    16-bit frames, from SDL's audio thread."""
+
+    def __init__(self, sink, device=None):
+        self.name = device or "default input"
+        self.closed = False
+        self._sink = sink
+        self._dev = sdl_audio.AudioDevice(device, 1, RATE, sdl_audio.AUDIO_S16, 2, 512, 0,
+                                          self._take)
+        self._dev.pause(0)
+
+    def _take(self, dev, view):
+        if not self.closed:
+            self._sink(bytes(memoryview(view).cast("B")))
+
+    def close(self):
+        """Nothing is asked of SDL here: pausing or closing a device waits
+        for its callback, the callback waits for the interpreter, and this
+        thread holds it. The device goes when the program does
+        (virtual_djs.py leaves with os._exit)."""
+        self.closed = True
 
 
 class Player:
     def __init__(self, device=None):
         self.name = device or "default device"
+        self.closed = False
         self._buf = bytearray()
         self._lock = threading.Lock()
         self._playing = False
@@ -75,5 +102,8 @@ class Player:
             view[have:] = bytes(want - have)
 
     def close(self):
-        self._dev.pause(1)
-        self._dev.close()
+        """Nothing is asked of SDL here: pausing or closing a device waits
+        for its callback, the callback waits for the interpreter, and this
+        thread holds it. The device goes when the program does
+        (virtual_djs.py leaves with os._exit)."""
+        self.closed = True
