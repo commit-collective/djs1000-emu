@@ -93,9 +93,16 @@ class _Canvas:
         x0, y0, x1, y1 = self.box(b)
         x1, y1 = max(x1, x0 + 1), max(y1, y0 + 1)
         # Pillow refuses corners that do not fit: keep them inside a small shape.
-        radius = max(0, min(radius * self.k, (x1 - x0 - 2) / 2, (y1 - y0 - 2) / 2))
-        self.d.rounded_rectangle((x0, y0, x1, y1), radius=radius, fill=fill, outline=outline,
-                                 width=max(1, int(round(width * self.k))) if outline else 0)
+        radius = int(min(radius * self.k, (x1 - x0 - 3) / 2, (y1 - y0 - 3) / 2))
+        line = max(1, int(round(width * self.k))) if outline else 0
+        if radius >= 1:
+            try:
+                self.d.rounded_rectangle((x0, y0, x1, y1), radius=radius, fill=fill,
+                                         outline=outline, width=min(line, radius))
+                return
+            except ValueError:                  # still too small for Pillow's corners
+                pass
+        self.d.rectangle((x0, y0, x1, y1), fill=fill, outline=outline, width=line)
 
     def circle(self, cx, cy, r, fill=None, outline=None, width=0):
         self.d.ellipse(self.box((cx - r, cy - r, cx + r, cy + r)), fill=fill, outline=outline,
