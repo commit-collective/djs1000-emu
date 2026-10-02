@@ -52,18 +52,29 @@ X display.
 sudo apt install qemu-user-static binfmt-support proot squashfs-tools \
     p7zip-full gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl
 scripts/setup.sh /path/to/DJS1000.UPD    # once: builds ~/djs/root
-scripts/run.sh 3600                      # seconds; the window takes half a minute
 ```
 
-The app starts on its PROJECT menu (P closes it). Then either run the
-virtual deck on the host,
+Then, on the host (Windows itself, or the Linux machine), once:
 
 ```sh
-python -m pip install -r requirements.txt
-python app/virtual_djs.py
+python -m pip install -r requirements.txt    # pygame-ce and Pillow, for the deck
 ```
 
-or use the keyboard in the app's own window:
+and to run it:
+
+```sh
+python start.py          # or start.cmd / ./start.sh
+```
+
+That starts the emulator (in WSL on Windows), opens the virtual deck when it
+answers, and stops the emulator when the deck is closed. `python start.py
+--help` lists the options; anything it does not know goes to the deck
+(`--audio NAME`, `--headphones NAME`, `--no-input` ...). The app starts on
+its PROJECT menu about half a minute later; P closes it.
+
+By hand, the two halves are `scripts/run.sh 3600` (seconds; 0 for no limit)
+in WSL and `python app/virtual_djs.py` on the host. The emulator also shows
+the app's own window, which takes the keyboard without the deck:
 
 | key | control |
 |---|---|
@@ -81,9 +92,10 @@ or use the keyboard in the app's own window:
 | | |
 |---|---|
 | `shim/djsdev.c` | the stand-ins for the board's devices, and the keyboard, screenshot and command hooks |
+| `start.py` (`start.cmd`, `start.sh`) | starts the emulator and the deck together |
 | `app/` | the virtual deck |
 | `scripts/setup.sh`, `scripts/run.sh` | update file → root filesystem; run the app |
-| `tools/` | `decrypt_upd.py`, `shot.py` (screenshot), `probe.py` (find what an input does), `xref.py` (where a string is used) |
+| `tools/` | `decrypt_upd.py`, `shot.py` (screenshot), `probe.py` (find what an input does), `xref.py` (where a string is used), `make_test_kit.py` (a few synthetic drum samples on the USB folder), `deck_selftest.py` |
 | `docs/` | what has been worked out: [the update file](docs/update-format.md), [hardware and software](docs/hardware.md), [the emulation](docs/emulation.md), [the panel protocol](docs/panel-protocol.md), [the virtual deck](docs/virtual-deck.md), [power and standby](docs/power-standby.md), [tools](docs/tools.md) |
 
 ## Credits
