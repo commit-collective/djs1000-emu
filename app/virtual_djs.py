@@ -24,9 +24,10 @@ PHONES switch in the status line, or Tab, chooses. --headphones names a
 second device that plays the headphone output all the time. The app's input is fed from the system's
 default recording device, or --input's. --list-audio prints the devices.
 
-Every control is bound but INPUT LEVEL. Under the large screen is a cell for
-every two-level lamp by id, as the app sets it: some lamps are not matched
-to a control yet (docs/panel-protocol.md).
+Beside the face is the app's screen at full size, which is the easier one
+to touch, with a reminder of the keys under it. F10 hides that panel
+(--compact starts without it); F12 swaps the reminder for every two-level
+lamp by id, as the app sets it (docs/panel-protocol.md).
 
 Needs pygame-ce and Pillow (requirements.txt).
 """
@@ -53,6 +54,19 @@ BG = (5, 5, 5)
 DOCK_PAD = 16
 STATUS_H = 26
 FPS = 60
+BOOT_S = 24                              # about how long the app takes to draw its first screen
+HELP = (                                 # the side panel's reminder: (keys, what they do)
+    ("Mouse", "press keys and pads, drag or wheel knobs, touch the screen"),
+    ("Right-click", "strip: leave a finger on it   \u00b7   tempo slider: centre"),
+    ("Space  B  N", "PLAY/PAUSE   STOP   REC"),
+    ("\u2191 \u2193   Enter   \u2190", "selector: turn, push   \u00b7   BACK (also Esc)"),
+    ("F1 \u2013 F6", "the six knobs (Right Shift: the other way)"),
+    ("1\u20138   Q\u2013I", "step keys 1\u20138 and 9\u201316"),
+    ("P  L  X  H  M", "PROJECT   SAMPLING   FX   HOME   MODE"),
+    ("Left Shift", "SHIFT"),
+    ("Tab", "main sound device: MASTER / PHONES"),
+    ("F10   F12", "hide this panel   \u00b7   lamp diagnostics"),
+)
 DRAG_PX = 7                              # mouse travel for one encoder step
 
 # Keyboard keys for controls that are not drawn as a Key or Knob.
@@ -86,6 +100,11 @@ class Deck:
         self.link = link
         self.master, self.phones = players
         self.recorder = recorder
+        self.show_dock = True            # the large screen beside the face (F10)
+        self.show_lamps = False          # under it, the lamps by id instead of the keys (F12)
+        self.have_screen = False         # the app has drawn something
+        self.up_at = None                # when the link came up, for the start-up bar
+        self.big = pygame.font.SysFont("arial", 22, bold=True)
         self.listen = listen if listen is not None else [0]   # the output the main device plays
         self.listen_rect = pygame.Rect(0, 0, 0, 0)
         self.win = pygame.display.set_mode(size, pygame.RESIZABLE)
@@ -135,11 +154,27 @@ class Deck:
         room = w - self.face_w - 2 * DOCK_PAD
         self.dock = None
         self.grid = []
-        if room >= 360:
+        self.lamp_cells = []
+        if self.show_dock and room >= 360:
             k = min(1.0, room / L.LCD_W)
             self.dock = pygame.Rect(self.face_w + DOCK_PAD, DOCK_PAD, int(L.LCD_W * k),
                                     int(L.LCD_H * k))
-            self._grid(self.dock.left, self.dock.bottom + 34, self.dock.width)
+            if self.show_lamps:
+                self._grid(self.dock.left, self.dock.bottom + 34, self.dock.width)
+
+    def toggle_dock(self):
+        """Shows or hides the side panel, and sizes the window to what is left."""
+        self.show_dock = not self.show_dock
+        _, h = self.win.get_size()
+        face_w = int(L.W * max(0.2, (h - STATUS_H) / L.H))
+        w = face_w + (L.LCD_W + 2 * DOCK_PAD if self.show_dock else 0)
+        w = min(w, pygame.display.get_desktop_sizes()[0][0] - 40)
+        self.win = pygame.display.set_mode((w, h), pygame.RESIZABLE)
+        self.layout()
+
+    def toggle_lamps(self):
+        self.show_lamps = not self.show_lamps
+        self.layout()
 
     def _grid(self, x, y, width):
         """The unknown button bits, then every two-level lamp."""
@@ -387,14 +422,19 @@ class Deck:
     def pump(self):
         for item in self.link.take():
             if item[0] == "screen":
+                self.have_screen = True
                 _, y, rows, width, data = item
                 strip = pygame.image.frombuffer(data, (width, rows), "BGRA")
                 self.screen.blit(strip, (-L.LCD_ORIGIN[0], y - L.LCD_ORIGIN[1]))
             elif item[0] == "lamps":
                 self.lamps = item[1]
             elif item[0] == "up":
+                self.up_at = pygame.time.get_ticks()
                 self.analogue()
             elif item[0] == "down":
+                self.have_screen = False
+                self.up_at = None
+                self.screen.fill((0, 0, 0))
                 self.lamps = bytes(128)
                 for player in (self.master, self.phones):
                     if player:
@@ -413,7 +453,10 @@ class Deck:
         win = self.win
         win.fill(BG)
         win.blit(self.face, (0, 0))
-        win.blit(pygame.transform.smoothscale(self.screen, self.lcd_rect.size), self.lcd_rect)
+        if self.have_screen:
+            win.blit(pygame.transform.smoothscale(self.screen, self.lcd_rect.size), self.lcd_rect)
+        else:
+            self.draw_boot(self.lcd_rect)
         held_bits = set(self.keys_down.values())
         held = self.down[1] if self.down and self.down[0] == "key" else None
         if self.down and self.down[0] == "bit":
@@ -449,27 +492,60 @@ class Deck:
         self.draw_status()
         pygame.display.flip()
 
+    def draw_boot(self, rect):
+        """The screen before the app has drawn: the emulator is not there, or
+        the app is starting, which takes about half a minute."""
+        win = self.win
+        pygame.draw.rect(win, (0, 0, 0), rect)
+        small = rect.width < 500
+        title_font, text_font = (self.font, self.small) if small else (self.big, self.font)
+        now = pygame.time.get_ticks()
+        if self.up_at is None:
+            title, note = "WAITING FOR THE EMULATOR", "start it with start.py"
+            done = None
+        else:
+            title, note = "STARTING UP", "the app takes about half a minute"
+            done = min(0.97, (now - self.up_at) / 1000 / BOOT_S)
+        t = title_font.render(title, True, (225, 228, 232))
+        win.blit(t, t.get_rect(center=(rect.centerx, rect.centery - rect.height // 9)))
+        bar = pygame.Rect(0, 0, rect.width // 2, max(4, rect.height // 60))
+        bar.center = (rect.centerx, rect.centery + rect.height // 30)
+        pygame.draw.rect(win, (40, 41, 45), bar, border_radius=3)
+        if done is None:                    # nothing to measure: a light going to and fro
+            k = abs((now / 1400) % 2 - 1)
+            lit = pygame.Rect(bar.left + int((bar.width - bar.width // 5) * k), bar.top,
+                              bar.width // 5, bar.height)
+        else:
+            lit = pygame.Rect(bar.left, bar.top, max(bar.height, int(bar.width * done)), bar.height)
+        pygame.draw.rect(win, (150, 220, 120), lit, border_radius=3)
+        t = text_font.render(note, True, (150, 152, 158))
+        win.blit(t, t.get_rect(center=(rect.centerx, bar.bottom + rect.height // 12)))
+
     def draw_dock(self):
         win = self.win
-        if self.dock.size == self.screen.get_size():
+        if not self.have_screen:
+            self.draw_boot(self.dock)
+        elif self.dock.size == self.screen.get_size():
             win.blit(self.screen, self.dock)
         else:
             win.blit(pygame.transform.smoothscale(self.screen, self.dock.size), self.dock)
         pygame.draw.rect(win, (46, 47, 51), self.dock.inflate(2, 2), 1)
+        if not self.show_lamps:
+            self.draw_help(self.dock.left, self.dock.bottom + 22)
+            return
+        held = self.down[1] if self.down and self.down[0] == "bit" else None
         if self.grid:
-            label = self.font.render("Buttons not identified yet (id, frame byte.bit) "
-                                     "— hold one and watch the screen", True,
+            label = self.font.render("Buttons not identified yet (id, frame byte.bit)", True,
                                      (170, 172, 178))
             win.blit(label, (self.dock.left, self.grid_y - 22))
-        held = self.down[1] if self.down and self.down[0] == "bit" else None
         for r, bit in self.grid:
             pygame.draw.rect(win, (70, 72, 80) if bit == held else (26, 27, 30), r, border_radius=4)
             pygame.draw.rect(win, (90, 92, 98), r, 1, border_radius=4)
             t = self.small.render(f"{L.BUTTON_IDS[bit]:02x}  {bit[0]}.{bit[1]}", True,
                                   (225, 228, 232))
             win.blit(t, t.get_rect(center=r.center))
-        label = self.font.render("Two-level lamps by id, as the app sets them", True,
-                                 (170, 172, 178))
+        label = self.font.render("Lamp diagnostics: every two-level lamp by id, as the app "
+                                 "sets it (F12 closes)", True, (170, 172, 178))
         win.blit(label, (self.dock.left, self.lamp_y - 22))
         for r, lamp in self.lamp_cells:
             level = L.lamp_level(self.lamps, lamp)
@@ -477,6 +553,19 @@ class Deck:
             pygame.draw.rect(win, fill, r, border_radius=4)
             t = self.small.render(f"{lamp:02x}", True, (10, 10, 10) if level > 1 else (200, 203, 208))
             win.blit(t, t.get_rect(center=r.center))
+
+    def draw_help(self, x, y):
+        """Under the large screen: what the mouse and the keyboard do."""
+        win = self.win
+        bottom = win.get_size()[1] - STATUS_H - 8
+        for keys, what in HELP:
+            if y + 20 > bottom:
+                break
+            t = self.font.render(keys, True, (225, 228, 232))
+            win.blit(t, (x, y))
+            t = self.font.render(what, True, (150, 152, 158))
+            win.blit(t, (x + 130, y))
+            y += 24
 
     def draw_sound(self, x, top):
         """The status line's sound part: the MASTER / PHONES switch for the main
@@ -513,8 +602,9 @@ class Deck:
         w, h = self.win.get_size()
         bar = pygame.Rect(0, h - STATUS_H, w, STATUS_H)
         pygame.draw.rect(self.win, (18, 18, 20), bar)
-        state = "connected" if self.link.connected else \
-            f"waiting for the app on {self.link.addr[0]}:{self.link.addr[1]} (scripts/run.sh)"
+        state = "Running" if self.link.connected and self.have_screen else \
+            "Starting up" if self.link.connected else \
+            f"Waiting for the emulator on {self.link.addr[0]}:{self.link.addr[1]}"
         color = (150, 220, 120) if self.link.connected else (240, 180, 70)
         t = self.font.render(state, True, color)
         self.win.blit(t, (10, bar.top + 5))
@@ -541,6 +631,8 @@ def main():
                     help="feed the app's input from the recording device whose name has NAME in it")
     ap.add_argument("--no-input", action="store_true", help="feed the app's input silence")
     ap.add_argument("--list-audio", action="store_true", help="print the sound devices and quit")
+    ap.add_argument("--compact", action="store_true",
+                    help="start without the side panel (the large screen; F10 shows it)")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
     args = ap.parse_args()
@@ -564,7 +656,7 @@ def main():
     desk_w, desk_h = pygame.display.get_desktop_sizes()[0]
     h = args.height or min(desk_h - 110, 1060)
     face_w = int(L.W * (h - STATUS_H) / L.H)
-    w = min(desk_w - 40, face_w + L.LCD_W + 2 * DOCK_PAD)
+    w = face_w if args.compact else min(desk_w - 40, face_w + L.LCD_W + 2 * DOCK_PAD)
     link = Link(args.host, args.port, audio=play)
     recorder = None
     if not args.no_input:
@@ -573,6 +665,9 @@ def main():
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
     deck = Deck(link, (w, h), outputs, recorder, listen)
+    if args.compact:
+        deck.show_dock = False
+        deck.layout()
     clock = pygame.time.Clock()
     started = pygame.time.get_ticks()
     running = True
@@ -598,6 +693,10 @@ def main():
                 deck.wheel(pygame.mouse.get_pos(), e.y)
             elif e.type == pygame.KEYDOWN and e.key == pygame.K_TAB:
                 deck.switch_output()
+            elif e.type == pygame.KEYDOWN and e.key == pygame.K_F10:
+                deck.toggle_dock()
+            elif e.type == pygame.KEYDOWN and e.key == pygame.K_F12:
+                deck.toggle_lamps()
             elif e.type in (pygame.KEYDOWN, pygame.KEYUP):
                 deck.key(e, e.type == pygame.KEYDOWN)
         deck.pump()

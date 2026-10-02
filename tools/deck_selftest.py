@@ -79,6 +79,13 @@ def main():
                 deck.key(pygame.event.Event(pygame.KEYUP, key=key, mod=mod), False)
         deck.switch_output()
         deck.draw()
+        for step in (deck.toggle_lamps, deck.toggle_dock, deck.toggle_dock, deck.toggle_lamps):
+            step()
+            deck.draw()
+        deck.have_screen = False
+        deck.draw()
+        deck.up_at = None
+        deck.draw()
     print(len(link.sent), "commands sent; ok")
 
 

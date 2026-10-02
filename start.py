@@ -136,7 +136,6 @@ pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -9 -f 'proot.*EP113_Main_R'; 
                 return True
             except OSError:
                 time.sleep(1)
-                print(".", end="", flush=True)
                 if not self.running():
                     break
         return False
@@ -170,11 +169,17 @@ def main():
                    int(take(args, "--port", "7310")), flag(args, "--window"))
     keep, no_deck = flag(args, "--keep"), flag(args, "--no-deck")
     if args[:1] == ["stop"]:
+        was = emu.running()
         emu.stop()
-        print("stopped")
+        print("Emulator stopped." if was else "No emulator was running.")
         return 0
     if args[:1] == ["status"]:
-        print("running" if emu.running() else "not running")
+        if not emu.running():
+            print("The emulator is not running.")
+        elif emu.alive():
+            print("The emulator is running.")
+        else:
+            print("The emulator is running but not answering (start.py will restart it).")
         return 0
     if "--list-audio" in args:
         return subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py")] + args)
@@ -187,25 +192,31 @@ def main():
             sys.exit(f"the deck needs pygame-ce and Pillow ({e}):\n"
                      f"  {os.path.basename(sys.executable)} -m pip install -r requirements.txt")
 
+    def say(text, end="\n"):
+        print(text, end=end, flush=True)
+
     ours = not emu.running()
     if not ours and not emu.alive():
-        print("an emulator is there but not answering: restarting it")
+        say("An emulator is running but not answering. Restarting it.")
         emu.stop()
         ours = True
     if ours:
-        print("starting the emulator ", end="", flush=True)
+        say("Starting the emulator...", end=" ")
+        began = time.time()
         emu.start()
-    else:
-        print("the emulator is already running ", end="", flush=True)
-    if not emu.wait():
-        print()
-        tail = emu.log_tail()
-        if ours:
+        if not emu.wait():
+            print("failed")
+            tail = emu.log_tail()
             emu.stop()
-        sys.exit("the emulator's deck link did not come up on port %d:\n%s" % (emu.port, tail))
-    print(" up")
+            sys.exit("The emulator did not answer on port %d. The end of its log:\n%s"
+                     % (emu.port, tail))
+        print("ready (%.0fs)." % (time.time() - began))
+    else:
+        say("Using the emulator that is already running.")
     if no_deck:
+        say("Emulator left running. Stop it with: start.py stop")
         return 0
+    say("Deck open. The app takes about half a minute to start. Close the deck to quit.")
     try:
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
                                 "--port", str(emu.port)] + args)
@@ -213,9 +224,9 @@ def main():
         code = 130
     if ours and not keep:
         emu.stop()
-        print("emulator stopped")
+        say("Emulator stopped.")
     else:
-        print("the emulator is left running (python start.py stop)")
+        say("Emulator left running. Stop it with: start.py stop")
     return code
 
 
