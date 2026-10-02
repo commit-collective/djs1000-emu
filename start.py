@@ -68,6 +68,17 @@ class Emulator:
                 self._repo = REPO
         return self._repo
 
+    def usb(self):
+        """The USB folder as this side can open it (on Windows, a path into
+        WSL), or None."""
+        code, out = self.sh("""
+%s
+D="${DJS_USB:-${DJS_HOME:-$HOME/djs}/usb}"
+[ -d "$D" ] || exit 1
+%s
+""" % ("export " + self.env if self.env else "", 'wslpath -w "$D"' if WINDOWS else 'echo "$D"'))
+        return out.splitlines()[-1] if not code and out else None
+
     def running(self):
         return self.sh(RUNNING)[0] == 0
 
@@ -219,8 +230,9 @@ def main():
         return 0
     say("Deck open. The app takes about half a minute to start. Close the deck to quit.")
     try:
+        usb = emu.usb()
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
-                                "--port", str(emu.port)] + args)
+                                "--port", str(emu.port)] + (["--usb", usb] if usb else []) + args)
     except KeyboardInterrupt:
         code = 130
     if ours and not keep:

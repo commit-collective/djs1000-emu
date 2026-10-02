@@ -48,6 +48,7 @@ import art  # noqa: E402
 import audio  # noqa: E402
 import layout as L  # noqa: E402
 from link import Link  # noqa: E402
+from mods import Mods  # noqa: E402
 
 TITLE = "Virtual DJS-1000"
 BG = (5, 5, 5)
@@ -96,8 +97,10 @@ def surface(img):
 
 
 class Deck:
-    def __init__(self, link, size, players=(None, None), recorder=None, listen=None):
+    def __init__(self, link, size, players=(None, None), recorder=None, listen=None, mods=None):
         self.link = link
+        self.mods = mods or Mods(None)   # what a patch on the USB drive carries
+        self.mod_rects = []              # (where, name): the switches drawn in the side panel
         self.master, self.phones = players
         self.recorder = recorder
         self.show_dock = True            # the large screen beside the face (F10)
@@ -216,6 +219,9 @@ class Deck:
         for r, bit in self.grid:
             if r.collidepoint(pos):
                 return ("bit", bit)
+        for r, name in self.mod_rects:
+            if r.collidepoint(pos):
+                return ("mod", name)
         if pos[0] >= self.face_w:
             return None
         x, y = self.to_units(pos)
@@ -240,6 +246,8 @@ class Deck:
             return f"screen  {what[1] - 1}, {what[2] - 1}"
         if what[0] == "listen":
             return "which output the main sound device plays  \u00b7  click, or Tab"
+        if what[0] == "mod":
+            return f"mod {what[1]}  ·  click to switch it on or off, as the app runs"
         if what[0] == "strip":
             return "touch strip  \u00b7  hold and slide; right-click leaves a finger on it"
         if what[0] == "slider":
@@ -327,6 +335,9 @@ class Deck:
             return
         if what[0] == "listen":
             self.switch_output()
+            return
+        if what[0] == "mod":
+            self.mods.toggle(what[1])
             return
         self.down = what
         if what[0] == "slider":
@@ -530,8 +541,10 @@ class Deck:
         else:
             win.blit(pygame.transform.smoothscale(self.screen, self.dock.size), self.dock)
         pygame.draw.rect(win, (46, 47, 51), self.dock.inflate(2, 2), 1)
+        self.mod_rects = []
         if not self.show_lamps:
-            self.draw_help(self.dock.left, self.dock.bottom + 22)
+            y = self.draw_mods(self.dock.left, self.dock.bottom + 22)
+            self.draw_help(self.dock.left, y)
             return
         held = self.down[1] if self.down and self.down[0] == "bit" else None
         if self.grid:
@@ -553,6 +566,31 @@ class Deck:
             pygame.draw.rect(win, fill, r, border_radius=4)
             t = self.small.render(f"{lamp:02x}", True, (10, 10, 10) if level > 1 else (200, 203, 208))
             win.blit(t, t.get_rect(center=r.center))
+
+    def draw_mods(self, x, y):
+        """Under the large screen, if the patch on the USB drive carries mods:
+        a switch for each. Returns where the next thing goes."""
+        win = self.win
+        items = self.mods.items
+        if not items:
+            return y
+        t = self.font.render("Installed mods (USB)", True, (225, 228, 232))
+        win.blit(t, (x, y))
+        t2 = self.font.render("click to switch - takes effect as the app runs", True, (150, 152, 158))
+        win.blit(t2, (x + t.get_width() + 14, y))
+        y += 26
+        for name, on, about in items:
+            t = self.small.render("ON" if on else "OFF", True, (10, 10, 10) if on else (150, 152, 158))
+            r = pygame.Rect(x, y - 1, 40, 20)
+            pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r, border_radius=4)
+            win.blit(t, t.get_rect(center=r.center))
+            t = self.font.render(name, True, (225, 228, 232))
+            win.blit(t, (x + 52, y))
+            t2 = self.font.render(about, True, (150, 152, 158))
+            win.blit(t2, (x + 52 + t.get_width() + 14, y))
+            self.mod_rects.append((pygame.Rect(x, y - 3, 52 + t.get_width(), 24), name))
+            y += 26
+        return y + 10
 
     def draw_help(self, x, y):
         """Under the large screen: what the mouse and the keyboard do."""
@@ -633,6 +671,8 @@ def main():
     ap.add_argument("--list-audio", action="store_true", help="print the sound devices and quit")
     ap.add_argument("--compact", action="store_true",
                     help="start without the side panel (the large screen; F10 shows it)")
+    ap.add_argument("--usb", metavar="DIR",
+                    help="the emulator's USB folder, to show and switch the mods of a patch on it")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
     args = ap.parse_args()
@@ -664,7 +704,7 @@ def main():
             recorder = audio.Recorder(link.send_input, audio.pick(args.input, True))
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
-    deck = Deck(link, (w, h), outputs, recorder, listen)
+    deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb))
     if args.compact:
         deck.show_dock = False
         deck.layout()
