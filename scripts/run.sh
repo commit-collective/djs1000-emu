@@ -33,7 +33,11 @@ mkdir -p "$ROOT/root/pdj/browse" "$ROOT/root/pdj/project" "$ROOT/mnt/usb" "$ROOT
 # The pads' factory calibration, which lives on the unit's data partition:
 # for each pad, the sensor reading at which a hit begins (217-454). Without
 # it the app takes every pad as held down for ever, and blinks them all red.
-CAL="$ROOT/root/data/PadCalibration.xml"
+# $DJS_DATA stands in for that partition (default: root/data in the rootfs);
+# a fresh folder is a unit with its settings as they left the factory.
+DATA="${DJS_DATA:-$ROOT/root/data}"
+mkdir -p "$DATA"
+CAL="$DATA/PadCalibration.xml"
 if [ ! -s "$CAL" ]; then
     {
         printf '<?xml version="1.0" encoding="UTF-8"?>\n\n<PadCalibrationData'
@@ -86,5 +90,5 @@ trap '[ -n "$XVFB_PID" ] && kill "$XVFB_PID" 2> /dev/null' EXIT
 QENV="-E DISPLAY=${DISPLAY:-:0} -E HOME=/root -E PATH=/usr/bin:/bin:/usr/sbin:/sbin"
 QENV="$QENV -E LD_LIBRARY_PATH=/usr/lib:/lib -E LD_PRELOAD=/opt/djsemu/libdjsdev.so $XDISPLAY"
 timeout "$secs" proot -q "qemu-arm-static $QENV $*" -r "$ROOT" \
-    -b /dev -b /proc -b /sys -b /tmp/.X11-unix -b "$USB:/media/usb1/sda1" -w /root/pdj \
+    -b /dev -b /proc -b /sys -b /tmp/.X11-unix -b "$USB:/media/usb1/sda1" -b "$DATA:/root/data" -w /root/pdj \
     /root/pdj/EP113_Main_R

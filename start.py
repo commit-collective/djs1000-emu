@@ -35,10 +35,11 @@ RUNNING = "pgrep -f 'qemu-arm-static.*EP113_Main_R' > /dev/null"
 
 
 class Emulator:
-    def __init__(self, distro, port, window=False):
+    def __init__(self, distro, port, window=False, env=""):
         self.distro = distro
         self.port = port
         self.window = window
+        self.env = env                   # more environment for run.sh: "NAME=value ..."
         self._repo = None
 
     def sh(self, script):
@@ -74,10 +75,10 @@ class Emulator:
         code, out = self.sh("""
 RUN="${DJS_HOME:-$HOME/djs}/run"
 mkdir -p "$RUN"
-DJSDEV_PORT=%d DJS_WINDOW=%s setsid nohup bash '%s/scripts/run.sh' 0 > "$RUN/emulator.log" 2>&1 < /dev/null &
+DJSDEV_PORT=%d DJS_WINDOW=%s %s setsid nohup bash '%s/scripts/run.sh' 0 > "$RUN/emulator.log" 2>&1 < /dev/null &
 for i in $(seq 1 30); do sleep 0.5; %s && exit 0; done
 tail -n 15 "$RUN/emulator.log"; exit 1
-""" % (self.port, "1" if self.window else "", self.repo(), RUNNING))
+""" % (self.port, "1" if self.window else "", self.env, self.repo(), RUNNING))
         if code:
             sys.exit("the emulator did not start:\n" + out)
 

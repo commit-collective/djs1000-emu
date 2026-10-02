@@ -21,3 +21,4 @@ EP113_Main_R
 *.log
 __pycache__/
 *.so
+/regress/

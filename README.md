@@ -37,7 +37,9 @@ Working:
 - a virtual deck: the machine's face in a window, with the app's screen and
   lamps and its controls under the mouse, see
   [docs/virtual-deck.md](docs/virtual-deck.md)
-- screenshots and scripted input, for exploring it without watching
+- screenshots and scripted input, for exploring it without watching, and a
+  recorded regression session (`tools/regress.py`) that comes out identical
+  from one run to the next
 
 Not yet:
 
@@ -99,7 +101,7 @@ keyboard without the deck:
 | `start.py` (`start.cmd`, `start.sh`) | starts the emulator and the deck together |
 | `app/` | the virtual deck |
 | `scripts/setup.sh`, `scripts/run.sh` | update file → root filesystem; run the app |
-| `tools/` | `decrypt_upd.py`, `shot.py` (screenshot), `probe.py` (find what an input does), `xref.py` (where a string is used), `make_test_kit.py` (a few synthetic drum samples on the USB folder), `deck_selftest.py` |
+| `tools/` | `decrypt_upd.py`, `shot.py` (screenshot), `probe.py` (find what an input does), `xref.py` (where a string is used), `make_test_kit.py` (a few synthetic drum samples on the USB folder), `session.py` and `regress.py` (a scripted, recorded session to compare firmware changes against), `deck_selftest.py` |
 | `docs/` | what has been worked out: [the update file](docs/update-format.md), [hardware and software](docs/hardware.md), [the emulation](docs/emulation.md), [the panel protocol](docs/panel-protocol.md), [the virtual deck](docs/virtual-deck.md), [power and standby](docs/power-standby.md), [tools](docs/tools.md) |
 
 ## Credits
