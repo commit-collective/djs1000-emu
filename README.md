@@ -7,11 +7,12 @@ one program, `EP113_Main_R`, a JUCE application that draws through X11. This
 project runs that program unmodified under `qemu-arm` user mode, inside the
 unit's own root filesystem, with a small preloaded library standing in for
 the board's devices: the panel microcontroller, the touch strip, GPIO, the
-backlight, the sound card.
+backlight, the sound card. A virtual deck draws the machine around it: its
+screen, its lamps as the app lights them, and its controls under the mouse,
+with sound in and out.
 
 <p align="center">
-<img src="docs/img/home.png" alt="The DJS-1000 main screen: 16 tracks, scene and pattern, BPM" width="400">
-<img src="docs/img/track-menu.png" alt="The TRACK MENU screen of track 10" width="400">
+<img src="docs/img/deck.png" alt="The virtual deck: the DJS-1000's face with five samples loaded, their pads lit and a pattern on the step keys, beside the app's screen at full size" width="900">
 </p>
 
 ## Nothing from Pioneer DJ is included
@@ -19,24 +20,24 @@ backlight, the sound card.
 This repository holds no firmware, nothing unpacked from it, and no manuals.
 You supply your own copy of the public update file (`DJS1000.UPD`, v1.22);
 `scripts/setup.sh` unpacks it on your machine, outside the repository. The
-screenshots show the firmware's own interface, for illustration. This project
+picture shows the firmware's own interface inside the deck, for illustration;
+the deck's face is drawn by this project, without the maker's logo. This project
 is not affiliated with Pioneer DJ or AlphaTheta.
 
 ## State
 
 Working:
 
-- the app starts in about half a minute and runs for as long as you leave
-  it, in a window
-- its screen, touch (mouse), the main encoder and its push, the six knobs,
-  the 16 step keys and the buttons found so far, from the keyboard
-- projects: CREATE NEW, OPEN and SAVE on a USB drive, which is the folder
-  `~/djs/usb`; samples load from `PIONEER DJ SAMPLER/Samples` there
-- sound through the virtual deck: the master and headphone outputs play on
-  the host's devices, and the input is fed from a recording device
-- a virtual deck: the machine's face in a window, with the app's screen and
-  lamps and its controls under the mouse, see
-  [docs/virtual-deck.md](docs/virtual-deck.md)
+- the app starts in about half a minute and runs for as long as you leave it
+- the virtual deck ([docs/virtual-deck.md](docs/virtual-deck.md)): every
+  control of the panel (buttons, pads, step keys, knobs, the rotary selector,
+  the tempo slider, the touch strip), every lamp, and the touch screen
+- sound: the master and headphone outputs play on the host's devices, and
+  the input is fed from a recording device (LIVE SAMPLING works)
+- a USB drive, which is the folder `~/djs/usb`: samples load from
+  `PIONEER DJ SAMPLER/Samples` there, and projects are created, saved,
+  opened, deleted, saved as packages and rendered to audio
+- settings are kept from one run to the next
 - screenshots and scripted input, for exploring it without watching, and a
   recorded regression session (`tools/regress.py`) that comes out identical
   from one run to the next
