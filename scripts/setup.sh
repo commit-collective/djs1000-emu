@@ -3,12 +3,17 @@
 #
 # From a DJS-1000 update file to the root filesystem its application runs in.
 #
-#   scripts/setup.sh <DJS1000.UPD>
+#   scripts/setup.sh <DJS1000.UPD> <aes256.key>
 #
 # Decrypts the update, unpacks it, and assembles the unit's root filesystem
 # in $DJS_HOME (default ~/djs), which must be on a Linux filesystem: the
 # archives hold symlinks, device nodes and case-sensitive names. Nothing from
 # the update is written into this repository.
+#
+# The key file is the unit's own /usr/local/pdj/aes256.key, from a unit you
+# own: it is not part of this project. A copy is kept as $DJS_HOME/aes256.key
+# (readable by you alone), where the tools look for it; with one already
+# there the second argument can be left out.
 #
 # Needs (Ubuntu 24.04): qemu-user-static binfmt-support proot squashfs-tools
 # p7zip-full gcc-arm-linux-gnueabihf openssl python3; and xvfb, to run the
@@ -17,7 +22,9 @@
 set -eu
 REPO="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
 DJS="${DJS_HOME:-$HOME/djs}"
-UPD="${1:?usage: setup.sh <DJS1000.UPD>}"
+UPD="${1:?usage: setup.sh <DJS1000.UPD> <aes256.key>}"
+KEY="${2:-$DJS/aes256.key}"
+test -f "$KEY" || { echo "no key file: usage: setup.sh <DJS1000.UPD> <aes256.key>" >&2; exit 1; }
 
 for t in qemu-arm-static proot unsquashfs 7z arm-linux-gnueabihf-gcc openssl python3; do
     command -v "$t" >/dev/null || { echo "missing: $t (see the package list at the top of this script)" >&2; exit 1; }
@@ -27,9 +34,14 @@ case "$(df -T "$(dirname "$DJS")" | awk 'NR==2 {print $2}')" in
         echo "$DJS is on a Windows filesystem; set DJS_HOME to a Linux path" >&2; exit 1 ;;
 esac
 
+UPD="$(readlink -f "$UPD")"
+KEY="$(readlink -f "$KEY")"
 mkdir -p "$DJS"
 cd "$DJS"
-python3 "$REPO/tools/decrypt_upd.py" "$UPD" update.iso
+python3 "$REPO/tools/decrypt_upd.py" "$UPD" update.iso "$KEY"
+if [ "$KEY" != "$(readlink -f "$DJS/aes256.key")" ]; then
+    install -m 600 "$KEY" "$DJS/aes256.key"
+fi
 rm -rf iso root unpack
 7z x -y -oiso update.iso >/dev/null
 

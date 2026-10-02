@@ -17,9 +17,10 @@ with sound in and out.
 
 ## Nothing from Pioneer DJ is included
 
-This repository holds no firmware, nothing unpacked from it, and no manuals.
-You supply your own copy of the public update file (`DJS1000.UPD`, v1.22);
-`scripts/setup.sh` unpacks it on your machine, outside the repository. The
+This repository holds no firmware, nothing unpacked from it, no manuals and
+no key. You supply your own copy of the public update file (`DJS1000.UPD`,
+v1.22) and of the key that opens it; `scripts/setup.sh` unpacks the update
+on your machine, outside the repository. The
 picture shows the firmware's own interface inside the deck, for illustration;
 the deck's face is drawn by this project, without the maker's logo. This project
 is not affiliated with Pioneer DJ or AlphaTheta.
@@ -54,8 +55,14 @@ the app's window opens on the X display (WSLg's on Windows).
 ```sh
 sudo apt install qemu-user-static binfmt-support proot squashfs-tools \
     p7zip-full gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl xvfb
-scripts/setup.sh /path/to/DJS1000.UPD    # once: builds ~/djs/root
+scripts/setup.sh /path/to/DJS1000.UPD /path/to/aes256.key    # once: builds ~/djs/root
 ```
+
+The update file is encrypted. The key is the unit's own: the text file
+`/usr/local/pdj/aes256.key` in its root filesystem. It is Pioneer DJ's, so it
+is not in this repository, and getting a copy from a unit you own is up to
+you. `setup.sh` keeps it as `~/djs/aes256.key`, readable by you alone, for
+the tools that need it later.
 
 Then, on the host (Windows itself, or the Linux machine), once:
 
@@ -107,10 +114,11 @@ keyboard without the deck:
 
 ## Credits
 
-Earlier notes, shared privately, worked out the update file's encryption and the unit's debug
-connectors ; this builds on them. The panel
-link follows Pioneer's own driver, `subucom_spi.c`, from the GPL sources
-Pioneer DJ publishes for the DJS-1000.
+This builds on earlier reverse-engineering notes on the update file and the
+unit's debug connectors, shared privately. The panel link follows Pioneer's
+own driver, `subucom_spi.c`, from the GPL sources Pioneer DJ publishes for
+the DJS-1000. The virtual deck's structure follows the one in
+cdj-nxs2-qemu.
 
 ## Licence
 
