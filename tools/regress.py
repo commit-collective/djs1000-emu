@@ -4,6 +4,8 @@
 
     regress.py reference        run the session and keep it as the reference
     regress.py                  run it again and compare with the reference
+    regress.py --patch FILE     the same, with FILE on the USB drive as
+                                autoexec.bin: a patch, run as the unit runs it
     regress.py compare A B      compare two recorded sessions
 
 The session starts an emulator of its own on a fresh unit (no settings, a USB
@@ -158,7 +160,7 @@ def scenario(s, r, emu):
     r.note("projects", out.split())
 
 
-def run(name):
+def run(name, patch=None):
     out = os.path.join(BASE, name)
     os.makedirs(out, exist_ok=True)
     for f in os.listdir(out):
@@ -172,7 +174,16 @@ python3 '%s/tools/make_test_kit.py' "$HOME/djs/regress/usb/PIONEER DJ SAMPLER/Sa
 ''' % emu.repo())
     if code:
         sys.exit("could not prepare the fresh unit:\n" + text)
-    print("Recording the session '%s' on a fresh unit ..." % name)
+    if patch:
+        # The path is the host's; where the emulator lives it may read otherwise.
+        code, text = emu.sh('''
+P='%s'; command -v wslpath > /dev/null && P=$(wslpath -a "$P")
+cp "$P" "$HOME/djs/regress/usb/autoexec.bin"
+''' % os.path.abspath(patch).replace("\\", "/"))
+        if code:
+            sys.exit("could not put the patch on the drive:\n" + text)
+    print("Recording the session '%s' on a fresh unit%s ..."
+          % (name, " with the patch" if patch else ""))
     began = time.time()
     emu.start()
     try:
@@ -265,13 +276,19 @@ def main():
     if args[:1] == ["reference"]:
         run("reference")
         return 0
-    if args:
+    patch = None
+    if args[:1] == ["--patch"] and len(args) == 2:
+        patch = args[1]
+        if not os.path.isfile(patch):
+            sys.exit("no such patch: " + patch)
+    elif args:
         print(__doc__)
         return 2
     if not os.path.exists(os.path.join(BASE, "reference", "session.json")):
         sys.exit("There is no reference yet: regress.py reference")
-    run("latest")
-    return 0 if compare(os.path.join(BASE, "reference"), os.path.join(BASE, "latest")) else 1
+    name = "patched" if patch else "latest"
+    run(name, patch)
+    return 0 if compare(os.path.join(BASE, "reference"), os.path.join(BASE, name)) else 1
 
 
 if __name__ == "__main__":

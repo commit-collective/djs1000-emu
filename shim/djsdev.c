@@ -63,6 +63,7 @@ extern int pthread_create(pthread_t *t, const void *attr, void *(*fn)(void *), v
 extern int usleep(unsigned int us);
 extern size_t strlen(const char *s);
 extern int access(const char *path, int mode);
+extern int system(const char *command);
 extern int fprintf(void *stream, const char *fmt, ...);
 extern int strcmp(const char *a, const char *b);
 extern int strncmp(const char *a, const char *b, size_t n);
@@ -495,6 +496,11 @@ static void panel_command(const char *line)
     } else if (sscanf(line, "click %i %i %i", &a, &b, &c) >= 2) {
         x_click(a, b, c ? c : 1);
     } else if (sscanf(line, "usb %i", &a) == 1) {
+        /* A stick plugged in: udev runs its autoexec, if it has one, before
+         * it tells the app of the mount (scripts/guest/init.sh). */
+        if (a && !access("/opt/djsemu/init.sh", 0)) {
+            system("/bin/sh /opt/djsemu/init.sh autoexec");
+        }
         usb_plug(a);
     } else if (sscanf(line, "bit %i %i %i", &a, &b, &c) == 3) {
         panel_bit(a, b, c);

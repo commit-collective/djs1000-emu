@@ -1,0 +1,35 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# pidof and killall for the emulator (killall is a copy of this file). Every
+# program of the unit runs here under qemu-arm, so /proc names them all
+# "qemu-arm-static" and the unit's own pidof and killall find nothing. These
+# look for the program among each process's arguments instead, where it
+# stands with its path (/root/pdj/EP113_Main_R): a program started by its bare
+# name is not found.
+#
+#   pidof NAME...            prints the process ids; fails if there are none
+#   killall [-SIGNAL] NAME...
+me=$(basename "$0")
+sig=
+if [ "$me" = killall ]; then
+    case "$1" in -*) sig=$1; shift ;; esac
+fi
+found=1
+for name in "$@"; do
+    # One grep over every command line. "[/]" keeps the grep itself, whose
+    # arguments hold the pattern, from being taken for the program.
+    for f in $(grep -l -a "[/]$name" /proc/[0-9]*/cmdline 2> /dev/null); do
+        pid=${f#/proc/}
+        pid=${pid%/cmdline}
+        [ "$pid" = "$$" ] && continue
+        if [ "$me" = killall ]; then
+            kill $sig "$pid" 2> /dev/null && found=0
+        else
+            printf '%s ' "$pid"
+            found=0
+        fi
+    done
+done
+[ "$me" = killall ] || [ "$found" != 0 ] || echo
+exit $found

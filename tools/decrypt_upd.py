@@ -14,8 +14,10 @@ gives losetup): supply a copy from a unit you own.
 Needs only openssl on PATH (one AES-ECB pass; the CBC chaining is done here).
 
     decrypt_upd.py DJS1000.UPD djs.iso [aes256.key]
+    decrypt_upd.py --raw autoexec.bin out.img [aes256.key]
 
-Without the last argument the key file is $DJS_KEY, else
+--raw is for a file with no trailer, encrypted the same way: the autoexec.bin
+the unit runs from a USB stick (decrypt_autoexec.sh). Without the last argument the key file is $DJS_KEY, else
 $DJS_HOME/aes256.key (~/djs/aes256.key), where scripts/setup.sh keeps it.
 """
 import os
@@ -50,15 +52,22 @@ def read_key(path):
 
 
 def main():
-    if len(sys.argv) not in (3, 4):
+    args = sys.argv[1:]
+    raw = args[:1] == ["--raw"]
+    if raw:
+        del args[0]
+    if len(args) not in (2, 3):
         sys.exit(__doc__)
-    src, dst = sys.argv[1], sys.argv[2]
-    key = read_key(key_file(sys.argv[3] if len(sys.argv) == 4 else None))
+    src, dst = args[0], args[1]
+    key = read_key(key_file(args[2] if len(args) == 3 else None))
     data = open(src, "rb").read()
-    body, trailer = data[:-TRAILER], data[-TRAILER:]
-    tag = trailer[:-4].rstrip(b"\0").decode("ascii", "replace")
-    crc_ok = zlib.crc32(body) & 0xFFFFFFFF in struct.unpack("<I", trailer[-4:]) + struct.unpack(">I", trailer[-4:])
-    print("trailer: %s, CRC32 %s" % (tag, "ok" if crc_ok else "MISMATCH"))
+    if raw:
+        body = data
+    else:
+        body, trailer = data[:-TRAILER], data[-TRAILER:]
+        tag = trailer[:-4].rstrip(b"\0").decode("ascii", "replace")
+        crc_ok = zlib.crc32(body) & 0xFFFFFFFF in struct.unpack("<I", trailer[-4:]) + struct.unpack(">I", trailer[-4:])
+        print("trailer: %s, CRC32 %s" % (tag, "ok" if crc_ok else "MISMATCH"))
     if len(body) % SECTOR:
         sys.exit("body is not a whole number of sectors")
 

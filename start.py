@@ -84,9 +84,9 @@ tail -n 15 "$RUN/emulator.log"; exit 1
 
     def stop(self):
         self.sh("""
-pkill -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot.*EP113_Main_R'
+pkill -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh'
 for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
-pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -9 -f 'proot.*EP113_Main_R'; true
+pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot -q qemu-arm-static.*djsemu'; true
 """ % RUNNING)
 
     def alive(self, seconds=6):

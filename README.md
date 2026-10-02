@@ -39,6 +39,9 @@ Working:
   `PIONEER DJ SAMPLER/Samples` there, and projects are created, saved,
   opened, deleted, saved as packages and rendered to audio
 - settings are kept from one run to the next
+- `autoexec.bin` on the USB folder is run as the unit runs one from a stick,
+  which is how modifications are tried here before a real unit
+  ([docs/emulation.md](docs/emulation.md))
 - screenshots and scripted input, for exploring it without watching, and a
   recorded regression session (`tools/regress.py`) that comes out identical
   from one run to the next
@@ -109,6 +112,7 @@ keyboard without the deck:
 | `start.py` (`start.cmd`, `start.sh`) | starts the emulator and the deck together |
 | `app/` | the virtual deck |
 | `scripts/setup.sh`, `scripts/run.sh` | update file → root filesystem; run the app |
+| `scripts/guest/` | what runs inside the root filesystem in place of the unit's start-up |
 | `tools/` | `decrypt_upd.py`, `shot.py` (screenshot), `probe.py` (find what an input does), `xref.py` (where a string is used), `make_test_kit.py` (a few synthetic drum samples on the USB folder), `session.py` and `regress.py` (a scripted, recorded session to compare firmware changes against), `deck_selftest.py` |
 | `docs/` | what has been worked out: [the update file](docs/update-format.md), [hardware and software](docs/hardware.md), [the emulation](docs/emulation.md), [the panel protocol](docs/panel-protocol.md), [the virtual deck](docs/virtual-deck.md), [power and standby](docs/power-standby.md), [tools](docs/tools.md) |
 

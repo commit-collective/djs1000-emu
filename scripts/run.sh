@@ -85,10 +85,72 @@ if [ -z "${DJS_WINDOW:-}" ] && command -v Xvfb > /dev/null; then
         XVFB_PID=
     fi
 fi
-trap '[ -n "$XVFB_PID" ] && kill "$XVFB_PID" 2> /dev/null' EXIT
+WATCH_PID=
+trap 'for p in $XVFB_PID $WATCH_PID; do kill "$p" 2> /dev/null; done' EXIT
 
-QENV="-E DISPLAY=${DISPLAY:-:0} -E HOME=/root -E PATH=/usr/bin:/bin:/usr/sbin:/sbin"
+# A stick's autoexec.bin. The unit opens it with its key through a loop
+# device and mounts what it holds on /mnt/iso (decrypt_autoexec.sh); that
+# needs root, so it is opened here, once, and init.sh runs its autoexec.sh as
+# the unit would. It must hold an ISO 9660 file system, and a changed
+# autoexec.bin is seen at the next start.
+AUTO="$DJS/run/autoexec"
+rm -rf "$AUTO" "$DJS/run/autoexec.iso"
+mkdir -p "$AUTO" "$ROOT/mnt/iso"
+if [ -f "$USB/autoexec.bin" ]; then
+    if python3 "$REPO/tools/decrypt_upd.py" --raw "$USB/autoexec.bin" "$DJS/run/autoexec.iso" > /dev/null &&
+        7z x -y -o"$AUTO" "$DJS/run/autoexec.iso" > /dev/null; then
+        # As Linux shows a plain ISO 9660 disc: lower-case names, no ";1",
+        # every file executable.
+        for f in "$AUTO"/*; do
+            n=$(basename "$f" | tr 'A-Z' 'a-z')
+            n=${n%;1}
+            [ "$f" = "$AUTO/$n" ] || mv "$f" "$AUTO/$n"
+        done
+        chmod -R u+rwx "$AUTO"
+        echo "[djsemu] autoexec.bin on the USB drive: $(ls "$AUTO" | tr '\n' ' ')"
+    else
+        echo "[djsemu] autoexec.bin on the USB drive could not be opened (key? not ISO 9660?): ignored" >&2
+        rm -rf "$AUTO"; mkdir -p "$AUTO"
+    fi
+    rm -f "$DJS/run/autoexec.iso"
+fi
+
+# What runs inside: init.sh, which stands in for the unit's start-up (the
+# stick's autoexec, then the app), with a pidof and a killall that find the
+# unit's programs under qemu. With extra qemu arguments (gdb), the app alone.
+mkdir -p "$ROOT/opt/djsemu/bin"
+install -m 755 "$REPO/scripts/guest/init.sh" "$ROOT/opt/djsemu/init.sh"
+install -m 755 "$REPO/scripts/guest/pidof" "$ROOT/opt/djsemu/bin/pidof"
+install -m 755 "$REPO/scripts/guest/pidof" "$ROOT/opt/djsemu/bin/killall"
+pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh' 2> /dev/null    # one left by a stopped emulator
+if [ $# -eq 0 ]; then
+    set -- /bin/sh /opt/djsemu/init.sh
+    QARGS=
+    # The emulator ends when the app has: none seen for five seconds, once
+    # one has been (an autoexec may stop the app to start it again).
+    (
+        seen=0
+        gone=0
+        while [ "$gone" -lt 5 ]; do
+            sleep 1
+            if pgrep -f 'qemu-arm-static.*/root/pdj/EP113_Main_R' > /dev/null; then
+                seen=1
+                gone=0
+            elif [ "$seen" = 1 ]; then
+                gone=$((gone + 1))
+            fi
+        done
+        pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh'
+    ) &
+    WATCH_PID=$!
+else
+    QARGS="$*"
+    set -- /root/pdj/EP113_Main_R
+fi
+
+QENV="-E DISPLAY=${DISPLAY:-:0} -E HOME=/root -E PATH=/opt/djsemu/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 QENV="$QENV -E LD_LIBRARY_PATH=/usr/lib:/lib -E LD_PRELOAD=/opt/djsemu/libdjsdev.so $XDISPLAY"
-timeout "$secs" proot -q "qemu-arm-static $QENV $*" -r "$ROOT" \
-    -b /dev -b /proc -b /sys -b /tmp/.X11-unix -b "$USB:/media/usb1/sda1" -b "$DATA:/root/data" -w /root/pdj \
-    /root/pdj/EP113_Main_R
+[ -n "${DJSDEV_USB:-}" ] && QENV="$QENV -E DJSDEV_USB=$DJSDEV_USB"
+timeout "$secs" proot -q "qemu-arm-static $QENV $QARGS" -r "$ROOT" \
+    -b /dev -b /proc -b /sys -b /tmp/.X11-unix -b "$USB:/media/usb1/sda1" -b "$DATA:/root/data" \
+    -b "$AUTO:/mnt/iso" -w /root/pdj "$@"
