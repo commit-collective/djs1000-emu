@@ -78,6 +78,7 @@ extern int rename(const char *from, const char *to);
 /* From libX11, which the app has loaded; never called in its child processes. */
 extern int XSendEvent(void *dpy, unsigned long win, int propagate, long mask, void *event);
 extern int XFlush(void *dpy);
+extern unsigned long XInternAtom(void *dpy, const char *name, int only_if_exists);
 extern void XLockDisplay(void *dpy);
 extern void XUnlockDisplay(void *dpy);
 extern void *memcpy(void *d, const void *s, size_t n);
@@ -423,6 +424,29 @@ static void x_touch(int kind, int x, int y)
     XUnlockDisplay(x_dpy);
 }
 
+/* What the window's close button sends the app, for checking that the app
+ * no longer acts on it (XNextEvent below). */
+static void x_close(void)
+{
+    int ev[24];
+
+    if (!x_dpy) {
+        return;
+    }
+    memset(ev, 0, sizeof(ev));
+    ev[0] = 33;                         /* ClientMessage */
+    ev[2] = 1;
+    ev[3] = (int)x_dpy;
+    ev[4] = (int)x_win;
+    XLockDisplay(x_dpy);
+    ev[5] = (int)XInternAtom(x_dpy, "WM_PROTOCOLS", 0);
+    ev[6] = 32;
+    ev[7] = (int)XInternAtom(x_dpy, "WM_DELETE_WINDOW", 0);
+    XSendEvent(x_dpy, x_win, 0, 0, ev);
+    XFlush(x_dpy);
+    XUnlockDisplay(x_dpy);
+}
+
 static void shot_write(void)
 {
     void *f = fopen("/tmp/djsshot.tmp", "w");
@@ -450,6 +474,7 @@ static void shot_write(void)
  *   word <offset> <value>      any 16-bit field
  *   byte <offset> <value>      any byte
  *   strip <0-127 | -1>         touch the strip there / let it go
+ *   wmclose                    what the window's close button sends (ignored)
  *   shot                       write the screen copy to /tmp/djsshot.raw
  *   click <x> <y> [button]     mouse press and release at screenshot coordinates
  *   usb <0|1>                  unplug / plug the USB drive
@@ -460,6 +485,8 @@ static void panel_command(const char *line)
 
     if (!strncmp(line, "shot", 4)) {
         shot_write();
+    } else if (!strncmp(line, "wmclose", 7)) {
+        x_close();
     } else if (sscanf(line, "touch %i %i %i", &a, &b, &c) == 3) {
         x_touch(a, b, c);
         if (a == 2) {
@@ -814,8 +841,19 @@ int XNextEvent(void *display, void *event)
     if (!real) {
         real = dlsym(RTLD_NEXT, "XNextEvent");
     }
-    r = real(display, event);
-    type = e[0];
+    for (;;) {
+        r = real(display, event);
+        type = e[0];
+        /* Closing the app's window would make it quit, and it does not get
+         * as far as exiting: it is left half shut down, its screen frozen.
+         * The unit has no window to close, so the request is dropped. */
+        if (type == 33 /* ClientMessage */ && e[6] == 32 &&
+            (unsigned long)e[7] == XInternAtom(display, "WM_DELETE_WINDOW", 1)) {
+            fprintf(stderr, "[djsdev] window close ignored: stop the emulator instead\n");
+            continue;
+        }
+        break;
+    }
     if (type != 2 /* KeyPress */ && type != 3 /* KeyRelease */) {
         return r;
     }

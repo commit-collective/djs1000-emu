@@ -79,7 +79,47 @@ sleep 2
             sys.exit("the emulator did not start:\n" + out)
 
     def stop(self):
-        self.sh("pkill -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot.*EP113_Main_R'; true")
+        self.sh("""
+pkill -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot.*EP113_Main_R'
+for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
+pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -9 -f 'proot.*EP113_Main_R'; true
+""" % RUNNING)
+
+    def alive(self, seconds=6):
+        """Whether the app is really running: its sound arrives on the deck
+        link all the time, even when silent. A process can be there and the
+        app be stuck (its own window was closed, say)."""
+        try:
+            sock = socket.create_connection(("127.0.0.1", self.port), timeout=2)
+        except OSError:
+            return False
+        end = time.time() + seconds
+        buf = b""
+        try:
+            while time.time() < end:
+                sock.settimeout(max(0.1, end - time.time()))
+                part = sock.recv(65536)
+                if not part:
+                    return False
+                buf += part
+                # Walk the messages: 'S' rows of the screen, 'L' lamps, 'A' sound.
+                while len(buf) >= 8:
+                    kind, rows, width = buf[0], buf[4] | buf[5] << 8, buf[6] | buf[7] << 8
+                    frames = buf[2] | buf[3] << 8
+                    if kind == ord("A"):
+                        return True
+                    need = 8 + (rows * width * 4 if kind == ord("S") else 128 if kind == ord("L")
+                                else frames * 8)
+                    if kind not in (ord("S"), ord("L")):
+                        return False
+                    if len(buf) < need:
+                        break
+                    buf = buf[need:]
+        except OSError:
+            pass
+        finally:
+            sock.close()
+        return False
 
     def log_tail(self):
         return self.sh('tail -n 15 "${DJS_HOME:-$HOME/djs}/run/emulator.log"')[1]
@@ -145,6 +185,10 @@ def main():
                      f"  {os.path.basename(sys.executable)} -m pip install -r requirements.txt")
 
     ours = not emu.running()
+    if not ours and not emu.alive():
+        print("an emulator is there but not answering: restarting it")
+        emu.stop()
+        ours = True
     if ours:
         print("starting the emulator ", end="", flush=True)
         emu.start()

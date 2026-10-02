@@ -17,6 +17,10 @@ ROOT=$DJS/root
 secs=${1:-60}
 shift || true
 
+if pgrep -f 'qemu-arm-static.*EP113_Main_R' > /dev/null; then
+    echo "the emulator is already running: stop it first (python start.py stop)" >&2
+    exit 1
+fi
 test -x "$ROOT/root/pdj/EP113_Main_R" || { echo "no rootfs in $ROOT: run scripts/setup.sh first" >&2; exit 1; }
 mkdir -p "$ROOT/opt/djsemu" "$ROOT/mnt/debug" "$ROOT/var/log" "$ROOT/root/data" "$ROOT/tmp" "$DJS/run"
 # What /root/pdj/apl_start does before it starts the app, as far as it applies
