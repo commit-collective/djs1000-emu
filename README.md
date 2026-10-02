@@ -6,7 +6,7 @@ The DJS-1000 is an embedded Linux machine (Freescale i.MX6). Its sampler is
 one program, `EP113_Main_R`, a JUCE application that draws through X11. This
 project runs that program unmodified under `qemu-arm` user mode, inside the
 unit's own root filesystem, with a small preloaded library standing in for
-the board's devices: the panel microcontroller, the codec link, GPIO, the
+the board's devices: the panel microcontroller, the touch strip, GPIO, the
 backlight, the sound card.
 
 <p align="center">
@@ -41,7 +41,7 @@ Working:
 
 Not yet:
 
-- the touch strip and INPUT LEVEL
+- INPUT LEVEL
 - MIDI, Pro DJ Link, the network
 
 ## Quick start

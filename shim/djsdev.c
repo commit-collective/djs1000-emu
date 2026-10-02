@@ -14,7 +14,8 @@
  * WR_TIMER_STATUS, and the driver exchanges a frame every TIMER_INTERVAL ms;
  * after each exchange the reply is kept, the device polls readable, and read()
  * returns the latest reply (rx_bytes long). Here a thread per device does the
- * ticking, and spi_reply() makes up the reply. New transmit frames are logged,
+ * ticking, and spi_reply() makes up the reply. cdc_spi2.0 is the same driver
+ * with 4-byte replies: the touch strip. New transmit frames are logged,
  * which shows the command sequence the app goes through.
  *
  * The app is built for glibc 2.13, soft-float ABI (arm-fsl-linux-gnueabi),
@@ -242,6 +243,7 @@ static unsigned short crc_x25(const unsigned char *p, unsigned n)
  * commands written to the pipe /tmp/djspanel (panel_thread).
  */
 static volatile unsigned char panel[SPI_FRAME];
+static volatile int strip_at = -1;      /* the touch strip: 0-127, or -1 when not touched */
 static const unsigned char ENC_OFFSET[7] = { 0x14, 0x08, 0x0A, 0x0C, 0x0E, 0x10, 0x12 };
 
 static void panel_bit(unsigned byte, unsigned bit, int on)
@@ -445,6 +447,8 @@ static void shot_write(void)
  *   enc <0-6> <delta>          turn an encoder
  *   pad <0-15> <a> <b>         a pad's two values
  *   word <offset> <value>      any 16-bit field
+ *   byte <offset> <value>      any byte
+ *   strip <0-127 | -1>         touch the strip there / let it go
  *   shot                       write the screen copy to /tmp/djsshot.raw
  *   click <x> <y> [button]     mouse press and release at screenshot coordinates
  *   usb <0|1>                  unplug / plug the USB drive
@@ -477,6 +481,11 @@ static void panel_command(const char *line)
         panel_word(0x16 + 2 * a, b);
         panel_word(0x36 + 2 * a, c);
         panel_unlock();
+    } else if (sscanf(line, "strip %i", &a) == 1) {
+        strip_at = a < 0 ? -1 : a > 127 ? 127 : a;
+        return;         /* not logged: a finger sliding sends many */
+    } else if (sscanf(line, "byte %i %i", &a, &b) == 2 && a >= 0 && a < 0x7C) {
+        panel[a] = b;
     } else if (sscanf(line, "word %i %i", &a, &b) == 2) {
         panel_lock();
         panel_word(a, b);
@@ -801,20 +810,33 @@ int XNextEvent(void *display, void *event)
     return r;
 }
 
-/* The reply to an exchange: the panel's input state for the panel link, a
- * bare identifier for the codec link. */
+/* The touch strip, which is what the second link (/dev/cdc_spi2.0) carries:
+ * a 4-byte reply whose first byte is 127 less the position and whose second
+ * has bit 7 set while the strip is touched (CdcManager's read). */
+static int strip_last;
+
+/* The reply to an exchange: the panel's input state for the panel link, the
+ * strip's for the other. */
 static void spi_reply(Spi *s)
 {
     unsigned char f[SPI_FRAME];
     unsigned short c;
+    int at = strip_at;
 
     /* Built aside and copied in one go: the app may read() meanwhile. */
     memset(f, 0, SPI_FRAME);
-    if (s->rx_bytes == SPI_FRAME) {
-        panel_lock();
-        memcpy(f, (const void *)panel, 0x7C);
-        panel_unlock();
+    if (s->rx_bytes != SPI_FRAME) {
+        if (at >= 0) {
+            strip_last = at & 0x7F;
+        }
+        f[0] = 0x7F - strip_last;
+        f[1] = at >= 0 ? 0x80 : 0;
+        memcpy(s->rx, f, SPI_FRAME);
+        return;
     }
+    panel_lock();
+    memcpy(f, (const void *)panel, 0x7C);
+    panel_unlock();
     f[0] = 0x01;
     c = crc_x25(f, 0x7C);
     f[0x7C] = c & 0xFF;

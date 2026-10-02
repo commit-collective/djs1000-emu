@@ -24,8 +24,7 @@ PHONES switch in the status line, or Tab, chooses. --headphones names a
 second device that plays the headphone output all the time. The app's input is fed from the system's
 default recording device, or --input's. --list-audio prints the devices.
 
-Every button is bound; the tempo slider, the touch strip and the two level
-knobs are drawn but do nothing yet. Under the large screen is a cell for
+Every control is bound but INPUT LEVEL. Under the large screen is a cell for
 every two-level lamp by id, as the app sets it: some lamps are not matched
 to a control yet (docs/panel-protocol.md).
 
@@ -180,6 +179,9 @@ class Deck:
         fx0, fy0, fx1, fy1 = L.SLIDER_FRAME
         if fx0 <= x <= fx1 and fy0 <= y <= fy1:
             return ("slider",)
+        sx0, sy0, _, sy1 = L.STRIP
+        if sx0 + 14 <= x <= sx0 + 96 and sy0 <= y <= sy1:
+            return ("strip",)
         for i, knob in enumerate(L.KNOBS):
             if knob.hit(x, y):
                 return ("knob", i)
@@ -195,6 +197,8 @@ class Deck:
             return f"screen  {what[1] - 1}, {what[2] - 1}"
         if what[0] == "listen":
             return "which output the main sound device plays  \u00b7  click, or Tab"
+        if what[0] == "strip":
+            return "touch strip  \u00b7  hold the mouse on it and slide"
         if what[0] == "slider":
             return "tempo slider  \u00b7  drag; right-click for the centre"
         if what[0] == "bit":
@@ -242,6 +246,12 @@ class Deck:
             return L.SLIDER_CENTRE
         return int(round(self.slider * 1023))
 
+    def stroke(self, pos):
+        """A finger on the touch strip: 127 at the top (+) to 0 at the bottom."""
+        _, y = self.to_units(pos)
+        top, bottom = L.STRIP[1] + 20, L.STRIP[3] - 20
+        self.link.send(f"strip {int(round(127 * min(1.0, max(0.0, (bottom - y) / (bottom - top)))))}")
+
     def slide(self, pos):
         _, y = self.to_units(pos)
         _, top, bottom = L.SLIDER
@@ -264,6 +274,8 @@ class Deck:
         self.down = what
         if what[0] == "slider":
             self.slide(pos)
+        elif what[0] == "strip":
+            self.stroke(pos)
         elif what[0] == "lcd":
             self.link.send(f"touch 1 {what[1]} {what[2]}")
         elif what[0] == "bit":
@@ -293,6 +305,8 @@ class Deck:
             self.link.send(f"touch 0 {p[0]} {p[1]}")
         elif what[0] == "bit":
             self.link.send(f"bit {what[1][0]} {what[1][1]} 0")
+        elif what[0] == "strip":
+            self.link.send("strip -1")
         elif what[0] == "knob":
             knob = L.KNOBS[what[1]]
             if knob.push and not self.moved:
@@ -311,6 +325,8 @@ class Deck:
                 self.link.send(f"touch 2 {p[0]} {p[1]}")
         elif self.down and self.down[0] == "slider":
             self.slide(pos)
+        elif self.down and self.down[0] == "strip":
+            self.stroke(pos)
         elif self.down and self.down[0] == "knob":
             steps = int((self.drag_y - pos[1]) / DRAG_PX)
             if steps:

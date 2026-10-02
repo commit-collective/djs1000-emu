@@ -185,7 +185,8 @@ KEYS += [Key(f"mode_led_{name}", "led", box=(198, y - 5, 204, y + 5), lamp=0x07 
              color=LIME)
          for i, (name, y) in enumerate((("pitch", 781), ("repeat", 804), ("user1", 827),
                                         ("user2", 850)))]
-# The strip's eight lamps: taken to be ids 0x0c-0x13 from the bottom up.
+# The strip's eight lamps, 0x0c at the bottom (the strip's 0) to 0x13 at the
+# top (its 127).
 KEYS += [Key(f"strip_led_{i + 1}", "led", box=(224, 1222 - i * 42, 231, 1254 - i * 42),
              lamp=0x0C + i, color=BLUE)
          for i in range(8)]

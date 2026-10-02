@@ -55,7 +55,7 @@ def main():
                   for key in L.KEYS]
         points += [(knob.circle[0] * k, knob.circle[1] * k) for knob in L.KNOBS]
         points += [(L.SLIDER[0] * k, (L.SLIDER[1] + 40) * k), deck.listen_rect.center,
-                   deck.lcd_rect.center]
+                   deck.lcd_rect.center, ((L.STRIP[0] + 50) * k, (L.STRIP[1] + 100) * k)]
         if deck.dock:
             points.append(deck.dock.center)
         points += [(x, y) for x in range(0, size[0], 53) for y in range(0, size[1], 47)]
