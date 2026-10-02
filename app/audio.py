@@ -10,6 +10,7 @@ little sound is waiting, starts over after running dry, and the oldest sound
 is dropped if too much piles up.
 """
 
+import array
 import threading
 
 from pygame._sdl2 import audio as sdl_audio
@@ -43,6 +44,7 @@ class Recorder:
 
     def __init__(self, sink, device=None):
         self.name = device or "default input"
+        self.gain = 1.0                  # 0 to 1: the deck's INPUT LEVEL
         self.closed = False
         self._sink = sink
         self._dev = sdl_audio.AudioDevice(device, 1, RATE, sdl_audio.AUDIO_S16, 2, 512, 0,
@@ -50,8 +52,16 @@ class Recorder:
         self._dev.pause(0)
 
     def _take(self, dev, view):
-        if not self.closed:
-            self._sink(bytes(memoryview(view).cast("B")))
+        if self.closed:
+            return
+        data = bytes(memoryview(view).cast("B"))
+        gain = self.gain
+        if gain <= 0:
+            data = bytes(len(data))
+        elif gain < 1:
+            samples = array.array("h", data[:len(data) - len(data) % 2])
+            data = array.array("h", [int(v * gain) for v in samples]).tobytes()
+        self._sink(data)
 
     def close(self):
         """Nothing is asked of SDL here: pausing or closing a device waits

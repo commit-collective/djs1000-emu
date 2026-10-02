@@ -89,6 +89,7 @@ class Knob:
     push: tuple | None = None           # the bit its push switch sets
     keycap: str = ""
     word: int | None = None             # a pot's 0-1023 value in the frame
+    gain: bool = False                  # the deck's own: the level of the input it sends
     look: str = "knob"                  # knob (an encoder), selector, pot
     at: int = 0                         # a pot's position at start, 0-POT_STEPS
 
@@ -201,7 +202,11 @@ KEYS += [Key(f"pad_{n + 1}", "pad",
 
 KNOBS = [
     Knob("selector", (1215, 298, 62), enc=0, push=(1, 1), keycap=", . Enter", look="selector"),
-    Knob("input_level", (1400, 204, 28), look="pot"),
+    # INPUT LEVEL is not in the panel's frame (an analogue gain before the
+    # converter, it seems): the deck applies it to the sound it sends. The
+    # headphones' level is a knob on the unit's front; it is drawn here.
+    Knob("input_level", (1400, 204, 28), look="pot", at=POT_STEPS, gain=True),
+    Knob("phones_level", (1400, 368, 28), word=0x5C, look="pot", at=20),
     Knob("fx_level", (97, 664, 42), word=0x5A, look="pot", at=15),
 ] + [Knob(f"knob_{i + 1}", (x, 612, 40), enc=i + 1, keycap=f"F{i + 1}")
      for i, x in enumerate((436, 560, 684, 808, 932, 1056))]
@@ -212,6 +217,8 @@ TEXTS = [
     Text(1268, 182, "WAKE UP", 11),
     Text(1400, 161, "INPUT LEVEL", 16),
     Text(1367, 248, "MIN", 12), Text(1437, 248, "MAX", 12),
+    Text(1400, 316, "PHONES LEVEL", 16), Text(1400, 332, "(front panel)", 11, bold=False),
+    Text(1367, 412, "MIN", 12), Text(1437, 412, "MAX", 12),
     Text(1215, 417, "PERFORMANCE", 16), Text(1215, 435, "DJ SAMPLER", 16),
     Text(94, 308, "USB STOP", 16),
     Text(82, 260, "5V ═ 1A", 11),

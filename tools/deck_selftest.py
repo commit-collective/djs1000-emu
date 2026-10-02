@@ -66,6 +66,10 @@ def main():
             deck.motion((pos[0] + 9, pos[1] - 23))
             deck.wheel(pos, 1)
             deck.release((pos[0] + 9, pos[1] - 23))
+            if deck.find(pos) == ("strip",):
+                deck.pin(pos)
+                deck.draw()
+                deck.pin(pos)
             deck.motion((pos[0] - 5, pos[1] + 400))
             deck.draw()
         for key in list(deck.keymap) + [pygame.K_TAB]:

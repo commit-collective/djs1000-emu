@@ -48,6 +48,7 @@ typedef __builtin_va_list va_list;
 extern void *dlsym(void *handle, const char *name);
 extern int socketpair(int domain, int type, int proto, int sv[2]);
 extern int listen(int fd, int backlog);
+extern int shutdown(int fd, int how);
 extern int accept(int fd, void *addr, unsigned *len);
 extern int atoi(const char *s);
 struct timespec { long tv_sec; long tv_nsec; };
@@ -532,10 +533,13 @@ static void *panel_thread(void *arg)
  * Besides command lines the deck sends the input's sound: the line
  * "in <frames>" and then frames*4 bytes, stereo 16-bit at 44.1 kHz.
  *
- * A new client is sent the whole screen and the current frame.
+ * A new client is sent the whole screen and the current frame. Up to DECKS
+ * clients are served at once (the deck, and a script watching beside it);
+ * each is sent everything, and commands are taken from all.
  */
-static volatile int deck_fd = -1;
-static volatile int deck_fresh;
+#define DECKS 4                         /* clients at a time */
+static volatile int deck_fd[DECKS] = { -1, -1, -1, -1 };
+static volatile int deck_fresh[DECKS];  /* just connected: owed the whole screen */
 
 /* The two outputs (0 master, 1 headphones), as the app writes them: stereo
  * float frames in rings the audio thread fills (audio_put) and the deck
@@ -564,26 +568,64 @@ static int deck_send(int fd, const void *buf, unsigned n)
     return 0;
 }
 
+/* One message to client i; a client that cannot be sent to is dropped (its
+ * reader, woken by the shutdown, closes it). */
+static void deck_msg(int i, const unsigned char *hdr, const void *body, unsigned n)
+{
+    int fd = deck_fd[i];
+
+    if (fd >= 0 && (deck_send(fd, hdr, 8) || deck_send(fd, body, n))) {
+        deck_fd[i] = -1;
+        shutdown(fd, 2);
+    }
+}
+
+static void deck_screen(int i, int y0, int y1)
+{
+    unsigned char hdr[8];
+    int y;
+
+    if (y1 <= y0 || !shot_w) {
+        return;
+    }
+    memset(hdr, 0, sizeof(hdr));
+    hdr[0] = 'S';
+    hdr[2] = y0 & 0xFF;
+    hdr[3] = y0 >> 8;
+    hdr[4] = (y1 - y0) & 0xFF;
+    hdr[5] = (y1 - y0) >> 8;
+    hdr[6] = shot_w & 0xFF;
+    hdr[7] = shot_w >> 8;
+    deck_msg(i, hdr, shot + y0 * SHOT_W * 4, shot_w * 4);
+    for (y = y0 + 1; y < y1 && deck_fd[i] >= 0; y++) {
+        if (deck_send(deck_fd[i], shot + y * SHOT_W * 4, shot_w * 4)) {
+            shutdown(deck_fd[i], 2);
+            deck_fd[i] = -1;
+        }
+    }
+}
+
 static void *deck_sender(void *arg)
 {
     static unsigned char last[SPI_FRAME];
     unsigned char hdr[8], tx[SPI_FRAME];
-    int fd, y0, y1, y, bad, ch;
+    int i, y0, y1, ch, any, changed;
     unsigned tick;
 
     (void)arg;
     for (tick = 0;; tick++) {
         usleep(5000);
-        fd = deck_fd;
-        if (fd < 0) {
+        for (any = 0, i = 0; i < DECKS; i++) {
+            any |= deck_fd[i] >= 0;
+        }
+        if (!any) {
             ring_r[0] = ring_w[0];
             ring_r[1] = ring_w[1];
             continue;
         }
         /* Sound every 5 ms, in runs that do not wrap. */
-        bad = 0;
         for (ch = 0; ch < 2; ch++) {
-            while (!bad && ring_r[ch] != ring_w[ch]) {
+            while (ring_r[ch] != ring_w[ch]) {
                 unsigned r = ring_r[ch], at = r % RING_FRAMES, n = ring_w[ch] - r;
 
                 if (n > RING_FRAMES) {          /* overrun: keep the newest */
@@ -601,17 +643,18 @@ static void *deck_sender(void *arg)
                 hdr[1] = ch;
                 hdr[2] = n & 0xFF;
                 hdr[3] = n >> 8;
-                bad = deck_send(fd, hdr, 8) || deck_send(fd, ring[ch] + at * 2, n * 8);
+                for (i = 0; i < DECKS; i++) {
+                    if (!deck_fresh[i]) {
+                        deck_msg(i, hdr, ring[ch] + at * 2, n * 8);
+                    }
+                }
                 ring_r[ch] = r + n;
             }
         }
-        if (bad) {
-            if (deck_fd == fd) {
-                deck_fd = -1;
-            }
-            continue;
+        for (any = 0, i = 0; i < DECKS; i++) {
+            any |= deck_fresh[i];
         }
-        if (tick % 3 && !deck_fresh) {      /* screen and lamps every 15 ms */
+        if (tick % 3 && !any) {             /* screen and lamps every 15 ms */
             continue;
         }
         while (__sync_lock_test_and_set(&dirty_lock, 1)) {
@@ -621,52 +664,89 @@ static void *deck_sender(void *arg)
         dirty_y0 = SHOT_H;
         dirty_y1 = 0;
         __sync_lock_release(&dirty_lock);
-        if (deck_fresh) {
-            deck_fresh = 0;
-            ring_r[0] = ring_w[0];
-            ring_r[1] = ring_w[1];
-            y0 = 0;
-            y1 = shot_h;
-            memset(last, 0xFF, sizeof(last));
-        }
-        if (y1 > y0 && shot_w) {
-            memset(hdr, 0, sizeof(hdr));
-            hdr[0] = 'S';
-            hdr[2] = y0 & 0xFF;
-            hdr[3] = y0 >> 8;
-            hdr[4] = (y1 - y0) & 0xFF;
-            hdr[5] = (y1 - y0) >> 8;
-            hdr[6] = shot_w & 0xFF;
-            hdr[7] = shot_w >> 8;
-            bad = deck_send(fd, hdr, 8);
-            for (y = y0; y < y1 && !bad; y++) {
-                bad = deck_send(fd, shot + y * SHOT_W * 4, shot_w * 4);
-            }
-        }
-        if (!bad && panel_spi) {
+        changed = 0;
+        if (panel_spi) {
             memcpy(tx, panel_spi->tx, SPI_FRAME);
-            if (memcmp(tx, last, SPI_FRAME)) {
-                memcpy(last, tx, SPI_FRAME);
-                memset(hdr, 0, sizeof(hdr));
-                hdr[0] = 'L';
-                bad = deck_send(fd, hdr, 8) || deck_send(fd, tx, SPI_FRAME);
-            }
+            changed = memcmp(tx, last, SPI_FRAME) != 0;
+            memcpy(last, tx, SPI_FRAME);
         }
-        if (bad && deck_fd == fd) {
-            deck_fd = -1;
+        memset(hdr, 0, sizeof(hdr));
+        hdr[0] = 'L';
+        for (i = 0; i < DECKS; i++) {
+            if (deck_fd[i] < 0) {
+                continue;
+            }
+            if (deck_fresh[i]) {
+                deck_fresh[i] = 0;
+                deck_screen(i, 0, shot_h);
+                if (panel_spi) {
+                    deck_msg(i, hdr, tx, SPI_FRAME);
+                }
+            } else {
+                deck_screen(i, y0, y1);
+                if (changed) {
+                    deck_msg(i, hdr, tx, SPI_FRAME);
+                }
+            }
         }
     }
+    return 0;
+}
+
+/* One client's commands, and the input's sound after an "in" line. */
+static void *deck_reader(void *arg)
+{
+    int i = (int)(long)arg, fd = deck_fd[i], frames, k;
+    char buf[2048], line[128];
+    unsigned n = 0, raw = 0;            /* raw: bytes of input sound still to come */
+    unsigned char half[4];
+
+    for (;;) {
+        ssize_t r = recv(fd, buf, sizeof(buf), 0);
+
+        if (r <= 0) {
+            break;
+        }
+        for (k = 0; k < r; k++) {
+            if (raw) {
+                half[(4 - raw % 4) % 4] = buf[k];
+                if (--raw % 4 == 0) {
+                    unsigned w = in_w;
+
+                    in_ring[(w % RING_FRAMES) * 2] = (short)(half[0] | half[1] << 8);
+                    in_ring[(w % RING_FRAMES) * 2 + 1] = (short)(half[2] | half[3] << 8);
+                    in_w = w + 1;
+                }
+                continue;
+            }
+            if (n < sizeof(line) - 2) {
+                line[n++] = buf[k];
+            }
+            if (buf[k] == '\n') {
+                line[n] = 0;
+                if (sscanf(line, "in %i", &frames) == 1 && frames > 0 && frames <= 65536) {
+                    raw = frames * 4;
+                } else {
+                    panel_command(line);
+                }
+                n = 0;
+            }
+        }
+    }
+    if (deck_fd[i] == fd) {
+        deck_fd[i] = -1;
+    }
+    usleep(100000);          /* let the sender finish with it */
+    close(fd);
+    fprintf(stderr, "[djsdev] deck link: closed\n");
     return 0;
 }
 
 static void *deck_server(void *arg)
 {
     const char *e = getenv("DJSDEV_PORT");
-    int port = e && *e ? atoi(e) : 7310, one = 1, ls, fd;
+    int port = e && *e ? atoi(e) : 7310, one = 1, ls, fd, i;
     unsigned char addr[16];
-    char buf[2048], line[128];
-    unsigned n = 0, raw = 0;            /* raw: bytes of input sound still to come */
-    unsigned char half[4];
     pthread_t t;
 
     (void)arg;
@@ -681,7 +761,7 @@ static void *deck_server(void *arg)
     addr[7] = 1;
     ls = socket(AF_INET, SOCK_STREAM, 0);
     setsockopt(ls, 1 /* SOL_SOCKET */, 2 /* SO_REUSEADDR */, &one, sizeof(one));
-    if (ls < 0 || bind(ls, addr, sizeof(addr)) < 0 || listen(ls, 1) < 0) {
+    if (ls < 0 || bind(ls, addr, sizeof(addr)) < 0 || listen(ls, DECKS) < 0) {
         fprintf(stderr, "[djsdev] deck link: cannot listen on 127.0.0.1:%d\n", port);
         return 0;
     }
@@ -693,49 +773,17 @@ static void *deck_server(void *arg)
             usleep(100000);
             continue;
         }
+        for (i = 0; i < DECKS && deck_fd[i] >= 0; i++) {
+        }
+        if (i == DECKS) {
+            close(fd);
+            continue;
+        }
         setsockopt(fd, 6 /* IPPROTO_TCP */, 1 /* TCP_NODELAY */, &one, sizeof(one));
         fprintf(stderr, "[djsdev] deck link: connected\n");
-        deck_fresh = 1;
-        deck_fd = fd;
-        n = 0;
-        raw = 0;
-        for (;;) {
-            ssize_t r = recv(fd, buf, sizeof(buf), 0);
-            int i, frames;
-
-            if (r <= 0 || deck_fd != fd) {
-                break;
-            }
-            for (i = 0; i < r; i++) {
-                if (raw) {
-                    half[(4 - raw % 4) % 4] = buf[i];
-                    if (--raw % 4 == 0) {
-                        unsigned w = in_w;
-
-                        in_ring[(w % RING_FRAMES) * 2] = (short)(half[0] | half[1] << 8);
-                        in_ring[(w % RING_FRAMES) * 2 + 1] = (short)(half[2] | half[3] << 8);
-                        in_w = w + 1;
-                    }
-                    continue;
-                }
-                if (n < sizeof(line) - 2) {
-                    line[n++] = buf[i];
-                }
-                if (buf[i] == '\n') {
-                    line[n] = 0;
-                    if (sscanf(line, "in %i", &frames) == 1 && frames > 0 && frames <= 65536) {
-                        raw = frames * 4;
-                    } else {
-                        panel_command(line);
-                    }
-                    n = 0;
-                }
-            }
-        }
-        deck_fd = -1;
-        usleep(100000);      /* let the sender finish with it */
-        close(fd);
-        fprintf(stderr, "[djsdev] deck link: closed\n");
+        deck_fresh[i] = 1;
+        deck_fd[i] = fd;
+        pthread_create(&t, 0, deck_reader, (void *)(long)i);
     }
     return 0;
 }

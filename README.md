@@ -41,7 +41,6 @@ Working:
 
 Not yet:
 
-- INPUT LEVEL
 - MIDI, Pro DJ Link, the network
 
 ## Quick start

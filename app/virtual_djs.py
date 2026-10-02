@@ -62,6 +62,12 @@ EXTRA_KEYS = {
     pygame.K_KP_ENTER: ("bit", (1, 1)),
     pygame.K_COMMA: ("enc", (0, -1)),
     pygame.K_PERIOD: ("enc", (0, 1)),
+    pygame.K_UP: ("enc", (0, -1)),
+    pygame.K_DOWN: ("enc", (0, 1)),
+    pygame.K_PAGEUP: ("enc", (0, -5)),
+    pygame.K_PAGEDOWN: ("enc", (0, 5)),
+    pygame.K_RIGHT: ("bit", (1, 1)),     # the selector's push
+    pygame.K_LEFT: ("bit", (1, 2)),      # BACK
 }
 KEYCAPS = {"Esc": pygame.K_ESCAPE, "-": pygame.K_MINUS, "Space": pygame.K_SPACE,
            "Left Shift": pygame.K_LSHIFT}
@@ -93,6 +99,8 @@ class Deck:
         self.keys_down = {}              # keyboard key -> bit held
         self.knob_step = [knob.at for knob in L.KNOBS]
         self.slider = 0.5                # the tempo slider: 0 top (-) to 1 bottom (+)
+        self.strip = None                # where the strip is touched, 0-127
+        self.pinned = False              # the touch stays when the mouse lets go
         self.drag_y = 0
         self.moved = False
         self.hover = ""
@@ -198,7 +206,7 @@ class Deck:
         if what[0] == "listen":
             return "which output the main sound device plays  \u00b7  click, or Tab"
         if what[0] == "strip":
-            return "touch strip  \u00b7  hold the mouse on it and slide"
+            return "touch strip  \u00b7  hold and slide; right-click leaves a finger on it"
         if what[0] == "slider":
             return "tempo slider  \u00b7  drag; right-click for the centre"
         if what[0] == "bit":
@@ -207,7 +215,8 @@ class Deck:
         if what[0] == "knob":
             knob = L.KNOBS[what[1]]
             how = f"encoder {knob.enc}" if knob.enc is not None else \
-                f"frame word {knob.word:#x}" if knob.word is not None else "not identified yet"
+                f"frame word {knob.word:#x}" if knob.word is not None else \
+                "the level of the input the deck sends" if knob.gain else "not identified yet"
             return "  ·  ".join(filter(None, [knob.name.replace("_", " "), how,
                                                  knob.keycap and f"keys {knob.keycap}"]))
         key = L.KEYS[what[1]]
@@ -229,6 +238,8 @@ class Deck:
             self.knob_step[i] = max(0, min(L.POT_STEPS, self.knob_step[i]))
             if knob.word is not None:
                 self.link.send(f"word {knob.word} {self.knob_step[i] * 1023 // L.POT_STEPS}")
+            if knob.gain and self.recorder:
+                self.recorder.gain = self.knob_step[i] / L.POT_STEPS
         if knob.enc is not None:
             self.link.send(f"enc {knob.enc} {delta}")
 
@@ -250,7 +261,18 @@ class Deck:
         """A finger on the touch strip: 127 at the top (+) to 0 at the bottom."""
         _, y = self.to_units(pos)
         top, bottom = L.STRIP[1] + 20, L.STRIP[3] - 20
-        self.link.send(f"strip {int(round(127 * min(1.0, max(0.0, (bottom - y) / (bottom - top)))))}")
+        self.strip = int(round(127 * min(1.0, max(0.0, (bottom - y) / (bottom - top)))))
+        self.link.send(f"strip {self.strip}")
+
+    def pin(self, pos):
+        """Right-click on the strip: a finger that stays there, so that the
+        mouse is free for the pads. Again, and it is lifted."""
+        if self.pinned:
+            self.pinned, self.strip = False, None
+            self.link.send("strip -1")
+        else:
+            self.pinned = True
+            self.stroke(pos)
 
     def slide(self, pos):
         _, y = self.to_units(pos)
@@ -305,7 +327,8 @@ class Deck:
             self.link.send(f"touch 0 {p[0]} {p[1]}")
         elif what[0] == "bit":
             self.link.send(f"bit {what[1][0]} {what[1][1]} 0")
-        elif what[0] == "strip":
+        elif what[0] == "strip" and not self.pinned:
+            self.strip = None
             self.link.send("strip -1")
         elif what[0] == "knob":
             knob = L.KNOBS[what[1]]
@@ -410,6 +433,13 @@ class Deck:
             if knob.look != "knob":
                 surf, x, y = self.sprite(art.knob_sprite, i, self.scale, self.knob_step[i], down)
                 win.blit(surf, (x, y))
+        if self.strip is not None:      # the finger on the strip
+            sx0, sy0, _, sy1 = L.STRIP
+            y = sy1 - 20 - (sy1 - sy0 - 40) * self.strip / 127
+            r = pygame.Rect(int((sx0 + 26) * self.scale), int((y - 5) * self.scale),
+                            int(58 * self.scale), max(3, int(10 * self.scale)))
+            pygame.draw.rect(win, (255, 190, 60) if self.pinned else (150, 200, 255), r,
+                             border_radius=3)
         cap = self.cap
         sx, st, sb = L.SLIDER
         win.blit(cap, cap.get_rect(center=(int(sx * self.scale),
@@ -560,6 +590,8 @@ def main():
                 if deck.find(e.pos) == ("slider",):
                     deck.slider = 0.5
                     deck.analogue()
+                elif deck.find(e.pos) == ("strip",):
+                    deck.pin(e.pos)
             elif e.type == pygame.MOUSEMOTION:
                 deck.motion(e.pos)
             elif e.type == pygame.MOUSEWHEEL:
