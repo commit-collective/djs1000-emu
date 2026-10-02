@@ -18,9 +18,10 @@ panel's would:
   screen           the mouse is a finger, on the face and on the large copy
   keyboard         the keys printed in the status line under the mouse
 
-The master output plays on the system's default sound device, or on the
-one whose name contains --audio's NAME; the headphone output plays only if
---headphones names a device for it. The app's input is fed from the system's
+The main sound device (the system's default, or the one whose name contains
+--audio's NAME) plays the master output or the headphone output: the MASTER /
+PHONES switch in the status line, or Tab, chooses. --headphones names a
+second device that plays the headphone output all the time. The app's input is fed from the system's
 default recording device, or --input's. --list-audio prints the devices.
 
 Every button is bound; the tempo slider, the touch strip and the two level
@@ -76,10 +77,12 @@ def surface(img):
 
 
 class Deck:
-    def __init__(self, link, size, players=(), recorder=None):
+    def __init__(self, link, size, players=(None, None), recorder=None, listen=None):
         self.link = link
-        self.players = [p for p in players if p]
+        self.master, self.phones = players
         self.recorder = recorder
+        self.listen = listen if listen is not None else [0]   # the output the main device plays
+        self.listen_rect = pygame.Rect(0, 0, 0, 0)
         self.win = pygame.display.set_mode(size, pygame.RESIZABLE)
         pygame.display.set_caption(TITLE)
         self.font = pygame.font.SysFont("arial", 14)
@@ -166,6 +169,8 @@ class Deck:
         p = self.lcd_point(pos)
         if p:
             return ("lcd", *p)
+        if self.listen_rect.collidepoint(pos):
+            return ("listen",)
         for r, bit in self.grid:
             if r.collidepoint(pos):
                 return ("bit", bit)
@@ -188,6 +193,8 @@ class Deck:
             return ""
         if what[0] == "lcd":
             return f"screen  {what[1] - 1}, {what[2] - 1}"
+        if what[0] == "listen":
+            return "which output the main sound device plays  \u00b7  click, or Tab"
         if what[0] == "slider":
             return "tempo slider  \u00b7  drag; right-click for the centre"
         if what[0] == "bit":
@@ -241,9 +248,18 @@ class Deck:
         self.slider = min(1.0, max(0.0, (y - top) / (bottom - top)))
         self.link.send(f"word {L.SLIDER_WORD} {self.slider_value()}")
 
+    def switch_output(self):
+        """The main device plays the other output: master or headphones."""
+        if self.master:
+            self.listen[0] ^= 1
+            self.master.reset()
+
     def press(self, pos):
         what = self.find(pos)
         if not what:
+            return
+        if what[0] == "listen":
+            self.switch_output()
             return
         self.down = what
         if what[0] == "slider":
@@ -255,7 +271,7 @@ class Deck:
         elif what[0] == "knob":
             self.drag_y = pos[1]
             self.moved = False
-        else:
+        elif what[0] == "key":
             key = L.KEYS[what[1]]
             if key.pad is not None:
                 # How hard, of 1023: a hit begins at the pad's calibration
@@ -281,7 +297,7 @@ class Deck:
             knob = L.KNOBS[what[1]]
             if knob.push and not self.moved:
                 self.link.send(f"tap {knob.push[0]} {knob.push[1]}")
-        else:
+        elif what[0] == "key":
             key = L.KEYS[what[1]]
             if key.pad is not None:
                 self.link.send(f"pad {key.pad} 0 0")
@@ -341,8 +357,9 @@ class Deck:
                 self.analogue()
             elif item[0] == "down":
                 self.lamps = bytes(128)
-                for player in self.players:
-                    player.reset()
+                for player in (self.master, self.phones):
+                    if player:
+                        player.reset()
 
     # ---- drawing --------------------------------------------------------
 
@@ -415,6 +432,37 @@ class Deck:
             t = self.small.render(f"{lamp:02x}", True, (10, 10, 10) if level > 1 else (200, 203, 208))
             win.blit(t, t.get_rect(center=r.center))
 
+    def draw_sound(self, x, top):
+        """The status line's sound part: the MASTER / PHONES switch for the main
+        device, then the devices. Returns where it ends."""
+        win = self.win
+        self.listen_rect = pygame.Rect(0, 0, 0, 0)
+        if self.master:
+            left = x
+            for i, name in enumerate(("MASTER", "PHONES")):
+                on = self.listen[0] == i
+                t = self.small.render(name, True, (10, 10, 10) if on else (150, 152, 158))
+                r = pygame.Rect(x, top + 4, t.get_width() + 14, STATUS_H - 8)
+                pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r,
+                                 border_top_left_radius=4 if i == 0 else 0,
+                                 border_bottom_left_radius=4 if i == 0 else 0,
+                                 border_top_right_radius=4 if i else 0,
+                                 border_bottom_right_radius=4 if i else 0)
+                win.blit(t, t.get_rect(center=r.center))
+                x = r.right
+            self.listen_rect = pygame.Rect(left, top, x - left, STATUS_H)
+            text = f"on {self.master.name}"
+        else:
+            text = "no sound"
+        if self.phones:
+            text += f"  \u00b7  phones also on {self.phones.name}"
+        if self.recorder:
+            text += f"  \u00b7  in: {self.recorder.name}"
+        t = self.font.render(text, True, (150, 220, 120))
+        win.blit(t, (x + 8, top + 5))
+        return x + 8 + t.get_width()
+
+
     def draw_status(self):
         w, h = self.win.get_size()
         bar = pygame.Rect(0, h - STATUS_H, w, STATUS_H)
@@ -422,13 +470,12 @@ class Deck:
         state = "connected" if self.link.connected else \
             f"waiting for the app on {self.link.addr[0]}:{self.link.addr[1]} (scripts/run.sh)"
         color = (150, 220, 120) if self.link.connected else (240, 180, 70)
-        if self.link.connected:
-            state += "  \u00b7  " + (" + ".join(p.name for p in self.players) or "no sound")
-            if self.recorder:
-                state += f"  \u00b7  in: {self.recorder.name}"
         t = self.font.render(state, True, color)
-        self.status_w = t.get_width()
         self.win.blit(t, (10, bar.top + 5))
+        x = 10 + t.get_width()
+        if self.link.connected:
+            x = self.draw_sound(x + 14, bar.top)
+        self.status_w = x - 10
         t = self.font.render(self.hover, True, (225, 228, 232))
         self.win.blit(t, (max(self.face_w, 10 + self.status_w + 30), bar.top + 5))
 
@@ -440,6 +487,8 @@ def main():
     ap.add_argument("--height", type=int, default=0, help="window height in pixels")
     ap.add_argument("--audio", metavar="NAME", help="play on the device whose name has NAME in it")
     ap.add_argument("--no-audio", action="store_true", help="do not play the app's sound")
+    ap.add_argument("--listen", choices=("master", "phones"), default="master",
+                    help="the output the main device plays at start (Tab switches)")
     ap.add_argument("--headphones", metavar="NAME",
                     help="play the headphone output on the device whose name has NAME in it")
     ap.add_argument("--input", metavar="NAME",
@@ -459,9 +508,13 @@ def main():
     phones = audio.Player(audio.pick(args.headphones)) if args.headphones else None
     outputs = (master, phones)
 
+    listen = [1 if args.listen == "phones" else 0]
+
     def play(which, data):
-        if which < 2 and outputs[which]:
-            outputs[which].feed(data)
+        if master and which == listen[0]:
+            master.feed(data)
+        if phones and which == 1:
+            phones.feed(data)
     desk_w, desk_h = pygame.display.get_desktop_sizes()[0]
     h = args.height or min(desk_h - 110, 1060)
     face_w = int(L.W * (h - STATUS_H) / L.H)
@@ -473,7 +526,7 @@ def main():
             recorder = audio.Recorder(link.send_input, audio.pick(args.input, True))
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
-    deck = Deck(link, (w, h), outputs, recorder)
+    deck = Deck(link, (w, h), outputs, recorder, listen)
     clock = pygame.time.Clock()
     started = pygame.time.get_ticks()
     running = True
@@ -495,6 +548,8 @@ def main():
                 deck.motion(e.pos)
             elif e.type == pygame.MOUSEWHEEL:
                 deck.wheel(pygame.mouse.get_pos(), e.y)
+            elif e.type == pygame.KEYDOWN and e.key == pygame.K_TAB:
+                deck.switch_output()
             elif e.type in (pygame.KEYDOWN, pygame.KEYUP):
                 deck.key(e, e.type == pygame.KEYDOWN)
         deck.pump()
