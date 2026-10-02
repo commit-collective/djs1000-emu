@@ -1229,6 +1229,38 @@ int socket(int domain, int type, int proto)
     return sv[0];
 }
 
+/* The app opens display ":0.0" whatever DISPLAY says, which is the socket
+ * /tmp/.X11-unix/X0. With DJSDEV_XDISPLAY=<n> that connection goes to display
+ * n's abstract socket instead: an Xvfb started for the app, which under WSLg
+ * cannot make a socket file (the folder is read-only there). */
+int connect(int fd, const void *addr, unsigned len)
+{
+    int (*real)(int, const void *, unsigned) = dlsym(RTLD_NEXT, "connect");
+    const unsigned char *a = addr;
+    const char *n = getenv("DJSDEV_XDISPLAY");
+    static const char X0[] = "/tmp/.X11-unix/X0";
+    unsigned char to[64];
+    unsigned at = 3, i;
+
+    if (!n || !*n || !a || len < 2 + sizeof(X0) - 1 || a[0] != AF_UNIX || a[1] != 0) {
+        return real(fd, addr, len);
+    }
+    i = a[2] ? 2 : 3;                   /* a path, or an abstract name */
+    if (len < i + sizeof(X0) - 1 || memcmp(a + i, X0, sizeof(X0) - 1) ||
+        (len > i + sizeof(X0) - 1 && a[i + sizeof(X0) - 1])) {
+        return real(fd, addr, len);
+    }
+    memset(to, 0, sizeof(to));
+    to[0] = AF_UNIX;
+    memcpy(to + at, X0, sizeof(X0) - 2);            /* "@/tmp/.X11-unix/X" */
+    at += sizeof(X0) - 2;
+    while (*n && at < sizeof(to) - 1) {
+        to[at++] = *n++;
+    }
+    fprintf(stderr, "[djsdev] connect(display :0) -> the display %s\n", getenv("DJSDEV_XDISPLAY"));
+    return real(fd, to, at);
+}
+
 int bind(int fd, const void *addr, unsigned len)
 {
     int (*real)(int, const void *, unsigned) = dlsym(RTLD_NEXT, "bind");

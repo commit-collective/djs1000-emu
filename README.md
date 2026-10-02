@@ -45,12 +45,12 @@ Not yet:
 
 ## Quick start
 
-On Windows, in WSL2 (Ubuntu 24.04, with WSLg for the window); on Linux, any
-X display.
+On Windows, in WSL2 (Ubuntu 24.04); on Linux. `xvfb` is optional: without it
+the app's window opens on the X display (WSLg's on Windows).
 
 ```sh
 sudo apt install qemu-user-static binfmt-support proot squashfs-tools \
-    p7zip-full gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl
+    p7zip-full gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl xvfb
 scripts/setup.sh /path/to/DJS1000.UPD    # once: builds ~/djs/root
 ```
 
@@ -73,8 +73,12 @@ answers, and stops the emulator when the deck is closed. `python start.py
 its PROJECT menu about half a minute later; P closes it.
 
 By hand, the two halves are `scripts/run.sh 3600` (seconds; 0 for no limit)
-in WSL and `python app/virtual_djs.py` on the host. The emulator also shows
-the app's own window, which takes the keyboard without the deck:
+in WSL and `python app/virtual_djs.py` on the host.
+
+The app's own window is not shown: with `xvfb` installed the app draws on a
+display nobody sees, and the deck shows its screen. `python start.py
+--window` (or `DJS_WINDOW=1 scripts/run.sh ...`) shows it, and it takes the
+keyboard without the deck:
 
 | key | control |
 |---|---|

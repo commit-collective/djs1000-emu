@@ -9,6 +9,8 @@ stops the emulator.
 
   --keep          leave the emulator running when the deck is closed
   --no-deck       start the emulator only (and leave it running)
+  --window        show the app's own window too (it is hidden when Xvfb is
+                  installed: the deck shows its screen)
   --distro NAME   the WSL distribution to run it in (default: $DJS_WSL_DISTRO,
                   else WSL's default one)
   --port N        the deck link's port (default 7310)
@@ -33,9 +35,10 @@ RUNNING = "pgrep -f 'qemu-arm-static.*EP113_Main_R' > /dev/null"
 
 
 class Emulator:
-    def __init__(self, distro, port):
+    def __init__(self, distro, port, window=False):
         self.distro = distro
         self.port = port
+        self.window = window
         self._repo = None
 
     def sh(self, script):
@@ -71,10 +74,10 @@ class Emulator:
         code, out = self.sh("""
 RUN="${DJS_HOME:-$HOME/djs}/run"
 mkdir -p "$RUN"
-DJSDEV_PORT=%d setsid nohup bash '%s/scripts/run.sh' 0 > "$RUN/emulator.log" 2>&1 < /dev/null &
-sleep 2
-%s || { tail -n 15 "$RUN/emulator.log"; exit 1; }
-""" % (self.port, self.repo(), RUNNING))
+DJSDEV_PORT=%d DJS_WINDOW=%s setsid nohup bash '%s/scripts/run.sh' 0 > "$RUN/emulator.log" 2>&1 < /dev/null &
+for i in $(seq 1 30); do sleep 0.5; %s && exit 0; done
+tail -n 15 "$RUN/emulator.log"; exit 1
+""" % (self.port, "1" if self.window else "", self.repo(), RUNNING))
         if code:
             sys.exit("the emulator did not start:\n" + out)
 
@@ -164,7 +167,7 @@ def main():
         print(__doc__)
         return 0
     emu = Emulator(take(args, "--distro", os.environ.get("DJS_WSL_DISTRO")),
-                   int(take(args, "--port", "7310")))
+                   int(take(args, "--port", "7310")), flag(args, "--window"))
     keep, no_deck = flag(args, "--keep"), flag(args, "--no-deck")
     if args[:1] == ["stop"]:
         emu.stop()

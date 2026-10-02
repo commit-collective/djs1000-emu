@@ -11,7 +11,9 @@
 # the update is written into this repository.
 #
 # Needs (Ubuntu 24.04): qemu-user-static binfmt-support proot squashfs-tools
-# p7zip-full gcc-arm-linux-gnueabihf openssl python3.
+# p7zip-full gcc-arm-linux-gnueabihf openssl python3; and xvfb, to run the
+# app without its own window (scripts/run.sh does without it if it is not
+# there).
 set -eu
 REPO="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
 DJS="${DJS_HOME:-$HOME/djs}"
