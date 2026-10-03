@@ -1530,12 +1530,53 @@ static void audio_put(int ch, const float *l, const float *r, unsigned step, uns
     }
 }
 
+/*
+ * The sample format. The app tries nine formats in turn and takes
+ * the first the device accepts: "null" accepts 32-bit float, the first, but
+ * the unit's AK4452 settles on S24_LE (24 bits in the low three bytes of a
+ * 32-bit word; /proc/asound on a unit, 2026-10-02). The board's devices here
+ * accept only that, so that the app writes what it writes on the unit, and
+ * what passes through a preloaded library (a mod) is in the unit's format.
+ */
+#define FORMAT_S24_LE 6
+
+int snd_pcm_hw_params_set_format(void *pcm, void *params, int format)
+{
+    int (*real)(void *, void *, int) = dlsym(RTLD_NEXT, "snd_pcm_hw_params_set_format");
+    int i;
+
+    for (i = 0; i < STAND_PCMS; i++) {
+        if (pcm && stand_pcm[i] == pcm && format != FORMAT_S24_LE) {
+            return -22;     /* -EINVAL */
+        }
+    }
+    return real(pcm, params, format);
+}
+
+/* S24_LE frames as floats, for the deck, a block at a time: left and right
+ * are `step` words apart. */
+static void audio_put_s24(int ch, const int *l, const int *r, unsigned step, unsigned long frames)
+{
+    static float f[2 * 1024];
+    unsigned long i, n;
+
+    while (frames) {
+        n = frames < 1024 ? frames : 1024;
+        for (i = 0; i < n; i++, l += step, r += step) {
+            f[2 * i] = (float)(*l << 8 >> 8) * (1.0f / 8388608.0f);
+            f[2 * i + 1] = (float)(*r << 8 >> 8) * (1.0f / 8388608.0f);
+        }
+        audio_put(ch, f, f + 1, 2, n);
+        frames -= n;
+    }
+}
+
 long snd_pcm_writei(void *pcm, const void *buf, unsigned long frames)
 {
     long (*real)(void *, const void *, unsigned long) = dlsym(RTLD_NEXT, "snd_pcm_writei");
 
     if (pcm == master_pcm || pcm == phones_pcm) {
-        audio_put(pcm == phones_pcm, buf, (const float *)buf + 1, 2, frames);
+        audio_put_s24(pcm == phones_pcm, buf, (const int *)buf + 1, 2, frames);
     }
     return real(pcm, buf, frames);
 }
@@ -1576,7 +1617,7 @@ long snd_pcm_writen(void *pcm, void **bufs, unsigned long frames)
     long (*real)(void *, void **, unsigned long) = dlsym(RTLD_NEXT, "snd_pcm_writen");
 
     if (pcm == master_pcm || pcm == phones_pcm) {
-        audio_put(pcm == phones_pcm, bufs[0], bufs[1], 1, frames);
+        audio_put_s24(pcm == phones_pcm, bufs[0], bufs[1], 1, frames);
     }
     return real(pcm, bufs, frames);
 }
