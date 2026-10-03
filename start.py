@@ -81,6 +81,15 @@ D="${DJS_USB:-${DJS_HOME:-$HOME/djs}/usb}"
 """ % ("export " + self.env if self.env else "", 'wslpath -w "$D"' if WINDOWS else 'echo "$D"'))
         return out.splitlines()[-1] if not code and out else None
 
+    def tmp(self):
+        """The guest's /tmp as this side can open it, or None."""
+        code, out = self.sh("""
+D="${DJS_HOME:-$HOME/djs}/root/tmp"
+[ -d "$D" ] || exit 1
+%s
+""" % ('wslpath -w "$D"' if WINDOWS else 'echo "$D"'))
+        return out.splitlines()[-1] if not code and out else None
+
     def running(self):
         return self.sh(RUNNING)[0] == 0
 
@@ -234,9 +243,10 @@ def main():
         return 0
     say("Deck open. The app takes about half a minute to start. Close the deck to quit.")
     try:
-        usb = emu.usb()
+        usb, tmp = emu.usb(), emu.tmp()
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
-                                "--port", str(emu.port)] + (["--usb", usb] if usb else []) + args)
+                                "--port", str(emu.port)] + (["--usb", usb] if usb else [])
+                               + (["--tmp", tmp] if tmp else []) + args)
     except KeyboardInterrupt:
         code = 130
     if ours and not keep:

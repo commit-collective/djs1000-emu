@@ -101,6 +101,7 @@ class Deck:
         self.link = link
         self.mods = mods or Mods(None)   # what a patch on the USB drive carries
         self.mod_rects = []              # (where, name): the switches drawn in the side panel
+        self.cue_rects = []              # (where, track): the cue buttons under them
         self.master, self.phones = players
         self.recorder = recorder
         self.show_dock = True            # the large screen beside the face (F10)
@@ -222,6 +223,9 @@ class Deck:
         for r, name in self.mod_rects:
             if r.collidepoint(pos):
                 return ("mod", name)
+        for r, track in self.cue_rects:
+            if r.collidepoint(pos):
+                return ("cue", track)
         if pos[0] >= self.face_w:
             return None
         x, y = self.to_units(pos)
@@ -246,6 +250,9 @@ class Deck:
             return f"screen  {what[1] - 1}, {what[2] - 1}"
         if what[0] == "listen":
             return "which output the main sound device plays  \u00b7  click, or Tab"
+        if what[0] == "cue":
+            return (f"cue track {what[1]}  ·  heard in the headphones only; taking it off "
+                    "waits for the pattern to start over")
         if what[0] == "mod":
             return f"mod {what[1]}  ·  click to switch it on or off, as the app runs"
         if what[0] == "strip":
@@ -338,6 +345,9 @@ class Deck:
             return
         if what[0] == "mod":
             self.mods.toggle(what[1])
+            return
+        if what[0] == "cue":
+            self.mods.toggle_cue(what[1])
             return
         self.down = what
         if what[0] == "slider":
@@ -542,6 +552,7 @@ class Deck:
             win.blit(pygame.transform.smoothscale(self.screen, self.dock.size), self.dock)
         pygame.draw.rect(win, (46, 47, 51), self.dock.inflate(2, 2), 1)
         self.mod_rects = []
+        self.cue_rects = []
         if not self.show_lamps:
             y = self.draw_mods(self.dock.left, self.dock.bottom + 22)
             self.draw_help(self.dock.left, y)
@@ -590,6 +601,19 @@ class Deck:
             win.blit(t2, (x + 52 + t.get_width() + 14, y))
             self.mod_rects.append((pygame.Rect(x, y - 3, 52 + t.get_width(), 24), name))
             y += 26
+        if self.mods.can_cue():
+            t = self.font.render("Cue", True, (225, 228, 232))
+            win.blit(t, (x, y + 2))
+            bx = x + 52
+            for track in range(1, 17):
+                on = track in self.mods.cued
+                r = pygame.Rect(bx, y, 28, 22)
+                pygame.draw.rect(win, (240, 180, 70) if on else (40, 41, 45), r, border_radius=4)
+                n = self.small.render(str(track), True, (10, 10, 10) if on else (150, 152, 158))
+                win.blit(n, n.get_rect(center=r.center))
+                self.cue_rects.append((r, track))
+                bx += 32
+            y += 30
         return y + 10
 
     def draw_help(self, x, y):
@@ -673,6 +697,8 @@ def main():
                     help="start without the side panel (the large screen; F10 shows it)")
     ap.add_argument("--usb", metavar="DIR",
                     help="the emulator's USB folder, to show and switch the mods of a patch on it")
+    ap.add_argument("--tmp", metavar="DIR",
+                    help="the emulator's /tmp, for a mod's controls kept there (cue-tracks)")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
     args = ap.parse_args()
@@ -704,7 +730,7 @@ def main():
             recorder = audio.Recorder(link.send_input, audio.pick(args.input, True))
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
-    deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb))
+    deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb, args.tmp))
     if args.compact:
         deck.show_dock = False
         deck.layout()
