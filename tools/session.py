@@ -34,6 +34,7 @@ class Session:
     def __init__(self, host="127.0.0.1", port=7310, connect=30):
         self._lock = threading.Lock()
         self._sound = [[], []]           # master, headphones: interleaved floats
+        self._start = [None, None]       # the output position of each's first frame
         self.screen = bytearray(W * H * 4)
         self.lamps = bytes(128)
         self.changed = 0.0               # when the screen last changed
@@ -52,6 +53,8 @@ class Session:
 
     def _audio(self, which, data):
         with self._lock:
+            if not self._sound[which]:
+                self._start[which] = self.link.audio_pos[which]
             self._sound[which].append(data)
 
     def pump(self, seconds=0.0):
@@ -148,6 +151,28 @@ class Session:
         with self._lock:
             data = b"".join(self._sound[which])
         return list(struct.unpack("<%df" % (len(data) // 4), data))
+
+    def record_both(self, seconds, action=None):
+        """The master and the headphones over the same frames, for `seconds`
+        from now: two lists of floats (left, right, left ...), starting on
+        the same frame of output."""
+        self.pump(0.05)
+        with self._lock:
+            self._sound = [[], []]
+        start = time.time()
+        if action:
+            action()
+        self.pump(max(0.0, seconds - (time.time() - start)))
+        with self._lock:
+            data = [b"".join(self._sound[i]) for i in (0, 1)]
+            first = list(self._start)
+        out = [list(struct.unpack("<%df" % (len(d) // 4), d)) for d in data]
+        if None in first:
+            return out
+        at = max(first)
+        out = [v[2 * ((at - f) & 0xFFFFFFFF):] for v, f in zip(out, first)]
+        n = min(len(out[0]), len(out[1]))
+        return out[0][:n], out[1][:n]
 
     def pixels(self):
         """The screen as RGB bytes, W x H."""

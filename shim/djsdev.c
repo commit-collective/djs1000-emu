@@ -771,6 +771,13 @@ static void *deck_sender(void *arg)
                 hdr[1] = ch;
                 hdr[2] = n & 0xFF;
                 hdr[3] = n >> 8;
+                /* Where these frames are in the output (frames written to it
+                 * since the start, low 32 bits): both outputs are written
+                 * block for block, so equal positions are the same moment. */
+                hdr[4] = r & 0xFF;
+                hdr[5] = (r >> 8) & 0xFF;
+                hdr[6] = (r >> 16) & 0xFF;
+                hdr[7] = r >> 24;
                 for (i = 0; i < DECKS; i++) {
                     if (!deck_fresh[i]) {
                         deck_msg(i, hdr, ring[ch] + at * 2, n * 8);

@@ -29,6 +29,8 @@ class Link:
         self._stop = False
         threading.Thread(target=self._run, daemon=True).start()
 
+    audio_pos = [0, 0]          # of the last sound message, per output
+
     def send(self, line):
         """One command line; dropped while the app is not there."""
         sock = self._sock
@@ -102,6 +104,10 @@ class Link:
                         self._put(("lamps", self._read(sock, 128)))
                     elif kind == ord("A"):
                         data = self._read(sock, y * 8)
+                        # Where the frames are in the output: frames written to
+                        # it since the start (low 32 bits), the same moment on
+                        # both outputs for the same position.
+                        self.audio_pos[which & 1] = rows | width << 16
                         if self.audio:
                             self.audio(which, data)
                     else:
