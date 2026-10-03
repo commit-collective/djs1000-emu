@@ -77,6 +77,11 @@ class Session:
                     self.drawn = True
                 elif item[0] == "lamps":
                     self.lamps = item[1]
+                elif item[0] in ("up", "down"):
+                    # Another app (a patch may start it again): what the
+                    # last one showed is not this one's.
+                    self.lamps = bytes(128)
+                    self.drawn = False
             if time.time() >= end:
                 return
             time.sleep(0.02)
@@ -88,6 +93,18 @@ class Session:
         while time.time() < end:
             self.pump(0.05)
             if self.drawn and time.time() - self.changed >= quiet:
+                return True
+        return False
+
+    def wait_usb(self, timeout=30):
+        """Waits until the app has the USB drive: its USB lamp (lamp 0) is lit
+        once the drive is mounted and looked through. Before that the browser
+        does not show it. Returns False if it never did."""
+        end = time.time() + timeout
+        while time.time() < end:
+            self.pump(0.1)
+            if len(self.lamps) > 0x69 and self.lamps[0x69] & 3:
+                self.pump(0.5)
                 return True
         return False
 

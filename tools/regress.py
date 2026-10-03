@@ -194,6 +194,8 @@ cp "$P" "$HOME/djs/regress/usb/autoexec.bin"
         s = Session()
         if not s.wait_screen(quiet=1.5, timeout=120):
             sys.exit("the app never drew its first screen:\n" + emu.log_tail())
+        if not s.wait_usb():
+            sys.exit("the app never took the USB drive:\n" + emu.log_tail())
         r = Recorder(s, out)
         scenario(s, r, emu)
         s.close()
