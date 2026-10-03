@@ -55,6 +55,7 @@ BG = (5, 5, 5)
 DOCK_PAD = 16
 STATUS_H = 26
 FPS = 60
+MIN_HOLD = 120                           # ms a clicked key or pad stays down at least
 BOOT_S = 24                              # about how long the app takes to draw its first screen
 HELP = (                                 # the side panel's reminder: (keys, what they do)
     ("Mouse", "press keys and pads, drag or wheel knobs, touch the screen"),
@@ -119,6 +120,8 @@ class Deck:
         self.screen.fill((0, 0, 0))
         self.lamps = bytes(128)
         self.down = None                 # what the mouse holds: (kind, ...)
+        self.down_at = 0                 # when it took it, ms
+        self.later = []                  # (when, line): releases held back, see release()
         self.keys_down = {}              # keyboard key -> bit held
         self.knob_step = [knob.at for knob in L.KNOBS]
         self.slider = 0.5                # the tempo slider: 0 top (-) to 1 bottom (+)
@@ -350,6 +353,8 @@ class Deck:
             self.mods.toggle_cue(what[1])
             return
         self.down = what
+        self.down_at = pygame.time.get_ticks()
+        self.flush(now=True)
         if what[0] == "slider":
             self.slide(pos)
         elif what[0] == "strip":
@@ -393,9 +398,24 @@ class Deck:
         elif what[0] == "key":
             key = L.KEYS[what[1]]
             if key.pad is not None:
-                self.link.send(f"pad {key.pad} 0 0")
+                self.let_go(f"pad {key.pad} 0 0")
             elif key.bit:
-                self.link.send(f"bit {key.bit[0]} {key.bit[1]} 0")
+                self.let_go(f"bit {key.bit[0]} {key.bit[1]} 0")
+
+    def let_go(self, line):
+        """A key or pad released: not before it has been held MIN_HOLD ms. The
+        app takes a pad or key as pressed after a few panel frames, 2 ms each
+        on the unit; here its panel cycle runs at about 10 ms, slower while it
+        plays, and a quick click was over before it counted."""
+        self.later.append((self.down_at + MIN_HOLD, line))
+        self.flush()
+
+    def flush(self, now=False):
+        t = pygame.time.get_ticks()
+        for when, line in self.later:
+            if now or when <= t:
+                self.link.send(line)
+        self.later = [(w, l) for w, l in self.later if not now and w > t]
 
     def motion(self, pos):
         if self.down and self.down[0] == "lcd":
@@ -441,6 +461,7 @@ class Deck:
     # ---- the app's side -------------------------------------------------
 
     def pump(self):
+        self.flush()
         for item in self.link.take():
             if item[0] == "screen":
                 self.have_screen = True
