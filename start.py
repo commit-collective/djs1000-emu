@@ -32,6 +32,8 @@ import time
 REPO = os.path.dirname(os.path.abspath(__file__))
 WINDOWS = os.name == "nt"
 RUNNING = "pgrep -f 'qemu-arm-static.*EP113_Main_R' > /dev/null"
+# The app, or the start-up before it (a stick's autoexec runs first).
+STARTING = "pgrep -f 'qemu-arm-static.*(EP113_Main_R|/opt/djsemu/init.sh)' > /dev/null"
 
 
 class Emulator:
@@ -148,7 +150,7 @@ pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot -q qemu-arm-static.
                 return True
             except OSError:
                 time.sleep(1)
-                if not self.running():
+                if self.sh(STARTING)[0]:
                     break
         return False
 

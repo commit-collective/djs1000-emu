@@ -76,6 +76,8 @@ extern int sscanf(const char *s, const char *fmt, ...);
 extern size_t fwrite(const void *p, size_t size, size_t n, void *stream);
 extern int fclose(void *stream);
 extern int rename(const char *from, const char *to);
+extern size_t fread(void *p, size_t size, size_t n, void *stream);
+extern int fseek(void *stream, long off, int whence);
 /* From libX11, which the app has loaded; never called in its child processes. */
 extern int XSendEvent(void *dpy, unsigned long win, int propagate, long mask, void *event);
 extern int XFlush(void *dpy);
@@ -106,7 +108,6 @@ static const struct {
     { 0, 0 },
 };
 #define GPIODRV 1
-#define UDEV_USB 7
 
 /* SUBUCOM_IOC_* (subucom_spi.h): type 'p', nr below; _IOR reads, _IOW writes. */
 #define SPI_FRAME 128
@@ -133,35 +134,128 @@ static Spi *fake_spi[MAX_FD];
 static Spi spis[4];
 static int nspis;
 static int gpio_logged;
-static int usb_fd = -1;      /* the app's descriptor on /proc/udev_usb1 */
-
 /*
- * The USB drive. On the unit, udev mounts a drive on /media/usb1/sda1 and
- * writes "mount /media/usb1/sda1" to /proc/udev_usb1, a message queue in
- * Pioneer's kernel (fs/proc/udev_usb.c): each write is one message, read()
- * waits for the next one, and the app reads it in UsbMountManager
- *. On removal udev writes "umount <path>". The app also writes
- * to the queue itself ("do_umount ..." for USB STOP, then calls umount()).
+ * The message queues /proc/udev_usb1 (a drive mounted / unmounted) and
+ * /proc/udev_usbctn1 (something connected to / disconnected from the USB
+ * port). In Pioneer's kernel (fs/proc/udev_usb.c, udev_usbctn.c) each is one
+ * queue for the whole system: every write() is a message, kept until a read()
+ * takes it, whoever wrote it and however late the reader opens; a message
+ * beginning with '0' empties the queue. udev writes to them from a shell
+ * (12-usb-memory-auto-mount.rules: "mount <path>", after the stick's
+ * autoexec; 75-usb-caution.rules: "connect"), the app reads them
+ * (UsbMountManager), and writes to the first itself ("do_umount
+ * ..." for USB STOP). A new app started while a stick is in is told nothing
+ * unless someone writes to the queue again.
  *
- * Here the queue is a datagram socket pair, and the drive is the folder
- * run.sh binds on /media/usb1/sda1: it is plugged in when the app opens the
- * queue (unless DJSDEV_USB=0), and by the "usb 1" / "usb 0" commands.
+ * Here a queue is a file every process under this shim shares
+ * (/tmp/djsdev-udev_usb1.q), each message preceded by a newline, with how
+ * much of it the app has taken beside it (.pos). A process that opens the
+ * queue only to write (udev's shell: busybox's echo writes from inside libc,
+ * past write() here) gets that file itself, opened to append, a newline
+ * already written. The app reads one end of a socket pair, so that it can
+ * poll it; a thread in the app hands it the queue's new messages while it
+ * has the queue open. run.sh empties the queues at each start, and init.sh
+ * writes what udev would, for a stick in at power-on or plugged in later.
  */
 #define USB_PATH "/media/usb1/sda1"
+#define QUEUES 2
+#define O_WRONLY 01
+#define O_APPEND 02000
 
-static void usb_plug(int in)
+static const char *const QUEUE_DEV[QUEUES] = { "/proc/udev_usb1", "/proc/udev_usbctn1" };
+static const char *const QUEUE_FILE[QUEUES] = { "/tmp/djsdev-udev_usb1.q", "/tmp/djsdev-udev_usbctn1.q" };
+static const char *const QUEUE_POS[QUEUES] = { "/tmp/djsdev-udev_usb1.pos", "/tmp/djsdev-udev_usbctn1.pos" };
+static int queue_fd[QUEUES] = { -1, -1 };     /* the app's reading descriptor */
+static int queue_started[QUEUES];
+
+static int queue_of(const char *dev)
 {
-    const char *msg = in ? "mount " USB_PATH : "umount " USB_PATH;
+    int q;
 
-    if (usb_fd < 0) {
+    for (q = 0; q < QUEUES; q++) {
+        if (dev && !strcmp(dev, QUEUE_DEV[q])) {
+            return q;
+        }
+    }
+    return -1;
+}
+
+/* A message written by the app (through write()). */
+static void queue_put(int q, const char *msg, size_t n)
+{
+    void *f;
+
+    fprintf(stderr, "[djsdev] %s <- \"%.*s\"\n", QUEUE_DEV[q], (int)n, msg);
+    if ((f = fopen(QUEUE_FILE[q], "a"))) {
+        fwrite("\n", 1, 1, f);
+        fwrite(msg, 1, n, f);
+        fclose(f);
+    }
+}
+
+/* Hands the app what has been written since it last read. A message
+ * beginning with '0' empties the queue: neither it nor what was waiting
+ * before it is handed on. */
+static void queue_take(int q)
+{
+    char buf[4096], *m, *from, *end;
+    int pos = 0, n;
+    void *f;
+
+    if ((f = fopen(QUEUE_POS[q], "r"))) {
+        if (fgets(buf, sizeof(buf), f)) {
+            pos = atoi(buf);
+        }
+        fclose(f);
+    }
+    if (!(f = fopen(QUEUE_FILE[q], "r"))) {
         return;
     }
-    if (in && access(USB_PATH, 0)) {
-        fprintf(stderr, "[djsdev] usb: no %s\n", USB_PATH);
+    fseek(f, pos, 0);
+    n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    if (n <= 0) {
         return;
     }
-    send(fake_peer[usb_fd], msg, strlen(msg), MSG_DONTWAIT);
-    fprintf(stderr, "[djsdev] usb: %s\n", msg);
+    buf[n] = 0;
+    end = buf + n;
+    from = buf;
+    for (m = buf; m < end; m++) {
+        if (*m == '\n' && m[1] == '0') {
+            from = m + 1;
+            while (from < end && *from != '\n') {
+                from++;
+            }
+        }
+    }
+    for (m = from; m < end; m = from) {
+        while (m < end && *m == '\n') {
+            m++;
+        }
+        for (from = m; from < end && *from != '\n'; from++) {
+        }
+        if (from > m && queue_fd[q] >= 0) {
+            send(fake_peer[queue_fd[q]], m, from - m, MSG_DONTWAIT);
+            fprintf(stderr, "[djsdev] %s -> app \"%.*s\"\n", QUEUE_DEV[q], (int)(from - m), m);
+        }
+    }
+    if ((f = fopen(QUEUE_POS[q], "w"))) {
+        fprintf(f, "%d\n", pos + n);
+        fclose(f);
+    }
+}
+
+static void *queue_thread(void *arg)
+{
+    int q = (int)(long)arg;
+
+    for (;;) {
+        if (queue_fd[q] >= 0) {
+            queue_take(q);
+        }
+        usleep(100000);
+    }
+    return 0;
 }
 
 static ssize_t (*real_read)(int, void *, size_t);
@@ -496,12 +590,13 @@ static void panel_command(const char *line)
     } else if (sscanf(line, "click %i %i %i", &a, &b, &c) >= 2) {
         x_click(a, b, c ? c : 1);
     } else if (sscanf(line, "usb %i", &a) == 1) {
-        /* A stick plugged in: udev runs its autoexec, if it has one, before
-         * it tells the app of the mount (scripts/guest/init.sh). */
-        if (a && !access("/opt/djsemu/init.sh", 0)) {
-            system("/bin/sh /opt/djsemu/init.sh autoexec");
+        /* A stick plugged in or out: what udev does, which writes to the
+         * queues (scripts/guest/init.sh). */
+        if (a && access(USB_PATH, 0)) {
+            fprintf(stderr, "[djsdev] usb: no %s\n", USB_PATH);
+        } else {
+            system(a ? "/bin/sh /opt/djsemu/init.sh plug" : "/bin/sh /opt/djsemu/init.sh unplug");
         }
-        usb_plug(a);
     } else if (sscanf(line, "bit %i %i %i", &a, &b, &c) == 3) {
         panel_bit(a, b, c);
     } else if (sscanf(line, "tap %i %i", &a, &b) == 2) {
@@ -981,6 +1076,18 @@ static int open_common(const char *sym, const char *path, int flags, int mode)
     if (i < 0) {
         return real(path, flags, mode);
     }
+    /* Writing only to a message queue: the queue's file (see queue_take()). */
+    if (FAKE_DEVS[i].kind == DEV_MSG && (flags & 3) == O_WRONLY && queue_of(FAKE_DEVS[i].path) >= 0) {
+        int fd = real(QUEUE_FILE[queue_of(FAKE_DEVS[i].path)], O_WRONLY | O_APPEND | O_CREAT, 0644);
+
+        if (!real_write) {
+            real_write = dlsym(RTLD_NEXT, "write");
+        }
+        if (fd >= 0) {
+            real_write(fd, "\n", 1);
+        }
+        return fd;
+    }
     if (FAKE_DEVS[i].kind == DEV_ZERO) {
         sv[0] = real("/dev/zero", 2 /* O_RDWR */);
         sv[1] = -1;
@@ -1011,12 +1118,17 @@ static int open_common(const char *sym, const char *path, int flags, int mode)
         }
     }
     fprintf(stderr, "[djsdev] %s(%s, 0x%x) = %d\n", sym, path, flags, sv[0]);
-    if (i == UDEV_USB && sv[0] >= 0 && sv[0] < MAX_FD) {
-        const char *e = getenv("DJSDEV_USB");
+    /* A reader of a message queue (the app; udev's shell only writes). */
+    if (FAKE_DEVS[i].kind == DEV_MSG && (flags & 3) != 1 && sv[0] >= 0 && sv[0] < MAX_FD) {
+        int q = queue_of(FAKE_DEVS[i].path);
 
-        usb_fd = sv[0];
-        if (!e || *e != '0') {
-            usb_plug(1);
+        if (q >= 0) {
+            pthread_t t;
+
+            queue_fd[q] = sv[0];
+            if (!queue_started[q]++) {
+                pthread_create(&t, 0, queue_thread, (void *)(long)q);
+            }
         }
     }
     return sv[0];
@@ -1194,11 +1306,10 @@ ssize_t write(int fd, const void *buf, size_t n)
     if (!real_write) {
         real_write = dlsym(RTLD_NEXT, "write");
     }
-    /* A message queue hands a written message to its own reader. */
-    if (dev && !strncmp(dev, "/proc/udev_", 11)) {
-        r = send(fake_peer[fd], buf, n, MSG_DONTWAIT);
-        fprintf(stderr, "[djsdev] write(%s) \"%.*s\"\n", dev, (int)n, (const char *)buf);
-        return r < 0 ? r : (ssize_t)n;
+    /* A message for the queue, from whichever process. */
+    if (dev && queue_of(dev) >= 0) {
+        queue_put(queue_of(dev), buf, n);
+        return n;
     }
     r = real_write(fd, buf, n);
     if (dev) {
@@ -1558,8 +1669,12 @@ int close(int fd)
         if (fake_spi[fd]) {
             fake_spi[fd]->on = 0;
         }
-        if (fd == usb_fd) {
-            usb_fd = -1;
+        int q;
+
+        for (q = 0; q < QUEUES; q++) {
+            if (fd == queue_fd[q]) {
+                queue_fd[q] = -1;
+            }
         }
         fake_name[fd] = 0;
         fake_spi[fd] = 0;

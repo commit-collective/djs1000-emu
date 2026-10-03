@@ -51,7 +51,9 @@ fi
 # the shim reports as a drive mounted on /media/usb1/sda1.
 USB="${DJS_USB:-$DJS/usb}"
 mkdir -p "$USB" "$ROOT/media/usb1/sda1"
-rm -f "$ROOT/tmp/djspanel" "$ROOT"/tmp/djsshot.*
+# The unit's /tmp is in RAM: empty at each start, with the USB message queues
+# the shim keeps there (see queue_put() in shim/djsdev.c).
+find "$ROOT/tmp" -mindepth 1 -delete
 arm-linux-gnueabihf-gcc -O2 -fPIC -shared -nostdlib -mfloat-abi=softfp -marm \
     -o "$ROOT/opt/djsemu/libdjsdev.so" "$REPO/shim/djsdev.c" \
     "$ROOT/lib/libdl.so.2" "$ROOT/lib/libc.so.6" "$ROOT/lib/libpthread.so.0" || exit 1

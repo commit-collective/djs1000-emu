@@ -3,14 +3,19 @@
 #
 # Runs inside the unit's root filesystem, in place of two things the emulator
 # has no kernel or init for: the end of /root/pdj/apl_start, which starts the
-# app, and udev's rule for a USB stick (12-usb-memory-auto-mount.rules), which
-# after mounting it runs /root/pdj/decrypt_autoexec.sh: if the stick holds
-# autoexec.bin, that is opened with the unit's key and its autoexec.sh is run
-# with the stick's mount point.
+# app, and udev's rules for a USB stick. On the unit, plugging one in makes
+# udev write "connect" to the message queue /proc/udev_usbctn1
+# (75-usb-caution.rules), then mount it, run /root/pdj/decrypt_autoexec.sh
+# (if the stick holds autoexec.bin, that is opened with the unit's key and
+# its autoexec.sh run with the stick's mount point) and only then write
+# "mount <path>" to /proc/udev_usb1 (12-usb-memory-auto-mount.rules), which
+# is how the app learns of the stick. Taking it out writes "umount <path>" and
+# "disconnect". The shim keeps those queues as the kernel does.
 #
-#   init.sh             power-on: the stick's autoexec if there is one, then
-#                       the app; stays until run.sh ends it
-#   init.sh autoexec    a stick has just been plugged in
+#   init.sh             power-on: the stick as udev finds it, then the app;
+#                       stays until run.sh ends it
+#   init.sh plug        a stick has just been plugged in ("usb 1")
+#   init.sh unplug      and taken out ("usb 0")
 #
 # run.sh has already opened autoexec.bin (the loop device it takes needs
 # root) and put what it holds on /mnt/iso, where the unit mounts it.
@@ -25,14 +30,27 @@ autoexec() {
     fi
 }
 
-if [ "$1" = autoexec ]; then
+plug() {
+    echo -n connect > /proc/udev_usbctn1
     autoexec
+    echo -n "mount $USB" > /proc/udev_usb1
+}
+
+case $1 in
+plug)
+    plug
     exit 0
-fi
+    ;;
+unplug)
+    echo -n "umount $USB" > /proc/udev_usb1
+    echo -n disconnect > /proc/udev_usbctn1
+    exit 0
+    ;;
+esac
 
 # A stick that is in at power-on is mounted, and its autoexec run, before
-# apl_start gets to the app.
-[ "$DJSDEV_USB" = 0 ] || autoexec
+# apl_start gets to the app; the queues keep what udev wrote for it.
+[ "$DJSDEV_USB" = 0 ] || plug
 cd /root/pdj
 echo "[djsemu] start $APP"
 $APP &
