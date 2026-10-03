@@ -82,6 +82,7 @@ extern int fseek(void *stream, long off, int whence);
 extern int XSendEvent(void *dpy, unsigned long win, int propagate, long mask, void *event);
 extern int XFlush(void *dpy);
 extern unsigned long XInternAtom(void *dpy, const char *name, int only_if_exists);
+extern unsigned char XKeysymToKeycode(void *dpy, unsigned long keysym);
 extern void XLockDisplay(void *dpy);
 extern void XUnlockDisplay(void *dpy);
 extern void *memcpy(void *d, const void *s, size_t n);
@@ -492,6 +493,41 @@ static void x_click(int x, int y, int button)
     }
 }
 
+/* A key of a keyboard, pressed and released: "key <keysym>" (0xff08 is
+ * BackSpace, 0xff51 Left, 0xff53 Right). The unit has no keyboard, but the
+ * app's text fields take one. */
+static void x_key(unsigned long keysym)
+{
+    int ev[24];
+    int press;
+    unsigned code;
+
+    if (!x_dpy) {
+        return;
+    }
+    XLockDisplay(x_dpy);
+    code = XKeysymToKeycode(x_dpy, keysym);
+    XUnlockDisplay(x_dpy);
+    fprintf(stderr, "[djsdev] key %#lx: keycode %u\n", keysym, code);
+    if (!code) {
+        return;
+    }
+    for (press = 1; press >= 0; press--) {
+        memset(ev, 0, sizeof(ev));
+        ev[0] = press ? 2 : 3;          /* KeyPress / KeyRelease */
+        ev[2] = 1;                      /* send_event */
+        ev[3] = (int)x_dpy;
+        ev[4] = (int)x_win;
+        ev[13] = code;
+        ev[14] = 1;                     /* same_screen */
+        XLockDisplay(x_dpy);
+        XSendEvent(x_dpy, x_win, 1, press ? 1 : 2, ev);   /* KeyPressMask / KeyReleaseMask */
+        XFlush(x_dpy);
+        XUnlockDisplay(x_dpy);
+        usleep(60000);
+    }
+}
+
 /* One step of a touch: kind 1 press, 2 move (held), 0 release. */
 static void x_touch(int kind, int x, int y)
 {
@@ -587,6 +623,8 @@ static void panel_command(const char *line)
         if (a == 2) {
             return;     /* not logged: there are many */
         }
+    } else if (sscanf(line, "key %i", &a) == 1) {
+        x_key((unsigned long)a);
     } else if (sscanf(line, "click %i %i %i", &a, &b, &c) >= 2) {
         x_click(a, b, c ? c : 1);
     } else if (sscanf(line, "usb %i", &a) == 1) {
