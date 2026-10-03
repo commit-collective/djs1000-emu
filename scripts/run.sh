@@ -153,6 +153,9 @@ fi
 QENV="-E DISPLAY=${DISPLAY:-:0} -E HOME=/root -E PATH=/opt/djsemu/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 QENV="$QENV -E LD_LIBRARY_PATH=/usr/lib:/lib -E LD_PRELOAD=/opt/djsemu/libdjsdev.so $XDISPLAY"
 [ -n "${DJSDEV_USB:-}" ] && QENV="$QENV -E DJSDEV_USB=$DJSDEV_USB"
+# The unit's console (its serial port), where a process started by a stick's
+# autoexec may send its output: a file here, $DJS_HOME/run/console.log.
+: > "$DJS/run/console.log"
 timeout "$secs" proot -q "qemu-arm-static $QENV $QARGS" -r "$ROOT" \
-    -b /dev -b /proc -b /sys -b /tmp/.X11-unix -b "$USB:/media/usb1/sda1" -b "$DATA:/root/data" \
-    -b "$AUTO:/mnt/iso" -w /root/pdj "$@"
+    -b /dev -b "$DJS/run/console.log:/dev/console" -b /proc -b /sys -b /tmp/.X11-unix \
+    -b "$USB:/media/usb1/sda1" -b "$DATA:/root/data" -b "$AUTO:/mnt/iso" -w /root/pdj "$@"

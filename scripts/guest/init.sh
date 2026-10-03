@@ -27,7 +27,24 @@ autoexec() {
         echo "[djsemu] autoexec.sh from the USB drive"
         (cd /mnt/iso && ./autoexec.sh "$USB")
         echo "[djsemu] autoexec.sh returned $?"
+        still_in_iso
     fi
+}
+
+# On the unit, decrypt_autoexec.sh unmounts /mnt/iso and lets go of the
+# stick's autoexec.bin as soon as autoexec.sh returns; while a process is
+# still in there it cannot, and the stick stays busy (USB STOP then hangs).
+# Here nothing is unmounted, so say so instead.
+still_in_iso() {
+    sleep 1
+    for p in /proc/[0-9]*; do
+        case $(readlink "$p/cwd" 2> /dev/null) in
+        /mnt/iso | /mnt/iso/*)
+            echo "[djsemu] WARNING: ...$(tr '\0' ' ' < "$p/cmdline" | tail -c 60) is still in" \
+                "/mnt/iso: on the unit, the autoexec image could not be unmounted"
+            ;;
+        esac
+    done
 }
 
 plug() {
