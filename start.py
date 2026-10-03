@@ -99,7 +99,9 @@ tail -n 15 "$RUN/emulator.log"; exit 1
         self.sh("""
 pkill -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh'
 for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
-pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot -q qemu-arm-static.*djsemu'; true
+pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot -q qemu-arm-static.*djsemu'
+# Whatever else runs in the guest (a stick's autoexec may leave something).
+pkill -9 -f 'qemu-arm-static.*libdjsdev.so'; true
 """ % RUNNING)
 
     def alive(self, seconds=6):
