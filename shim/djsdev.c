@@ -1397,6 +1397,11 @@ static const char PACKET_NAME[] = "AF_PACKET socket";
 #define PACKET_FDS 8
 static volatile int packet_fd[PACKET_FDS];      /* our end of each stand-in, or 0 */
 static volatile int packet_cooked[PACKET_FDS];  /* SOCK_DGRAM: no link header */
+/* Which of the app's sockets are bound to the Pro DJ Link ports (50000-50002),
+ * and what arrives on them: each kind of packet (port, type byte at 0x0a,
+ * size class) is logged once, so that the log says what the app was given. */
+static int link_port[MAX_FD];
+static unsigned char link_seen[3][256][4];
 static int link_started;
 
 extern ssize_t recvfrom(int fd, void *buf, size_t n, int flags, void *addr, unsigned *len);
@@ -1479,6 +1484,7 @@ static void *link_listener(void *arg)
         fprintf(stderr, "[djsdev] Pro DJ Link: cannot listen on UDP %d\n", port);
         return 0;
     }
+    link_port[fd] = 0;                  /* ours: not what the app is given */
     fprintf(stderr, "[djsdev] Pro DJ Link: listening on UDP %d\n", port);
     for (;;) {
         unsigned alen = sizeof(sa);
@@ -1583,8 +1589,40 @@ int connect(int fd, const void *addr, unsigned len)
 int bind(int fd, const void *addr, unsigned len)
 {
     int (*real)(int, const void *, unsigned) = dlsym(RTLD_NEXT, "bind");
+    const unsigned char *a = addr;
+    int r;
 
-    return fake_fd(fd) == PACKET_NAME ? 0 : real(fd, addr, len);
+    if (fake_fd(fd) == PACKET_NAME) {
+        return 0;
+    }
+    r = real(fd, addr, len);
+    if (r == 0 && fd >= 0 && fd < MAX_FD && a && len >= 8 && a[0] == AF_INET) {
+        int port = a[2] << 8 | a[3];
+
+        if (port >= 50000 && port <= 50002) {
+            link_port[fd] = port;
+            fprintf(stderr, "[djsdev] the app bound fd %d to UDP %d\n", fd, port);
+        }
+    }
+    return r;
+}
+
+ssize_t recvfrom(int fd, void *buf, size_t n, int flags, void *addr, unsigned *alen)
+{
+    ssize_t (*real)(int, void *, size_t, int, void *, unsigned *) = dlsym(RTLD_NEXT, "recvfrom");
+    ssize_t r = real(fd, buf, n, flags, addr, alen);
+
+    if (r > 0x0a && fd >= 0 && fd < MAX_FD && link_port[fd] > 0) {
+        int port = link_port[fd] - 50000, kind = ((unsigned char *)buf)[0x0a];
+        int size = r > 0x200 ? 3 : r > 0x100 ? 2 : r > 0x40 ? 1 : 0;
+
+        if (!link_seen[port][kind][size]) {
+            link_seen[port][kind][size] = 1;
+            fprintf(stderr, "[djsdev] the app received on UDP %d: type 0x%02x, %d bytes\n",
+                    50000 + port, kind, (int)r);
+        }
+    }
+    return r;
 }
 
 int setsockopt(int fd, int level, int name, const void *val, unsigned len)

@@ -230,9 +230,9 @@ class Deck:
         for r, name in self.mod_rects:
             if r.collidepoint(pos):
                 return ("mod", name)
-        for r, number in self.deck_rects:
+        for r, number, what in self.deck_rects:
             if r.collidepoint(pos):
-                return ("deck", number)
+                return ("deck", number, what)
         if pos[0] >= self.face_w:
             return None
         x, y = self.to_units(pos)
@@ -258,8 +258,13 @@ class Deck:
         if what[0] == "listen":
             return "which output the main sound device plays  \u00b7  click, or Tab"
         if what[0] == "deck":
-            return (f"fake CDJ {what[1]} on Pro DJ Link  ·  click to switch it on or off: it "
-                    "announces itself and has a track loaded")
+            return {"on": f"fake CDJ {what[1]} on Pro DJ Link  ·  click to put it on the "
+                          "network or take it off",
+                    "play": f"fake CDJ {what[1]}  ·  play or stop it: a playing deck sends beats",
+                    "sync": f"fake CDJ {what[1]}  ·  sync on or off: a synced deck plays at the "
+                            "tempo master's tempo",
+                    "master": f"fake CDJ {what[1]}  ·  tempo master: it takes the role from "
+                              "whoever has it (the unit included)"}[what[2]]
         if what[0] == "mod":
             return f"mod {what[1]}  ·  click to switch it on or off, as the app runs"
         if what[0] == "strip":
@@ -354,7 +359,7 @@ class Deck:
             self.mods.toggle(what[1])
             return
         if what[0] == "deck":
-            self.fakedecks.toggle(what[1])
+            self.fakedecks.click(what[1], what[2])
             return
         self.down = what
         self.down_at = pygame.time.get_ticks()
@@ -509,6 +514,8 @@ class Deck:
             held_bits.add(self.down[1])
         for i, key in enumerate(L.KEYS):
             level = L.lamp_level(self.lamps, key.lamp) if key.lamp is not None else 0
+            if level == 1 and key.dim_is_off:
+                level = 0
             rgb = L.rgb_lamp(self.lamps, key.rgb) if key.rgb is not None else None
             if rgb and not any(rgb):
                 rgb = None
@@ -636,20 +643,31 @@ class Deck:
             return y
         t = self.font.render("Pro DJ Link: fake CDJs", True, (225, 228, 232))
         win.blit(t, (x, y))
-        t2 = self.font.render("players 2-5 (the unit is player 1)  ·  click to switch", True,
+        t2 = self.font.render("players 2-4 (the unit is player 1)  ·  click to switch", True,
                               (150, 152, 158))
         win.blit(t2, (x + t.get_width() + 14, y))
         y += 26
+        colours = {"on": (150, 220, 120), "play": (120, 210, 120), "sync": (110, 170, 240),
+                   "master": (240, 160, 60)}
         for i in range(prolink.COUNT):
             n = prolink.FIRST + i
-            on = self.fakedecks.on[i]
-            r = pygame.Rect(x + i * 84, y - 1, 76, 22)
-            pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r, border_radius=4)
-            label = self.small.render(f"{n}  " + ("ON" if on else "OFF"), True,
-                                      (10, 10, 10) if on else (150, 152, 158))
-            win.blit(label, label.get_rect(center=r.center))
-            self.deck_rects.append((r, n))
-        return y + 34
+            state = self.fakedecks.state[n]
+            at = x
+            for what, label, width in (("on", f"{n}  " + ("ON" if state["on"] else "OFF"), 76),
+                                       ("play", "PLAY", 56), ("sync", "SYNC", 56),
+                                       ("master", "MASTER", 72)):
+                lit = state[what] and (what == "on" or state["on"])
+                r = pygame.Rect(at, y - 1, width, 22)
+                pygame.draw.rect(win, colours[what] if lit else (40, 41, 45), r, border_radius=4)
+                text = self.small.render(label, True, (10, 10, 10) if lit else (150, 152, 158))
+                win.blit(text, text.get_rect(center=r.center))
+                self.deck_rects.append((r, n, what))
+                at += width + 6
+            if state["on"]:
+                bpm = self.small.render(f"{state['bpm']:.1f} BPM", True, (150, 152, 158))
+                win.blit(bpm, (at + 6, y + 2))
+            y += 28
+        return y + 8
 
     def draw_help(self, x, y):
         """Under the large screen: what the mouse and the keyboard do."""

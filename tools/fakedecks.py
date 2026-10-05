@@ -2,30 +2,44 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Fake CDJs on a Pro DJ Link network, for testing a client of it.
 
-    fakedecks.py [--decks N] [--loaded DECK=SOURCE:SLOT:ID ...] [--titles FILE]
-                 [--control FILE]
+    fakedecks.py [--decks N | --numbers N,N,...] [--loaded DECK=SOURCE:SLOT:ID ...]
+                 [--titles FILE] [--control FILE]
 
-Runs N decks (numbered 1..N, default 4), each on its own loopback address
-127.0.0.<number>, so everything stays on one machine (run it in the same
-network namespace as the client: in WSL for the emulator). Each deck
+Runs decks (numbered 1..N, default 4, or the --numbers), each on its own
+loopback address 127.0.0.<number>, so everything stays on one machine (run it
+in the same network namespace as the client: in WSL for the emulator). Each
+deck
 
 - broadcasts a keep-alive on UDP 50000 every 2 s, to 127.255.255.255;
-- broadcasts a CDJ status on UDP 50002 every 200 ms, naming the track it has
-  loaded (the player it came from, the slot, the type and the rekordbox ID);
+- broadcasts a CDJ status on UDP 50002 every 200 ms: the track it has loaded
+  (the player it came from, the slot, the type and the rekordbox ID), whether
+  it plays, is synced, is the tempo master, its tempo, and while it hands the
+  master role over to another player, which one;
+- while it plays, broadcasts a beat packet on UDP 50001 at each beat of its
+  tempo (its own, or the master's when it is synced);
 - answers the database server: TCP 12523 gives the port (1051), where the
   greeting, the query context setup, a track metadata request and a render
   menu request are answered with the menu items of the track, whose title is
-  the first string of the item of type 4.
+  the first string of the item of type 4;
+- takes the tempo master role from a player that asks (a master hand-off
+  request, UDP 50001), answering that it yields, and obeys the sync commands
+  (sync on/off, become master) sent to it.
 
 Deck D has by default the track with rekordbox ID 100 + D, loaded from itself
-(slot 3, USB), titled "Track of deck D". --loaded DECK=SOURCE:SLOT:ID puts
-another there: a track of the source player's database. --titles FILE has
-lines "SOURCE:SLOT:ID=Title" (UTF-8) for the titles each deck knows.
+(slot 3, USB), titled "Track of deck D", at 128 BPM less 2 for each deck after
+the first. --loaded DECK=SOURCE:SLOT:ID puts another there: a track of the
+source player's database. --titles FILE has lines "SOURCE:SLOT:ID=Title"
+(UTF-8) for the titles each deck knows.
 
-With --control FILE the decks start off, and are switched on and off by the
-file (JSON, {"1": true, "2": false, ...}), looked at twice a second: this is
-how the virtual deck's side panel (app/virtual_djs.py) drives them. A deck
-that is off sends nothing and closes the connections made to it.
+Without --control the decks are on and not playing. With --control FILE they
+start off, and are driven by the file (JSON {"2": {"on": 0, "play": 0,
+"sync": 0, "master": 0}, ...}) looked at twice a second: a number that changes
+is a click on that switch, which toggles it (an "on" click switches the deck
+on or off, the others change what it does). This is how the virtual deck's
+side panel (app/virtual_djs.py) drives them. What each deck really is then
+(the master role can pass to another player by itself) is written to FILE.state
+(JSON {"2": {"on": true, "play": ..., "sync": ..., "master": ..., "bpm": ...}}).
+A deck that is off sends nothing and closes the connections made to it.
 
 The layouts are those of the public Pro DJ Link analysis (Deep Symmetry's
 djl-analysis, Beat Link). Prints what it does to standard error. (Written for
@@ -43,6 +57,9 @@ import time
 MAGIC = bytes([0x51, 0x73, 0x70, 0x74, 0x31, 0x57, 0x6D, 0x4A, 0x4F, 0x4C])
 BROADCAST = "127.255.255.255"
 DB_PORT = 1051
+BEAT_PORT, UPDATE_PORT, ANNOUNCE_PORT = 50001, 50002, 50000
+PITCH_NORMAL = 0x100000
+LOCK = threading.RLock()
 
 
 def log(text):
@@ -50,11 +67,26 @@ def log(text):
     sys.stderr.flush()
 
 
+def header(ptype, name):
+    p = bytearray(0x1F)
+    p[0:10] = MAGIC
+    p[0x0A] = ptype
+    p[0x0B:0x0B + len(name)] = name
+    return p
+
+
+MODEL = None                            # a model name for every deck (--model)
+
+
+def device_name(number):
+    return (MODEL or "CDJ-FAKE%d" % number).encode()
+
+
 def keepalive(number):
     p = bytearray(0x36)
     p[0:10] = MAGIC
     p[0x0A] = 0x06
-    name = ("CDJ-FAKE%d" % number).encode()
+    name = device_name(number)
     p[0x0C:0x0C + len(name)] = name
     p[0x20], p[0x21] = 0x01, 0x02
     p[0x22:0x24] = struct.pack(">H", 0x36)
@@ -64,19 +96,6 @@ def keepalive(number):
     p[0x2C:0x30] = socket.inet_aton("127.0.0.%d" % number)
     p[0x30] = 1
     p[0x34] = 0x01
-    return bytes(p)
-
-
-def status(number, source, slot, ttype, rbid):
-    p = bytearray(0x124)
-    p[0:10] = MAGIC
-    p[0x0A] = 0x0A
-    name = ("CDJ-FAKE%d" % number).encode()
-    p[0x0B:0x0B + len(name)] = name
-    p[0x21] = number
-    p[0x24] = number
-    p[0x28], p[0x29], p[0x2A] = source, slot, ttype
-    p[0x2C:0x30] = struct.pack(">I", rbid)
     return bytes(p)
 
 
@@ -140,13 +159,167 @@ def read_message(conn):
     return txid, mtype, args
 
 
+# ---- the network as the decks share it ----------------------------------------
+
+class World:
+    """What the decks need to know of each other and of the unit under test:
+    who is the tempo master and at what tempo."""
+
+    def __init__(self):
+        self.decks = {}
+        self.dj = {"number": 0, "ip": None, "master": False, "bpm": None}   # the DJS, as heard
+        self.state_path = None
+
+    def master_deck(self):
+        for deck in self.decks.values():
+            if deck.enabled and deck.master:
+                return deck
+        return None
+
+    def master_bpm(self):
+        deck = self.master_deck()
+        if deck:
+            return deck.base_bpm
+        if self.dj["master"] and self.dj["bpm"]:
+            return self.dj["bpm"]
+        return None
+
+    def save(self):
+        """What the decks are, for the deck window to show."""
+        if not self.state_path:
+            return
+        with LOCK:
+            state = {str(n): {"on": d.enabled, "play": d.playing, "sync": d.sync,
+                              "master": d.master and d.enabled, "bpm": round(d.tempo(), 2)}
+                     for n, d in self.decks.items()}
+        text = json.dumps(state, sort_keys=True)
+        if text != getattr(self, "_saved", None):
+            tmp = self.state_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
+            os.replace(tmp, self.state_path)
+            self._saved = text
+
+    def sniff(self):
+        """Listens to the keep-alives and statuses on the network for the
+        unit (it names itself DJS-1000): its number and address, and whether it
+        is the tempo master and at what tempo; and passes the master role when
+        the unit takes it from a deck that has agreed to yield it."""
+        socks = []
+        for port in (ANNOUNCE_PORT, UPDATE_PORT):
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except (AttributeError, OSError):
+                pass
+            s.bind(("0.0.0.0", port))
+            s.settimeout(0.5)
+            socks.append((s, port))
+        import select
+        while True:
+            ready, _, _ = select.select([s for s, _ in socks], [], [], 0.5)
+            for s in ready:
+                data, addr = s.recvfrom(2048)
+                port = s.getsockname()[1]
+                if len(data) < 0x30 or data[:10] != MAGIC:
+                    continue
+                if data[0x0B:0x0F] == b"DJS-" or data[0x0C:0x10] == b"DJS-":
+                    with LOCK:
+                        if port == ANNOUNCE_PORT and data[0x0A] == 0x06:
+                            if self.dj["number"] != data[0x24]:
+                                self.dj["number"] = data[0x24]
+                                log("the unit under test is player %d" % data[0x24])
+                            self.dj["ip"] = ".".join(str(b) for b in data[0x2C:0x30])
+                        elif port == UPDATE_PORT and data[0x0A] == 0x0A and len(data) > 0x93:
+                            master = bool(data[0x89] & 0x20)
+                            if master != self.dj["master"]:
+                                log("the unit under test %s the tempo master"
+                                    % ("is now" if master else "is no longer"))
+                            self.dj["master"] = master
+                            self.dj["bpm"] = struct.unpack(">H", data[0x92:0x94])[0] / 100.0
+                            if master:
+                                for deck in self.decks.values():
+                                    if deck.master and deck.handing_to == data[0x21]:
+                                        deck.finish_handoff()
+                    self.save()
+
+
 class Deck:
-    def __init__(self, number, loaded, titles):
+    def __init__(self, world, number, loaded, titles, bpm):
+        self.world = world
         self.number = number
         self.source, self.slot, self.rbid = loaded
         self.titles = titles                # {(slot, id): title} this deck knows
         self.queries = []
+        self.base_bpm = bpm
         self.enabled = True
+        self.playing = False
+        self.sync = False
+        self.master = False
+        self.handing_to = 0xFF
+        self.sync_number = 0
+        self.counter = 0
+        self.beat_in_bar = 1
+        self.name = device_name(number)
+
+    # -- what the deck is --
+    def tempo(self):
+        """The tempo it plays at: its own, or the master's if it is synced."""
+        if self.master or not self.sync:
+            return self.base_bpm
+        return self.world.master_bpm() or self.base_bpm
+
+    def flags(self):
+        # Bit 2 is set on a CDJ that is on the link (not explained in the
+        # analysis); the unit's own choice of the tempo master looks for
+        # playing + synced + on air + that bit (flags & 0x5c == 0x5c).
+        f = 0x04
+        if self.playing:
+            f |= 0x40 | 0x08                             # playing, on air
+        if self.master:
+            f |= 0x20
+        if self.sync:
+            f |= 0x10
+        return f
+
+    def status(self):
+        p = bytearray(max(STATUS_LENGTH, 0xD4))
+        p[0:10] = MAGIC
+        p[0x0A] = 0x0A
+        p[0x0B:0x0B + len(self.name)] = self.name
+        p[0x21] = self.number
+        p[0x24] = self.number
+        p[0x28], p[0x29], p[0x2A] = self.source, self.slot, 1
+        p[0x2C:0x30] = struct.pack(">I", self.rbid)
+        p[0x7B] = 3 if self.playing else 5               # playing / paused
+        p[0x7C:0x80] = b"1.00"
+        p[0x84:0x88] = struct.pack(">I", self.sync_number)
+        p[0x89] = self.flags()
+        p[0x8B] = 0x7A if self.playing else 0x7E
+        p[0x8D:0x90] = struct.pack(">I", PITCH_NORMAL)[1:]
+        p[0x92:0x94] = struct.pack(">H", int(round(self.tempo() * 100)))
+        p[0x9E] = 1 if self.master else 0                # "master meaningful"
+        p[0x9F] = self.handing_to
+        p[0xA6] = self.beat_in_bar
+        self.counter += 1
+        p[0xC8:0xCC] = struct.pack(">I", self.counter)
+        return bytes(p)
+
+    def beat(self):
+        """The beat packet at the beginning of a beat."""
+        period = 60000.0 / self.tempo()
+        left = 5 - self.beat_in_bar                      # beats to the next bar line
+        p = bytearray(0x60)
+        p[0:0x1F] = header(0x28, self.name)
+        p[0x1F], p[0x21], p[0x23] = 0x01, self.number, 0x3C
+        for i, beats in enumerate((1, 2, left, 4, left + 4, 8)):
+            p[0x24 + 4 * i:0x28 + 4 * i] = struct.pack(">I", int(period * beats))
+        p[0x55:0x58] = struct.pack(">I", PITCH_NORMAL)[1:]
+        p[0x5A:0x5C] = struct.pack(">H", int(round(self.tempo() * 100)))
+        p[0x5C] = self.beat_in_bar
+        p[0x5F] = self.number
+        return bytes(p)
 
     # -- UDP --
     def announce(self):
@@ -162,13 +335,129 @@ class Deck:
                 time.sleep(0.1)
                 continue
             if now - last_keep >= 2.0:
-                s.sendto(keepalive(self.number), (BROADCAST, 50000))
+                s.sendto(keepalive(self.number), (BROADCAST, ANNOUNCE_PORT))
                 last_keep = now
             if now - last_status >= 0.2:
-                s.sendto(status(self.number, self.source, self.slot, 1, self.rbid),
-                         (BROADCAST, 50002))
+                with LOCK:
+                    packet = self.status()
+                s.sendto(packet, (BROADCAST, UPDATE_PORT))
                 last_status = now
             time.sleep(0.05)
+
+    def beats(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        s.bind(("127.0.0.%d" % self.number, 0))
+        due = time.time()
+        while True:
+            if not (self.enabled and self.playing):
+                time.sleep(0.05)
+                due = time.time()
+                continue
+            wait = due - time.time()
+            if wait > 0:
+                time.sleep(min(wait, 0.05))
+                continue
+            with LOCK:
+                packet = self.beat()
+                period = 60.0 / self.tempo()
+            s.sendto(packet, (BROADCAST, BEAT_PORT))
+            self.beat_in_bar = self.beat_in_bar % 4 + 1
+            due += period
+
+    def control(self):
+        """Master hand-off requests and sync commands, sent to this deck."""
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.%d" % self.number, BEAT_PORT))
+        out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        out.bind(("127.0.0.%d" % self.number, 0))
+        while True:
+            data, addr = s.recvfrom(2048)
+            if not self.enabled or len(data) < 0x2C or data[:10] != MAGIC:
+                continue
+            kind, sender = data[0x0A], data[0x21]
+            if kind == 0x26:                                     # master hand-off request
+                with LOCK:
+                    if not self.master:
+                        log("deck %d: hand-off request from %d, but it is not the master"
+                            % (self.number, sender))
+                        continue
+                    log("deck %d: yields the master role to %d" % (self.number, sender))
+                    self.handing_to = sender
+                reply = header(0x27, self.name) + bytes([
+                    0x01, 0x00, self.number, 0x00, 0x08, 0x00, 0x00, 0x00, self.number,
+                    0x00, 0x00, 0x00, 0x01])
+                out.sendto(bytes(reply), (addr[0], UPDATE_PORT))
+                threading.Timer(4.0, self.finish_handoff, args=(sender,)).start()
+                self.world.save()
+            elif kind == 0x2A:                                   # a sync command
+                command = data[0x2B] if len(data) > 0x2B else 0
+                log("deck %d: sync command %#x from %d" % (self.number, command, sender))
+                if command == 0x10:
+                    self.set_sync(True)
+                elif command == 0x20:
+                    self.set_sync(False)
+                elif command == 0x01:
+                    self.set_master(True)
+
+    # -- what clicks and commands do --
+    def set_sync(self, on):
+        with LOCK:
+            self.sync = on
+        log("deck %d sync %s" % (self.number, "on" if on else "off"))
+        self.world.save()
+
+    def set_play(self, on):
+        with LOCK:
+            self.playing = on
+        log("deck %d %s" % (self.number, "plays" if on else "stops"))
+        self.world.save()
+
+    def set_enabled(self, on):
+        with LOCK:
+            self.enabled = on
+            if not on:
+                self.master = False
+                self.handing_to = 0xFF
+        log("deck %d %s" % (self.number, "on" if on else "off"))
+        self.world.save()
+
+    def finish_handoff(self, to=None):
+        """The deck stops being the master (the new one has said it is, or
+        the time is up)."""
+        with LOCK:
+            if self.master and self.handing_to != 0xFF and (to is None or to == self.handing_to):
+                self.master = False
+                self.handing_to = 0xFF
+                log("deck %d is no longer the master" % self.number)
+        self.world.save()
+
+    def set_master(self, on):
+        """Takes the master role (from whoever has it), or lets go of it."""
+        world = self.world
+        with LOCK:
+            if not on:
+                self.master = False
+                self.handing_to = 0xFF
+            else:
+                for other in world.decks.values():
+                    if other is not self and other.enabled and other.master:
+                        other.handing_to = self.number
+                        threading.Timer(1.0, other.finish_handoff, args=(self.number,)).start()
+                self.master = True
+                self.sync_number += 1
+                dj = dict(world.dj)
+                if dj["master"] and dj["ip"]:
+                    request = header(0x26, self.name) + bytes([
+                        0x01, 0x00, self.number, 0x00, 0x04, 0x00, 0x00, 0x00, self.number])
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.bind(("127.0.0.%d" % self.number, 0))
+                    s.sendto(bytes(request), (dj["ip"], BEAT_PORT))
+                    s.close()
+                    log("deck %d asks the unit under test to yield the master role" % self.number)
+        log("deck %d is %s the master" % (self.number, "now" if on else "no longer"))
+        world.save()
 
     # -- TCP --
     def serve_port(self):
@@ -241,16 +530,27 @@ class Deck:
         conn.close()
 
 
+STATUS_LENGTH = 0x124
+
+
 def main():
+    global STATUS_LENGTH, MODEL
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--decks", type=int, default=4)
     ap.add_argument("--numbers", metavar="N,N,...",
                     help="the decks' player numbers (default 1..DECKS)")
     ap.add_argument("--loaded", action="append", default=[], metavar="DECK=SOURCE:SLOT:ID")
     ap.add_argument("--titles", metavar="FILE")
+    ap.add_argument("--init", action="append", default=[], metavar="DECK=play,sync,master",
+                    help="start this deck playing, synced and/or the master")
+    ap.add_argument("--model", help="the device name every deck announces (default CDJ-FAKEn)")
+    ap.add_argument("--status-length", type=lambda x: int(x, 0), default=0x124, metavar="N",
+                    help="the length of the status packets (default 0x124)")
     ap.add_argument("--control", metavar="FILE",
-                    help="switch the decks on and off from this JSON file, starting off")
+                    help="drive the decks from this JSON file, starting off")
     a = ap.parse_args()
+    STATUS_LENGTH = a.status_length
+    MODEL = a.model
     numbers = [int(x) for x in a.numbers.split(",")] if a.numbers else list(range(1, a.decks + 1))
     loaded = {d: (d, 3, 100 + d) for d in numbers}
     for item in a.loaded:
@@ -264,28 +564,54 @@ def main():
                 key, title = line.split("=", 1)
                 src, slot, rbid = (int(x) for x in key.split(":"))
                 known.setdefault(src, {})[(slot, rbid)] = title
-    decks = {}
-    for d in numbers:
-        deck = decks[d] = Deck(d, loaded[d], known.get(d, {}))
+    world = World()
+    if a.control:
+        world.state_path = a.control + ".state"
+    for i, d in enumerate(numbers):
+        deck = world.decks[d] = Deck(world, d, loaded[d], known.get(d, {}), 128.0 - 2 * i)
         deck.enabled = not a.control
-        for target in (deck.announce, deck.serve_port, deck.serve_db):
+        for item in a.init:
+            which, _, what = item.partition("=")
+            if int(which) == d:
+                deck.playing = "play" in what
+                deck.sync = "sync" in what
+                deck.master = "master" in what
+        for target in (deck.announce, deck.beats, deck.control, deck.serve_port, deck.serve_db):
             threading.Thread(target=target, daemon=True).start()
-        log("deck %d on 127.0.0.%d: track %d:%d:%d" % ((d, d) + loaded[d]))
-    seen = None
+        log("deck %d on 127.0.0.%d: track %d:%d:%d at %.0f BPM"
+            % ((d, d) + loaded[d] + (deck.base_bpm,)))
+    threading.Thread(target=world.sniff, daemon=True).start()
+    seen = {}
+    first = True
     while True:
         if a.control:
             try:
-                stamp = os.stat(a.control).st_mtime
-                if stamp != seen:
-                    wanted = json.load(open(a.control, encoding="utf-8"))
-                    for d, deck in decks.items():
-                        on = bool(wanted.get(str(d)))
-                        if on != deck.enabled:
-                            log("deck %d %s" % (d, "on" if on else "off"))
-                        deck.enabled = on
-                    seen = stamp
+                wanted = json.load(open(a.control, encoding="utf-8"))
             except (OSError, ValueError):
-                pass
+                wanted = None
+            if isinstance(wanted, dict):
+                for d, deck in world.decks.items():
+                    clicks = wanted.get(str(d))
+                    if not isinstance(clicks, dict):
+                        clicks = {}
+                    for what in ("on", "play", "sync", "master"):
+                        n = int(clicks.get(what, 0))
+                        if first:
+                            seen[(d, what)] = n             # what is there at the start is not a click
+                        elif n != seen.get((d, what), 0):
+                            seen[(d, what)] = n
+                            if what == "on":
+                                deck.set_enabled(not deck.enabled)
+                            elif not deck.enabled:
+                                continue
+                            elif what == "play":
+                                deck.set_play(not deck.playing)
+                            elif what == "sync":
+                                deck.set_sync(not deck.sync)
+                            elif what == "master":
+                                deck.set_master(not deck.master)
+                first = False
+        world.save()
         time.sleep(0.5)
 
 

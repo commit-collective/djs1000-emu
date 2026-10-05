@@ -56,16 +56,19 @@ def check_fake_decks(link):
                             decks=prolink.FakeDecks(path))
     deck.pump()
     deck.draw()
-    assert len(deck.deck_rects) == prolink.COUNT, "no switches for the fake decks"
-    for rect, number in deck.deck_rects:
+    assert len(deck.deck_rects) == 4 * prolink.COUNT, "no switches for the fake decks"
+    for rect, number, what in deck.deck_rects:
         pos = rect.center
-        assert deck.find(pos) == ("deck", number)
+        assert deck.find(pos) == ("deck", number, what)
         deck.press(pos)
         deck.release(pos)
-    assert json.load(open(path)) == {str(n): True for n in range(2, 6)}, "switches did not write"
-    deck.press(deck.deck_rects[1][0].center)
-    deck.release(deck.deck_rects[1][0].center)
-    assert json.load(open(path))["3"] is False
+    clicks = json.load(open(path))
+    assert clicks == {str(n): {w: 1 for w in prolink.WHAT}
+                      for n in range(prolink.FIRST, prolink.FIRST + prolink.COUNT)},         "switches did not write"
+    rect, number, what = deck.deck_rects[5]
+    deck.press(rect.center)
+    deck.release(rect.center)
+    assert json.load(open(path))[str(number)][what] == 2
     deck.draw()
 
 

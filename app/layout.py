@@ -61,6 +61,7 @@ class Key:
     pad: int | None = None              # pad number, 0-15
     color: tuple = WHITE                # its light
     font: int = 17
+    dim_is_off: bool = False            # the app writes "dim" for "off" on this lamp
     keycap: str = ""                    # the keyboard key that presses it too
     symbol: str = ""
 
@@ -156,11 +157,13 @@ KEYS = [
         keycap="B"),
     Key("play", "big", circle=(179, 1803, 64), bit=(2, 3), lamp=0x16, symbol="play",
         color=GREEN, keycap="Space"),
-    # The right column. No lamp has been matched to SYNC and MASTER.
-    Key("sync", "dome", circle=(1272, 611, 27), label="SYNC", bit=(6, 5), font=12,
-        keycap="S"),
-    Key("master", "dome", circle=(1355, 611, 27), label="MASTER", bit=(6, 6),
-        color=ORANGE, font=11),
+    # The right column. SYNC and MASTER light when the unit is synced to the
+    # tempo master / is the master (lamps 0x1B and 0x1C, found by pressing them
+    # with a Pro DJ Link deck on the network): the app writes "dim" for off.
+    Key("sync", "dome", circle=(1272, 611, 27), label="SYNC", bit=(6, 5), lamp=0x1B,
+        dim_is_off=True, font=12, keycap="S"),
+    Key("master", "dome", circle=(1355, 611, 27), label="MASTER", bit=(6, 6), lamp=0x1C,
+        dim_is_off=True, color=ORANGE, font=11),
     Key("tempo_range", "dome", circle=(1313, 727, 19), bit=(6, 4), keycap="-"),
     Key("tempo_reset", "dome", circle=(1179, 1090, 23), bit=(6, 3)),
     Key("tempo_reset_lamp", "led", box=(1222, 1086, 1238, 1094), lamp=0x1D, color=LIME),

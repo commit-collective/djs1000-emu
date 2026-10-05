@@ -90,9 +90,9 @@ D="${DJS_USB:-${DJS_HOME:-$HOME/djs}/usb}"
 RUN="${DJS_HOME:-$HOME/djs}/run"
 mkdir -p "$RUN"
 F="$RUN/fakedecks.json"
-if ! pgrep -f '[f]akedecks.py --control' > /dev/null; then
+if ! pgrep -f '[f]akedecks.py .*--control' > /dev/null; then
     echo '{}' > "$F"
-    setsid nohup python3 '%s/tools/fakedecks.py' --numbers 2,3,4,5 --control "$F" > "$RUN/fakedecks.log" 2>&1 < /dev/null &
+    setsid nohup python3 '%s/tools/fakedecks.py' --numbers 2,3,4 --control "$F" > "$RUN/fakedecks.log" 2>&1 < /dev/null &
     sleep 0.5
 fi
 %s
@@ -115,7 +115,7 @@ tail -n 15 "$RUN/emulator.log"; exit 1
 
     def stop(self):
         self.sh("""
-pkill -f '[f]akedecks.py --control'
+pkill -f '[f]akedecks.py .*--control'
 pkill -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh'
 for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
 pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot -q qemu-arm-static.*djsemu'
