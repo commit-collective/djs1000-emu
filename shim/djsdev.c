@@ -1301,6 +1301,21 @@ int ioctl(int fd, unsigned long req, ...)
     va_start(ap, req);
     arg = va_arg(ap, void *);
     va_end(ap);
+    /* WirelessLanMonitor::checkEtherLanConnection asks the Ethernet
+     * driver, on "eth0", with the device-private requests 0x89fc, 0x89fd and
+     * 0x89fe (the last answers through the ifreq's data pointer: non-zero
+     * when the cable is in; NetworkManager sets up with 0x89ff). The host kernel cannot take those (the app
+     * sees ENOTTY and thinks there is no cable, and the Pro DJ Link stack
+     * stays down): the cable is in. */
+    if (!dev && (req == 0x89fc || req == 0x89fd || req == 0x89fe || req == 0x89ff) && arg &&
+        !strncmp((const char *)arg, "eth0", 5)) {
+        int *state = *(int **)((char *)arg + 16);
+
+        if (req == 0x89fe && state) {
+            *state = 1;
+        }
+        return 0;
+    }
     if (!dev) {
         return real(fd, req, arg);
     }

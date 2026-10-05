@@ -244,16 +244,19 @@ class Deck:
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--decks", type=int, default=4)
+    ap.add_argument("--numbers", metavar="N,N,...",
+                    help="the decks' player numbers (default 1..DECKS)")
     ap.add_argument("--loaded", action="append", default=[], metavar="DECK=SOURCE:SLOT:ID")
     ap.add_argument("--titles", metavar="FILE")
     ap.add_argument("--control", metavar="FILE",
                     help="switch the decks on and off from this JSON file, starting off")
     a = ap.parse_args()
-    loaded = {d: (d, 3, 100 + d) for d in range(1, a.decks + 1)}
+    numbers = [int(x) for x in a.numbers.split(",")] if a.numbers else list(range(1, a.decks + 1))
+    loaded = {d: (d, 3, 100 + d) for d in numbers}
     for item in a.loaded:
         d, rest = item.split("=")
         loaded[int(d)] = tuple(int(x) for x in rest.split(":"))
-    known = {d: {(3, 100 + d): "Track of deck %d" % d} for d in range(1, a.decks + 1)}
+    known = {d: {(3, 100 + d): "Track of deck %d" % d} for d in numbers}
     if a.titles:
         for line in open(a.titles, encoding="utf-8"):
             line = line.rstrip("\n")
@@ -262,7 +265,7 @@ def main():
                 src, slot, rbid = (int(x) for x in key.split(":"))
                 known.setdefault(src, {})[(slot, rbid)] = title
     decks = {}
-    for d in range(1, a.decks + 1):
+    for d in numbers:
         deck = decks[d] = Deck(d, loaded[d], known.get(d, {}))
         deck.enabled = not a.control
         for target in (deck.announce, deck.serve_port, deck.serve_db):

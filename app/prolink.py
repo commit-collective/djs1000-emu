@@ -3,8 +3,10 @@
 
 Four fake CDJs (tools/fakedecks.py, run in the emulator's network by
 start.py) announce themselves and answer the track database, so that what
-reads Pro DJ Link in the emulated unit (the app, a mod) has decks to see.
-This is the switch panel's side of it: a file, JSON {"1": true, ...}, that
+reads Pro DJ Link in the emulated unit (the app, a mod) has decks to see. They
+are players 2 to 5: the emulated unit is player 1 (its PLAYER No.), and a deck
+with the same number would be a clash on the network, and no linked players.
+This is the switch panel's side of it: a file, JSON {"2": true, ...}, that
 the fake decks look at twice a second; this reads it, and rewrites it when a
 switch is clicked. No file (no helper running): no switches.
 """
@@ -13,6 +15,7 @@ import os
 import threading
 import time
 
+FIRST = 2                                # the number of the first fake deck
 COUNT = 4
 
 
@@ -45,15 +48,16 @@ class FakeDecks:
         except (OSError, ValueError):
             return
         self._seen = seen
-        self.on = [bool(wanted.get(str(n + 1))) for n in range(COUNT)]
+        self.on = [bool(wanted.get(str(FIRST + n))) for n in range(COUNT)]
 
     def toggle(self, number):
-        """Switches deck `number` (1-4). False if the file could not be written."""
+        """Switches the deck with player number `number`. False if the file
+        could not be written."""
         on = list(self.on)
-        on[number - 1] = not on[number - 1]
+        on[number - FIRST] = not on[number - FIRST]
         try:
             with open(self.path, "w", encoding="utf-8", newline="\n") as f:
-                json.dump({str(n + 1): on[n] for n in range(COUNT)}, f)
+                json.dump({str(FIRST + n): on[n] for n in range(COUNT)}, f)
         except OSError:
             return False
         self.on = on

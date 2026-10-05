@@ -62,10 +62,10 @@ def check_fake_decks(link):
         assert deck.find(pos) == ("deck", number)
         deck.press(pos)
         deck.release(pos)
-    assert json.load(open(path)) == {str(n): True for n in range(1, 5)}, "switches did not write"
+    assert json.load(open(path)) == {str(n): True for n in range(2, 6)}, "switches did not write"
     deck.press(deck.deck_rects[1][0].center)
     deck.release(deck.deck_rects[1][0].center)
-    assert json.load(open(path))["2"] is False
+    assert json.load(open(path))["3"] is False
     deck.draw()
 
 

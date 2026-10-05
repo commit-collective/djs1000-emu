@@ -49,6 +49,7 @@ import audio  # noqa: E402
 import layout as L  # noqa: E402
 from link import Link  # noqa: E402
 from mods import Mods  # noqa: E402
+import prolink  # noqa: E402
 from prolink import FakeDecks  # noqa: E402
 
 TITLE = "Virtual DJS-1000"
@@ -635,12 +636,14 @@ class Deck:
             return y
         t = self.font.render("Pro DJ Link: fake CDJs", True, (225, 228, 232))
         win.blit(t, (x, y))
-        t2 = self.font.render("click to switch", True, (150, 152, 158))
+        t2 = self.font.render("players 2-5 (the unit is player 1)  ·  click to switch", True,
+                              (150, 152, 158))
         win.blit(t2, (x + t.get_width() + 14, y))
         y += 26
-        for n in range(1, 5):
-            on = self.fakedecks.on[n - 1]
-            r = pygame.Rect(x + (n - 1) * 84, y - 1, 76, 22)
+        for i in range(prolink.COUNT):
+            n = prolink.FIRST + i
+            on = self.fakedecks.on[i]
+            r = pygame.Rect(x + i * 84, y - 1, 76, 22)
             pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r, border_radius=4)
             label = self.small.render(f"{n}  " + ("ON" if on else "OFF"), True,
                                       (10, 10, 10) if on else (150, 152, 158))

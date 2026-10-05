@@ -92,7 +92,7 @@ mkdir -p "$RUN"
 F="$RUN/fakedecks.json"
 if ! pgrep -f '[f]akedecks.py --control' > /dev/null; then
     echo '{}' > "$F"
-    setsid nohup python3 '%s/tools/fakedecks.py' --control "$F" > "$RUN/fakedecks.log" 2>&1 < /dev/null &
+    setsid nohup python3 '%s/tools/fakedecks.py' --numbers 2,3,4,5 --control "$F" > "$RUN/fakedecks.log" 2>&1 < /dev/null &
     sleep 0.5
 fi
 %s
