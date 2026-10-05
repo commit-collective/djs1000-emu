@@ -81,6 +81,24 @@ D="${DJS_USB:-${DJS_HOME:-$HOME/djs}/usb}"
 """ % ("export " + self.env if self.env else "", 'wslpath -w "$D"' if WINDOWS else 'echo "$D"'))
         return out.splitlines()[-1] if not code and out else None
 
+    def fakedecks(self):
+        """Starts the fake Pro DJ Link decks' helper if it is not running
+        (tools/fakedecks.py, in the emulator's network, all decks off until the
+        deck's side panel switches them), and gives the path of the file that
+        switches them as this side can open it, or None."""
+        code, out = self.sh("""
+RUN="${DJS_HOME:-$HOME/djs}/run"
+mkdir -p "$RUN"
+F="$RUN/fakedecks.json"
+if ! pgrep -f '[f]akedecks.py --control' > /dev/null; then
+    echo '{}' > "$F"
+    setsid nohup python3 '%s/tools/fakedecks.py' --control "$F" > "$RUN/fakedecks.log" 2>&1 < /dev/null &
+    sleep 0.5
+fi
+%s
+""" % (self.repo(), 'wslpath -w "$F"' if WINDOWS else 'echo "$F"'))
+        return out.splitlines()[-1] if not code and out else None
+
     def running(self):
         return self.sh(RUNNING)[0] == 0
 
@@ -97,6 +115,7 @@ tail -n 15 "$RUN/emulator.log"; exit 1
 
     def stop(self):
         self.sh("""
+pkill -f '[f]akedecks.py --control'
 pkill -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh'
 for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
 pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot -q qemu-arm-static.*djsemu'
@@ -234,10 +253,10 @@ def main():
         return 0
     say("Deck open. The app takes about half a minute to start. Close the deck to quit.")
     try:
-        usb = emu.usb()
+        usb, decks = emu.usb(), emu.fakedecks()
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
                                 "--port", str(emu.port)] + (["--usb", usb] if usb else [])
-                               + args)
+                               + (["--fakedecks", decks] if decks else []) + args)
     except KeyboardInterrupt:
         code = 130
     if ours and not keep:
