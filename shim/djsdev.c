@@ -1366,15 +1366,149 @@ ssize_t write(int fd, const void *buf, size_t n)
 
 /* UDPRecvManager opens socket(AF_PACKET, SOCK_RAW, ETH_P_IP),
  * which needs CAP_NET_RAW; when it fails the app carries on with -1 and
- * crashes. Give it a socket that never receives anything, and
- * accept bind/setsockopt/ioctl on it. */
+ * crashes. Give it a socket instead, and accept bind/setsockopt/
+ * ioctl on it. What arrives on it is Pro DJ Link, as the app sees it on a
+ * unit: the broadcasts on UDP 50000 (a deck announcing itself), 50001
+ * (beats) and 50002 (a deck's status), which this listens to on the host
+ * side with ordinary sockets (sharing the ports) and hands to every such
+ * socket as the Ethernet frame a raw packet socket would have given it
+ * (without its header for a datagram socket; zero MAC, the sender's IP and port, the datagram as it came). So decks on
+ * the host's network, or on its loopback (a program sending fake ones: the
+ * djs1000-mods project's tests/fakedecks.py), are seen by the app, and by
+ * anything else in it that reads the network. Only receiving: the app does
+ * not announce itself. */
 #define AF_PACKET 17
 static const char PACKET_NAME[] = "AF_PACKET socket";
+#define PACKET_FDS 8
+static volatile int packet_fd[PACKET_FDS];      /* our end of each stand-in, or 0 */
+static volatile int packet_cooked[PACKET_FDS];  /* SOCK_DGRAM: no link header */
+static int link_started;
+
+extern ssize_t recvfrom(int fd, void *buf, size_t n, int flags, void *addr, unsigned *len);
+
+static unsigned ip_checksum(const unsigned char *h, int n)
+{
+    unsigned sum = 0;
+    int i;
+
+    for (i = 0; i + 1 < n; i += 2) {
+        sum += h[i] << 8 | h[i + 1];
+    }
+    while (sum >> 16) {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    return ~sum & 0xffff;
+}
+
+/* A datagram as an Ethernet frame: broadcast to a zero MAC, IPv4 to
+ * 255.255.255.255, UDP without a checksum. */
+static int link_frame(unsigned char *out, int port, const unsigned char *from_ip,
+                      const unsigned char *from_port, const unsigned char *data, int n)
+{
+    int ip_len = 20 + 8 + n, i;
+    unsigned sum;
+
+    for (i = 0; i < 6; i++) {
+        out[i] = 0xff;
+        out[6 + i] = 0;
+    }
+    out[11] = 0x01;
+    out[12] = 0x08;
+    out[13] = 0x00;
+    out[14] = 0x45;
+    out[15] = 0;
+    out[16] = ip_len >> 8;
+    out[17] = ip_len;
+    out[18] = out[19] = out[20] = out[21] = 0;
+    out[22] = 64;
+    out[23] = 17;
+    out[24] = out[25] = 0;
+    for (i = 0; i < 4; i++) {
+        out[26 + i] = from_ip[i];
+        out[30 + i] = 0xff;
+    }
+    sum = ip_checksum(out + 14, 20);
+    out[24] = sum >> 8;
+    out[25] = sum;
+    out[34] = from_port[0];
+    out[35] = from_port[1];
+    out[36] = port >> 8;
+    out[37] = port;
+    out[38] = (8 + n) >> 8;
+    out[39] = 8 + n;
+    out[40] = out[41] = 0;
+    for (i = 0; i < n; i++) {
+        out[42 + i] = data[i];
+    }
+    return 14 + ip_len;
+}
+
+static void *link_listener(void *arg)
+{
+    int port = (int)(long)arg, one = 1, fd, i;
+    unsigned char sa[16], buf[1400], frame[1500];
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return 0;
+    }
+    setsockopt(fd, 1 /* SOL_SOCKET */, 2 /* SO_REUSEADDR */, &one, sizeof(one));
+    setsockopt(fd, 1, 15 /* SO_REUSEPORT */, &one, sizeof(one));
+    for (i = 0; i < 16; i++) {
+        sa[i] = 0;
+    }
+    sa[0] = AF_INET;
+    sa[2] = port >> 8;
+    sa[3] = port;
+    if (bind(fd, sa, sizeof(sa)) != 0) {
+        fprintf(stderr, "[djsdev] Pro DJ Link: cannot listen on UDP %d\n", port);
+        return 0;
+    }
+    fprintf(stderr, "[djsdev] Pro DJ Link: listening on UDP %d\n", port);
+    for (;;) {
+        unsigned alen = sizeof(sa);
+        int n = recvfrom(fd, buf, sizeof(buf), 0, sa, &alen), len;
+        static int first[3];
+
+        if (n <= 0) {
+            usleep(100000);
+            continue;
+        }
+        if (!first[port - 50000]++) {
+            fprintf(stderr, "[djsdev] Pro DJ Link: first datagram on UDP %d, %d bytes\n", port, n);
+        }
+        len = link_frame(frame, port, sa + 4, sa + 2, buf, n);
+        for (i = 0; i < PACKET_FDS; i++) {
+            if (packet_fd[i]) {
+                if (packet_cooked[i]) {
+                    send(packet_fd[i], frame + 14, len - 14, MSG_DONTWAIT);
+                } else {
+                    send(packet_fd[i], frame, len, MSG_DONTWAIT);
+                }
+            }
+        }
+    }
+}
+
+static void start_link(void)
+{
+    static const int ports[] = { 50000, 50001, 50002 };
+    pthread_t t;
+    int i;
+
+    if (link_started) {
+        return;
+    }
+    link_started = 1;
+    for (i = 0; i < 3; i++) {
+        pthread_create(&t, 0, link_listener, (void *)(long)ports[i]);
+    }
+}
 
 int socket(int domain, int type, int proto)
 {
     int (*real)(int, int, int) = dlsym(RTLD_NEXT, "socket");
-    int sv[2];
+    int sv[2], i;
 
     if (domain != AF_PACKET) {
         return real(domain, type, proto);
@@ -1388,6 +1522,14 @@ int socket(int domain, int type, int proto)
         fake_spi[sv[0]] = 0;
     }
     fprintf(stderr, "[djsdev] socket(AF_PACKET, %d, 0x%x) = %d (stand-in)\n", type, proto, sv[0]);
+    for (i = 0; i < PACKET_FDS; i++) {
+        if (!packet_fd[i]) {
+            packet_cooked[i] = type == SOCK_DGRAM;
+            packet_fd[i] = sv[1];
+            break;
+        }
+    }
+    start_link();
     return sv[0];
 }
 
@@ -1764,6 +1906,15 @@ int close(int fd)
         }
         fake_name[fd] = 0;
         fake_spi[fd] = 0;
+        {
+            int p;
+
+            for (p = 0; p < PACKET_FDS; p++) {
+                if (fake_peer[fd] > 0 && packet_fd[p] == fake_peer[fd]) {
+                    packet_fd[p] = 0;
+                }
+            }
+        }
         if (fake_peer[fd] >= 0) {
             real(fake_peer[fd]);
         }
