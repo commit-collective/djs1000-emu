@@ -664,18 +664,18 @@ class Deck:
                 self.deck_rects.append((r, n, what))
                 at += width + 6
             if state["on"]:
-                bpm = self.small.render(f"{state['bpm']:.1f} BPM", True, (150, 152, 158))
-                win.blit(bpm, (at + 6, y + 2))
                 # The beat in the bar, as the unit's own four squares: the first
-                # red, the others blue, lit one at a time while the deck plays.
+                # red, the others blue, lit one at a time while the deck plays;
+                # right after MASTER, then the tempo.
                 beat = self.fakedecks.beat(n)
-                right = self.dock.right - 8
                 for k in range(4):
-                    r = pygame.Rect(right - (4 - k) * 24, y, 20, 20)
+                    r = pygame.Rect(at + k * 24, y, 20, 20)
                     lit = beat == k + 1
                     colour = ((235, 40, 40) if k == 0 else (60, 130, 235)) if lit else (30, 31, 35)
                     pygame.draw.rect(win, colour, r, border_radius=3)
                     pygame.draw.rect(win, (70, 72, 78), r, 1, border_radius=3)
+                bpm = self.small.render(f"{state['bpm']:.1f} BPM", True, (150, 152, 158))
+                win.blit(bpm, (at + 4 * 24 + 6, y + 2))
             y += 28
         return y + 8
 
