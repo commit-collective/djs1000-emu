@@ -29,7 +29,8 @@ WHAT = ("on", "play", "sync", "master")
 class FakeDecks:
     def __init__(self, path):
         self.path = path
-        self.state = {n: {"on": False, "play": False, "sync": False, "master": False, "bpm": 0.0}
+        self.state = {n: {"on": False, "play": False, "sync": False, "master": False, "bpm": 0.0,
+                          "phase": None}
                       for n in range(FIRST, FIRST + COUNT)}
         self.clicks = {n: {w: 0 for w in WHAT} for n in range(FIRST, FIRST + COUNT)}
         self._seen = None
@@ -78,8 +79,19 @@ class FakeDecks:
         for n in self.state:
             mine = state.get(str(n))
             if isinstance(mine, dict):
-                self.state[n].update({k: mine[k] for k in ("on", "play", "sync", "master", "bpm")
-                                      if k in mine})
+                self.state[n].update({k: mine[k] for k in ("on", "play", "sync", "master", "bpm",
+                                                           "phase") if k in mine})
+
+    def beat(self, number, now=None):
+        """The beat the deck is on in its bar, 1-4, or 0 if it does not play.
+        The helper says where the beat was and when (its clock and this one
+        are the same machine's) and the tempo; this counts on from there."""
+        phase = self.state[number].get("phase")
+        if not phase:
+            return 0
+        t, pos, bpm = phase
+        pos += ((time.time() if now is None else now) - t) * bpm / 60.0
+        return int(pos) % 4 + 1
 
     def click(self, number, what):
         """A click on switch `what` of deck `number`. False if the file could

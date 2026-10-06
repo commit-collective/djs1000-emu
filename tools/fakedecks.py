@@ -179,10 +179,27 @@ class World:
     def master_bpm(self):
         deck = self.master_deck()
         if deck:
-            return deck.base_bpm
+            return deck.tempo()
         if self.dj["master"] and self.dj["bpm"]:
             return self.dj["bpm"]
         return None
+
+    def settle(self, change):
+        """Runs `change`, which alters what the decks are (who is the master,
+        who syncs, who plays), keeping every deck's place in its bar through
+        the change, and then putting the synced ones on the master's beat."""
+        with LOCK:
+            now = time.time()
+            for deck in self.decks.values():
+                deck.reanchor(now)
+            change()
+            now = time.time()
+            master = self.master_deck()
+            for deck in self.decks.values():
+                if deck.enabled and deck.playing and deck.sync and master and master is not deck \
+                        and master.playing:
+                    deck.anchor_t = now
+                    deck.anchor_pos = master.position(now)
 
     def save(self):
         """What the decks are, for the deck window to show."""
@@ -190,7 +207,11 @@ class World:
             return
         with LOCK:
             state = {str(n): {"on": d.enabled, "play": d.playing, "sync": d.sync,
-                              "master": d.master and d.enabled, "bpm": round(d.tempo(), 2)}
+                              "master": d.master and d.enabled, "bpm": round(d.tempo(), 2),
+                              # Where the beat was when: t, beats into the bar, tempo; the
+                              # deck window counts on from there, for its beat squares.
+                              "phase": [d.anchor_t, d.anchor_pos, round(d.tempo(), 2)]
+                              if d.enabled and d.playing else None}
                      for n, d in self.decks.items()}
         text = json.dumps(state, sort_keys=True)
         if text != getattr(self, "_saved", None):
@@ -260,8 +281,24 @@ class Deck:
         self.handing_to = 0xFF
         self.sync_number = 0
         self.counter = 0
-        self.beat_in_bar = 1
+        self.anchor_t = time.time()         # where it was in its bar at this time ...
+        self.anchor_pos = 0.0               # ... in beats (0.0 is the first beat of the bar)
         self.name = device_name(number)
+
+    def position(self, now):
+        """Beats since the bar line, counting on from the anchor at the tempo
+        it plays at (a stopped deck stays where it stopped)."""
+        if not self.playing:
+            return self.anchor_pos
+        return self.anchor_pos + (now - self.anchor_t) * self.tempo() / 60.0
+
+    def reanchor(self, now):
+        self.anchor_pos = self.position(now)
+        self.anchor_t = now
+
+    @property
+    def beat_in_bar(self):
+        return int(self.position(time.time())) % 4 + 1
 
     # -- what the deck is --
     def tempo(self):
@@ -309,7 +346,8 @@ class Deck:
     def beat(self):
         """The beat packet at the beginning of a beat."""
         period = 60000.0 / self.tempo()
-        left = 5 - self.beat_in_bar                      # beats to the next bar line
+        beat = self.beat_in_bar
+        left = 5 - beat                                  # beats to the next bar line
         p = bytearray(0x60)
         p[0:0x1F] = header(0x28, self.name)
         p[0x1F], p[0x21], p[0x23] = 0x01, self.number, 0x3C
@@ -317,7 +355,7 @@ class Deck:
             p[0x24 + 4 * i:0x28 + 4 * i] = struct.pack(">I", int(period * beats))
         p[0x55:0x58] = struct.pack(">I", PITCH_NORMAL)[1:]
         p[0x5A:0x5C] = struct.pack(">H", int(round(self.tempo() * 100)))
-        p[0x5C] = self.beat_in_bar
+        p[0x5C] = beat
         p[0x5F] = self.number
         return bytes(p)
 
@@ -348,22 +386,23 @@ class Deck:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         s.bind(("127.0.0.%d" % self.number, 0))
-        due = time.time()
+        sent = None                         # the beat (counted from the anchor) last sent
         while True:
             if not (self.enabled and self.playing):
+                sent = None
                 time.sleep(0.05)
-                due = time.time()
-                continue
-            wait = due - time.time()
-            if wait > 0:
-                time.sleep(min(wait, 0.05))
                 continue
             with LOCK:
-                packet = self.beat()
-                period = 60.0 / self.tempo()
-            s.sendto(packet, (BROADCAST, BEAT_PORT))
-            self.beat_in_bar = self.beat_in_bar % 4 + 1
-            due += period
+                now = time.time()
+                pos = self.position(now)
+                tempo = self.tempo()
+                beat = int(pos)
+                due = (beat + 1 - pos) * 60.0 / tempo
+                packet = self.beat() if sent != beat else None
+            if packet:
+                s.sendto(packet, (BROADCAST, BEAT_PORT))
+                sent = beat
+            time.sleep(min(max(due, 0.002), 0.02))
 
     def control(self):
         """Master hand-off requests and sync commands, sent to this deck."""
@@ -403,40 +442,48 @@ class Deck:
 
     # -- what clicks and commands do --
     def set_sync(self, on):
-        with LOCK:
+        def change():
             self.sync = on
-        log("deck %d sync %s" % (self.number, "on" if on else "off"))
+        self.world.settle(change)
+        log("deck %d sync %s: %.1f BPM" % (self.number, "on" if on else "off", self.tempo()))
         self.world.save()
 
     def set_play(self, on):
-        with LOCK:
+        def change():
             self.playing = on
+            if on:                                  # from the first beat of a bar
+                self.anchor_t = time.time()
+                self.anchor_pos = 0.0
+        self.world.settle(change)
         log("deck %d %s" % (self.number, "plays" if on else "stops"))
         self.world.save()
 
     def set_enabled(self, on):
-        with LOCK:
+        def change():
             self.enabled = on
             if not on:
                 self.master = False
                 self.handing_to = 0xFF
+        self.world.settle(change)
         log("deck %d %s" % (self.number, "on" if on else "off"))
         self.world.save()
 
     def finish_handoff(self, to=None):
         """The deck stops being the master (the new one has said it is, or
         the time is up)."""
-        with LOCK:
+        def change():
             if self.master and self.handing_to != 0xFF and (to is None or to == self.handing_to):
                 self.master = False
                 self.handing_to = 0xFF
                 log("deck %d is no longer the master" % self.number)
+        self.world.settle(change)
         self.world.save()
 
     def set_master(self, on):
         """Takes the master role (from whoever has it), or lets go of it."""
         world = self.world
-        with LOCK:
+
+        def change():
             if not on:
                 self.master = False
                 self.handing_to = 0xFF
@@ -456,6 +503,7 @@ class Deck:
                     s.sendto(bytes(request), (dj["ip"], BEAT_PORT))
                     s.close()
                     log("deck %d asks the unit under test to yield the master role" % self.number)
+        world.settle(change)
         log("deck %d is %s the master" % (self.number, "now" if on else "no longer"))
         world.save()
 
