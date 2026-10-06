@@ -1498,6 +1498,19 @@ static void *link_listener(void *arg)
         if (!first[port - 50000]++) {
             fprintf(stderr, "[djsdev] Pro DJ Link: first datagram on UDP %d, %d bytes\n", port, n);
         }
+        /* The decks are on 127.0.0.n; what comes from any other address is the
+         * unit's own broadcast looping back, which a packet socket on a real
+         * network would not be given as an incoming frame (the unit would be
+         * a player of its own network). */
+        if (sa[4] != 127) {
+            static int dropped[3];
+
+            if (!dropped[port - 50000]++) {
+                fprintf(stderr, "[djsdev] Pro DJ Link: not passing the unit's own datagrams (UDP %d, from %d.%d.%d.%d)\n",
+                        port,sa[4], sa[5], sa[6], sa[7]);
+            }
+            continue;
+        }
         len = link_frame(frame, port, sa + 4, sa + 2, buf, n);
         for (i = 0; i < PACKET_FDS; i++) {
             if (packet_fd[i]) {
@@ -1623,6 +1636,27 @@ ssize_t recvfrom(int fd, void *buf, size_t n, int flags, void *addr, unsigned *a
         }
     }
     return r;
+}
+
+/* What the app sends on the Pro DJ Link ports, once for each kind. */
+ssize_t sendto(int fd, const void *buf, size_t n, int flags, const void *addr, unsigned alen)
+{
+    ssize_t (*real)(int, const void *, size_t, int, const void *, unsigned) = dlsym(RTLD_NEXT, "sendto");
+
+    if (addr && alen >= 8 && n > 0x0a && ((const unsigned char *)addr)[0] == AF_INET) {
+        const unsigned char *a = addr;
+        int port = a[2] << 8 | a[3], kind = ((const unsigned char *)buf)[0x0a];
+
+        if (port >= 50000 && port <= 50002) {
+            static unsigned char sent[3][256];
+
+            if (!sent[port - 50000][kind]++) {
+                fprintf(stderr, "[djsdev] the app sends to %d.%d.%d.%d:%d: type 0x%02x, %d bytes\n",
+                        a[4], a[5], a[6], a[7], port, kind, (int)n);
+            }
+        }
+    }
+    return real(fd, buf, n, flags, addr, alen);
 }
 
 int setsockopt(int fd, int level, int name, const void *val, unsigned len)

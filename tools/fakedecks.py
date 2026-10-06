@@ -237,6 +237,15 @@ class World:
             s.bind(("0.0.0.0", port))
             s.settimeout(0.5)
             socks.append((s, port))
+        # What the unit sends to a deck itself (its status, to port 50002 of
+        # the deck's address) goes to the socket bound to that address, not to
+        # the ones bound to any address: a socket for each deck.
+        for number in self.decks:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.%d" % number, UPDATE_PORT))
+            s.settimeout(0.5)
+            socks.append((s, UPDATE_PORT))
         import select
         while True:
             ready, _, _ = select.select([s for s, _ in socks], [], [], 0.5)
@@ -254,6 +263,11 @@ class World:
                             self.dj["ip"] = ".".join(str(b) for b in data[0x2C:0x30])
                         elif port == UPDATE_PORT and data[0x0A] == 0x0A and len(data) > 0x93:
                             master = bool(data[0x89] & 0x20)
+                            now = (data[0x89], data[0x9E], data[0x9F])
+                            if now != self.dj.get("flags"):
+                                self.dj["flags"] = now
+                                log("the unit's status: flags %#04x, master meaningful %d, hand-off to %#04x"
+                                    % now)
                             if master != self.dj["master"]:
                                 log("the unit under test %s the tempo master"
                                     % ("is now" if master else "is no longer"))
@@ -263,6 +277,9 @@ class World:
                                 for deck in self.decks.values():
                                     if deck.master and deck.handing_to == data[0x21]:
                                         deck.finish_handoff()
+                            for deck in self.decks.values():
+                                if deck.pending and data[0x9F] == deck.number:
+                                    threading.Thread(target=deck.take_after_handoff).start()
                     self.save()
 
 
@@ -279,6 +296,7 @@ class Deck:
         self.sync = False
         self.master = False
         self.handing_to = 0xFF
+        self.pending = False                # has asked the unit for the master role
         self.sync_number = 0
         self.counter = 0
         self.anchor_t = time.time()         # where it was in its bar at this time ...
@@ -325,8 +343,12 @@ class Deck:
         p[0:10] = MAGIC
         p[0x0A] = 0x0A
         p[0x0B:0x0B + len(self.name)] = self.name
-        p[0x21] = self.number
+        # The header a CDJ's status has after its name: 01, the subtype (03),
+        # the player, and the number of bytes that follow (lenr).
+        p[0x1F], p[0x20], p[0x21] = 0x01, 0x03, self.number
+        p[0x22:0x24] = struct.pack(">H", len(p) - 0x24)
         p[0x24] = self.number
+        p[0x27] = 1 if self.playing else 0               # activity
         p[0x28], p[0x29], p[0x2A] = self.source, self.slot, 1
         p[0x2C:0x30] = struct.pack(">I", self.rbid)
         p[0x7B] = 3 if self.playing else 5               # playing / paused
@@ -334,13 +356,21 @@ class Deck:
         p[0x84:0x88] = struct.pack(">I", self.sync_number)
         p[0x89] = self.flags()
         p[0x8B] = 0x7A if self.playing else 0x7E
-        p[0x8D:0x90] = struct.pack(">I", PITCH_NORMAL)[1:]
+        pitch = struct.pack(">I", PITCH_NORMAL)
+        for at in (0x8C, 0x98, 0xC0, 0xC4):              # the four copies of the pitch
+            p[at:at + 4] = pitch
+        p[0x90:0x92] = struct.pack(">H", 0x8000)         # a rekordbox track: its tempo counts
         p[0x92:0x94] = struct.pack(">H", int(round(self.tempo() * 100)))
+        p[0x94:0x98] = bytes((0x7F, 0xFF, 0xFF, 0xFF))   # no slip play
+        p[0x9D] = 0x0D if self.playing else 0x01         # forward, CDJ jog / paused
         p[0x9E] = 1 if self.master else 0                # "master meaningful"
         p[0x9F] = self.handing_to
+        p[0xA0:0xA4] = struct.pack(">I", int(self.position(time.time())) + 1)   # the beat in the track
+        p[0xA4:0xA6] = bytes((0x01, 0xFF))               # no cue point ahead
         p[0xA6] = self.beat_in_bar
         self.counter += 1
         p[0xC8:0xCC] = struct.pack(">I", self.counter)
+        p[0xCC] = 0x0F                                   # a nexus
         return bytes(p)
 
     def beat(self):
@@ -413,9 +443,12 @@ class Deck:
         out.bind(("127.0.0.%d" % self.number, 0))
         while True:
             data, addr = s.recvfrom(2048)
-            if not self.enabled or len(data) < 0x2C or data[:10] != MAGIC:
+            if not self.enabled or len(data) < 0x25 or data[:10] != MAGIC:
                 continue
             kind, sender = data[0x0A], data[0x21]
+            if kind not in (0x26, 0x2A):
+                log("deck %d: packet type %#04x from %d, %d bytes: %s"
+                    % (self.number, kind, sender, len(data), data[0x1F:].hex()))
             if kind == 0x26:                                     # master hand-off request
                 with LOCK:
                     if not self.master:
@@ -488,24 +521,50 @@ class Deck:
                 self.master = False
                 self.handing_to = 0xFF
             else:
-                for other in world.decks.values():
-                    if other is not self and other.enabled and other.master:
-                        other.handing_to = self.number
-                        threading.Timer(1.0, other.finish_handoff, args=(self.number,)).start()
-                self.master = True
-                self.sync_number += 1
                 dj = dict(world.dj)
                 if dj["master"] and dj["ip"]:
+                    # The unit has the role: ask it (to port 50001), and take the
+                    # role when its status names this deck as the one to get it
+                    # (Mh): see take_after_handoff().
                     request = header(0x26, self.name) + bytes([
                         0x01, 0x00, self.number, 0x00, 0x04, 0x00, 0x00, 0x00, self.number])
                     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     s.bind(("127.0.0.%d" % self.number, 0))
                     s.sendto(bytes(request), (dj["ip"], BEAT_PORT))
                     s.close()
+                    self.pending = True
                     log("deck %d asks the unit under test to yield the master role" % self.number)
+                    threading.Timer(6.0, self.give_up).start()
+                    return
+                for other in world.decks.values():
+                    if other is not self and other.enabled and other.master:
+                        other.handing_to = self.number
+                        threading.Timer(1.0, other.finish_handoff, args=(self.number,)).start()
+                self.master = True
+                self.sync_number += 1
         world.settle(change)
+        if on and self.pending:
+            return
         log("deck %d is %s the master" % (self.number, "now" if on else "no longer"))
         world.save()
+
+    def take_after_handoff(self):
+        """The unit's status names this deck as the next master: it is."""
+        if not self.pending:
+            return
+
+        def change():
+            self.pending = False
+            self.master = True
+            self.sync_number += 1
+        self.world.settle(change)
+        log("deck %d is now the master (the unit handed it over)" % self.number)
+        self.world.save()
+
+    def give_up(self):
+        if self.pending:
+            self.pending = False
+            log("deck %d: the unit under test did not hand over the master role" % self.number)
 
     # -- TCP --
     def serve_port(self):
