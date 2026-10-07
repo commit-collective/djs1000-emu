@@ -263,11 +263,12 @@ class World:
                             self.dj["ip"] = ".".join(str(b) for b in data[0x2C:0x30])
                         elif port == UPDATE_PORT and data[0x0A] == 0x0A and len(data) > 0x93:
                             master = bool(data[0x89] & 0x20)
-                            now = (data[0x89], data[0x9E], data[0x9F])
+                            self.dj["syncn"] = struct.unpack(">I", data[0x84:0x88])[0]
+                            now = (data[0x89], data[0x9E], data[0x9F], self.dj["syncn"])
                             if now != self.dj.get("flags"):
                                 self.dj["flags"] = now
-                                log("the unit's status: flags %#04x, master meaningful %d, hand-off to %#04x"
-                                    % now)
+                                log("the unit's status: flags %#04x, master meaningful %d, hand-off to %#04x, "
+                                    "sync counter %d" % now)
                             if master != self.dj["master"]:
                                 log("the unit under test %s the tempo master"
                                     % ("is now" if master else "is no longer"))
@@ -533,14 +534,16 @@ class Deck:
                     s.sendto(bytes(request), (dj["ip"], BEAT_PORT))
                     s.close()
                     self.pending = True
+                    self.sync = True        # as a CDJ's MASTER does; the unit hands over to a synced deck
                     log("deck %d asks the unit under test to yield the master role" % self.number)
-                    threading.Timer(6.0, self.give_up).start()
+                    threading.Timer(3.0, self.give_up).start()
                     return
                 for other in world.decks.values():
                     if other is not self and other.enabled and other.master:
                         other.handing_to = self.number
                         threading.Timer(1.0, other.finish_handoff, args=(self.number,)).start()
                 self.master = True
+                self.sync = True            # a CDJ that is the master is in sync mode too
                 self.sync_number += 1
         world.settle(change)
         if on and self.pending:
@@ -556,15 +559,19 @@ class Deck:
         def change():
             self.pending = False
             self.master = True
-            self.sync_number += 1
+            self.sync = True
+            self.sync_number = max(self.sync_number, self.world.dj.get("syncn", 0)) + 1
         self.world.settle(change)
         log("deck %d is now the master (the unit handed it over)" % self.number)
         self.world.save()
 
     def give_up(self):
+        """The unit did not hand the role over in time (it plays no part, or
+        is not syncing a playing deck): the deck takes it anyway, so the
+        master of the fake decks can always be changed."""
         if self.pending:
-            self.pending = False
-            log("deck %d: the unit under test did not hand over the master role" % self.number)
+            log("deck %d: the unit under test did not hand over the master role; taking it" % self.number)
+            self.take_after_handoff()
 
     # -- TCP --
     def serve_port(self):

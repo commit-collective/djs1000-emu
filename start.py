@@ -90,17 +90,31 @@ D="${DJS_USB:-${DJS_HOME:-$HOME/djs}/usb}"
 RUN="${DJS_HOME:-$HOME/djs}/run"
 mkdir -p "$RUN"
 F="$RUN/fakedecks.json"
+# A helper older than its script (it was changed since) is a stale one: replaced.
+PID=$(pgrep -f '[f]akedecks.py .*--control' | head -1)
+if [ -n "$PID" ] && [ '%s/tools/fakedecks.py' -nt "/proc/$PID" ]; then
+    pkill -f '[f]akedecks.py .*--control'
+    sleep 0.5
+fi
 if ! pgrep -f '[f]akedecks.py .*--control' > /dev/null; then
     echo '{}' > "$F"
     setsid nohup python3 '%s/tools/fakedecks.py' --numbers 2,3,4 --control "$F" > "$RUN/fakedecks.log" 2>&1 < /dev/null &
     sleep 0.5
 fi
 %s
-""" % (self.repo(), 'wslpath -w "$F"' if WINDOWS else 'echo "$F"'))
+""" % (self.repo(), self.repo(), 'wslpath -w "$F"' if WINDOWS else 'echo "$F"'))
         return out.splitlines()[-1] if not code and out else None
 
     def running(self):
         return self.sh(RUNNING)[0] == 0
+
+    def stale(self):
+        """Whether the running emulator started before the shim's source (or
+        the script that builds it) last changed: it still has the old shim."""
+        return self.sh("""
+PID=$(pgrep -f 'qemu-arm-static.*EP113_Main_R' | head -1)
+[ -n "$PID" ] && { [ '%s/shim/djsdev.c' -nt "/proc/$PID" ] || [ '%s/scripts/run.sh' -nt "/proc/$PID" ]; }
+""" % (self.repo(), self.repo()))[0] == 0
 
     def start(self):
         code, out = self.sh("""
@@ -233,6 +247,10 @@ def main():
     ours = not emu.running()
     if not ours and not emu.alive():
         say("An emulator is running but not answering. Restarting it.")
+        emu.stop()
+        ours = True
+    elif not ours and emu.stale():
+        say("The running emulator is older than its shim (shim/djsdev.c changed). Restarting it.")
         emu.stop()
         ours = True
     if ours:
