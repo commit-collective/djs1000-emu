@@ -43,35 +43,6 @@ class FakePlayer:
         pass
 
 
-def check_fake_decks(link):
-    """The side panel's switches of the fake Pro DJ Link decks write the file
-    the helper reads, and show what is in it."""
-    import json
-    import tempfile
-
-    import prolink
-
-    path = os.path.join(tempfile.mkdtemp(), "fakedecks.json")
-    deck = virtual_djs.Deck(link, (1627, 1060), (FakePlayer(), None), None, [0],
-                            decks=prolink.FakeDecks(path))
-    deck.pump()
-    deck.draw()
-    assert len(deck.deck_rects) == 4 * prolink.COUNT, "no switches for the fake decks"
-    for rect, number, what in deck.deck_rects:
-        pos = rect.center
-        assert deck.find(pos) == ("deck", number, what)
-        deck.press(pos)
-        deck.release(pos)
-    clicks = json.load(open(path))
-    assert clicks == {str(n): {w: 1 for w in prolink.WHAT}
-                      for n in range(prolink.FIRST, prolink.FIRST + prolink.COUNT)},         "switches did not write"
-    rect, number, what = deck.deck_rects[5]
-    deck.press(rect.center)
-    deck.release(rect.center)
-    assert json.load(open(path))[str(number)][what] == 2
-    deck.draw()
-
-
 def main():
     pygame.init()
     link = FakeLink()
@@ -115,7 +86,6 @@ def main():
         deck.draw()
         deck.up_at = None
         deck.draw()
-    check_fake_decks(link)
     print(len(link.sent), "commands sent; ok")
 
 

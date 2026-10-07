@@ -81,29 +81,39 @@ D="${DJS_USB:-${DJS_HOME:-$HOME/djs}/usb}"
 """ % ("export " + self.env if self.env else "", 'wslpath -w "$D"' if WINDOWS else 'echo "$D"'))
         return out.splitlines()[-1] if not code and out else None
 
-    def fakedecks(self):
-        """Starts the fake Pro DJ Link decks' helper if it is not running
-        (tools/fakedecks.py, in the emulator's network, all decks off until the
-        deck's side panel switches them), and gives the path of the file that
-        switches them as this side can open it, or None."""
+    def deckbench(self):
+        """Starts deckbench (Pro DJ Link decks: its repo is $DECKBENCH, else
+        ../deckbench beside this one) in the emulator's network, if it is not
+        running or is older than its source, and gives the address of its page;
+        None if there is no deckbench. The decks are off until the page
+        switches them on."""
+        here = os.environ.get("DECKBENCH") or os.path.join(os.path.dirname(REPO), "deckbench")
+        if not os.path.isfile(os.path.join(here, "deckbench", "cli.py")):
+            return None
+        if WINDOWS:
+            code, out = self.sh("wslpath -a '%s'" % here.replace("\\", "/"))
+            if code or not out.startswith("/"):
+                return None
+            there = out.splitlines()[-1]
+        else:
+            there = here
         code, out = self.sh("""
 RUN="${DJS_HOME:-$HOME/djs}/run"
 mkdir -p "$RUN"
-F="$RUN/fakedecks.json"
-# A helper older than its script (it was changed since) is a stale one: replaced.
-PID=$(pgrep -f '[f]akedecks.py .*--control' | head -1)
-if [ -n "$PID" ] && [ '%s/tools/fakedecks.py' -nt "/proc/$PID" ]; then
-    pkill -f '[f]akedecks.py .*--control'
+B='%s'
+# A bench older than its source (it was changed since) is a stale one: replaced.
+PID=$(pgrep -f '[d]eckbench --numbers' | head -1)
+if [ -n "$PID" ] && [ -n "$(find "$B/deckbench" -name '*.py' -newer "/proc/$PID" | head -1)" ]; then
+    pkill -f '[d]eckbench --numbers'
     sleep 0.5
 fi
-if ! pgrep -f '[f]akedecks.py .*--control' > /dev/null; then
-    echo '{}' > "$F"
-    setsid nohup python3 '%s/tools/fakedecks.py' --numbers 2,3,4 --control "$F" > "$RUN/fakedecks.log" 2>&1 < /dev/null &
-    sleep 0.5
+if ! pgrep -f '[d]eckbench --numbers' > /dev/null; then
+    cd "$B" && setsid nohup python3 -m deckbench --numbers 2,3,4 > "$RUN/deckbench.log" 2>&1 < /dev/null &
+    sleep 1
 fi
-%s
-""" % (self.repo(), self.repo(), 'wslpath -w "$F"' if WINDOWS else 'echo "$F"'))
-        return out.splitlines()[-1] if not code and out else None
+pgrep -f '[d]eckbench --numbers' > /dev/null && echo http://localhost:8750/
+""" % there)
+        return out.splitlines()[-1] if not code and out.startswith("http") else None
 
     def running(self):
         return self.sh(RUNNING)[0] == 0
@@ -129,7 +139,7 @@ tail -n 15 "$RUN/emulator.log"; exit 1
 
     def stop(self):
         self.sh("""
-pkill -f '[f]akedecks.py .*--control'
+pkill -f '[d]eckbench --numbers'
 pkill -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh'
 for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
 pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot -q qemu-arm-static.*djsemu'
@@ -271,10 +281,11 @@ def main():
         return 0
     say("Deck open. The app takes about half a minute to start. Close the deck to quit.")
     try:
-        usb, decks = emu.usb(), emu.fakedecks()
+        usb, bench = emu.usb(), emu.deckbench()
+        if bench:
+            say("Pro DJ Link decks (deckbench): %s" % bench)
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
-                                "--port", str(emu.port)] + (["--usb", usb] if usb else [])
-                               + (["--fakedecks", decks] if decks else []) + args)
+                                "--port", str(emu.port)] + (["--usb", usb] if usb else []) + args)
     except KeyboardInterrupt:
         code = 130
     if ours and not keep:

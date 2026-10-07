@@ -49,8 +49,6 @@ import audio  # noqa: E402
 import layout as L  # noqa: E402
 from link import Link  # noqa: E402
 from mods import Mods  # noqa: E402
-import prolink  # noqa: E402
-from prolink import FakeDecks  # noqa: E402
 
 TITLE = "Virtual DJS-1000"
 BG = (5, 5, 5)
@@ -100,13 +98,10 @@ def surface(img):
 
 
 class Deck:
-    def __init__(self, link, size, players=(None, None), recorder=None, listen=None, mods=None,
-                 decks=None):
+    def __init__(self, link, size, players=(None, None), recorder=None, listen=None, mods=None):
         self.link = link
         self.mods = mods or Mods(None)   # what a patch on the USB drive carries
         self.mod_rects = []              # (where, name): the switches drawn in the side panel
-        self.fakedecks = decks or FakeDecks(None)   # the fake Pro DJ Link decks
-        self.deck_rects = []             # (where, number): their switches
         self.master, self.phones = players
         self.recorder = recorder
         self.show_dock = True            # the large screen beside the face (F10)
@@ -230,9 +225,6 @@ class Deck:
         for r, name in self.mod_rects:
             if r.collidepoint(pos):
                 return ("mod", name)
-        for r, number, what in self.deck_rects:
-            if r.collidepoint(pos):
-                return ("deck", number, what)
         if pos[0] >= self.face_w:
             return None
         x, y = self.to_units(pos)
@@ -357,9 +349,6 @@ class Deck:
             return
         if what[0] == "mod":
             self.mods.toggle(what[1])
-            return
-        if what[0] == "deck":
-            self.fakedecks.click(what[1], what[2])
             return
         self.down = what
         self.down_at = pygame.time.get_ticks()
@@ -584,10 +573,8 @@ class Deck:
             win.blit(pygame.transform.smoothscale(self.screen, self.dock.size), self.dock)
         pygame.draw.rect(win, (46, 47, 51), self.dock.inflate(2, 2), 1)
         self.mod_rects = []
-        self.deck_rects = []
         if not self.show_lamps:
             y = self.draw_mods(self.dock.left, self.dock.bottom + 22)
-            y = self.draw_decks(self.dock.left, y)
             self.draw_help(self.dock.left, y)
             return
         held = self.down[1] if self.down and self.down[0] == "bit" else None
@@ -635,49 +622,6 @@ class Deck:
             self.mod_rects.append((pygame.Rect(x, y - 3, 52 + t.get_width(), 24), name))
             y += 26
         return y + 10
-
-    def draw_decks(self, x, y):
-        """The switches of the fake Pro DJ Link decks, one row."""
-        win = self.win
-        if not self.fakedecks.available():
-            return y
-        t = self.font.render("Pro DJ Link: fake CDJs", True, (225, 228, 232))
-        win.blit(t, (x, y))
-        t2 = self.font.render("players 2-4 (the unit is player 1)  ·  click to switch", True,
-                              (150, 152, 158))
-        win.blit(t2, (x + t.get_width() + 14, y))
-        y += 26
-        colours = {"on": (150, 220, 120), "play": (120, 210, 120), "sync": (110, 170, 240),
-                   "master": (240, 160, 60)}
-        for i in range(prolink.COUNT):
-            n = prolink.FIRST + i
-            state = self.fakedecks.state[n]
-            at = x
-            for what, label, width in (("on", f"{n}  " + ("ON" if state["on"] else "OFF"), 76),
-                                       ("play", "PLAY", 56), ("sync", "SYNC", 56),
-                                       ("master", "MASTER", 72)):
-                lit = state[what] and (what == "on" or state["on"])
-                r = pygame.Rect(at, y - 1, width, 22)
-                pygame.draw.rect(win, colours[what] if lit else (40, 41, 45), r, border_radius=4)
-                text = self.small.render(label, True, (10, 10, 10) if lit else (150, 152, 158))
-                win.blit(text, text.get_rect(center=r.center))
-                self.deck_rects.append((r, n, what))
-                at += width + 6
-            if state["on"]:
-                # The beat in the bar, as the unit's own four squares: the first
-                # red, the others blue, lit one at a time while the deck plays;
-                # right after MASTER, then the tempo.
-                beat = self.fakedecks.beat(n)
-                for k in range(4):
-                    r = pygame.Rect(at + k * 24, y, 20, 20)
-                    lit = beat == k + 1
-                    colour = ((235, 40, 40) if k == 0 else (60, 130, 235)) if lit else (30, 31, 35)
-                    pygame.draw.rect(win, colour, r, border_radius=3)
-                    pygame.draw.rect(win, (70, 72, 78), r, 1, border_radius=3)
-                bpm = self.small.render(f"{state['bpm']:.1f} BPM", True, (150, 152, 158))
-                win.blit(bpm, (at + 4 * 24 + 6, y + 2))
-            y += 28
-        return y + 8
 
     def draw_help(self, x, y):
         """Under the large screen: what the mouse and the keyboard do."""
@@ -760,9 +704,6 @@ def main():
                     help="start without the side panel (the large screen; F10 shows it)")
     ap.add_argument("--usb", metavar="DIR",
                     help="the emulator's USB folder, to show and switch the mods of a patch on it")
-    ap.add_argument("--fakedecks", metavar="FILE",
-                    help="the file that switches the fake Pro DJ Link decks "
-                         "(tools/fakedecks.py --control), to show their switches")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
     args = ap.parse_args()
@@ -794,7 +735,7 @@ def main():
             recorder = audio.Recorder(link.send_input, audio.pick(args.input, True))
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
-    deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb), FakeDecks(args.fakedecks))
+    deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb))
     if args.compact:
         deck.show_dock = False
         deck.layout()
