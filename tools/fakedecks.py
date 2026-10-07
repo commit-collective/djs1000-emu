@@ -523,7 +523,12 @@ class Deck:
                 self.handing_to = 0xFF
             else:
                 dj = dict(world.dj)
-                if dj["master"] and dj["ip"]:
+                # The role is a fake deck's, if one has it (the unit's own flag
+                # can be a stale one: it does not always let go): pass it on
+                # between fake decks. Only when none has it, the unit might.
+                fake_master = any(o is not self and o.enabled and o.master
+                                  for o in world.decks.values())
+                if dj["master"] and dj["ip"] and not fake_master:
                     # The unit has the role: ask it (to port 50001), and take the
                     # role when its status names this deck as the one to get it
                     # (Mh): see take_after_handoff().
