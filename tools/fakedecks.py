@@ -335,7 +335,10 @@ class Deck:
             f |= 0x40 | 0x08                             # playing, on air
         if self.master:
             f |= 0x20
-        if self.sync:
+        # While it waits for the unit to hand the master role over, its status
+        # says it is synced: the unit only hands over to a deck that is (its
+        # SYNC switch is not touched).
+        if self.sync or self.pending:
             f |= 0x10
         return f
 
@@ -539,7 +542,6 @@ class Deck:
                     s.sendto(bytes(request), (dj["ip"], BEAT_PORT))
                     s.close()
                     self.pending = True
-                    self.sync = True        # as a CDJ's MASTER does; the unit hands over to a synced deck
                     log("deck %d asks the unit under test to yield the master role" % self.number)
                     threading.Timer(3.0, self.give_up).start()
                     return
@@ -548,7 +550,6 @@ class Deck:
                         other.handing_to = self.number
                         threading.Timer(1.0, other.finish_handoff, args=(self.number,)).start()
                 self.master = True
-                self.sync = True            # a CDJ that is the master is in sync mode too
                 self.sync_number += 1
         world.settle(change)
         if on and self.pending:
@@ -564,7 +565,6 @@ class Deck:
         def change():
             self.pending = False
             self.master = True
-            self.sync = True
             self.sync_number = max(self.sync_number, self.world.dj.get("syncn", 0)) + 1
         self.world.settle(change)
         log("deck %d is now the master (the unit handed it over)" % self.number)
