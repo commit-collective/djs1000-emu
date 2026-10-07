@@ -330,7 +330,7 @@ class Deck:
         # Bit 2 is set on a CDJ that is on the link (not explained in the
         # analysis); the unit's own choice of the tempo master looks for
         # playing + synced + on air + that bit (flags & 0x5c == 0x5c).
-        f = 0x04
+        f = 0x84                                         # bits 7 and 2, as a real player has them
         if self.playing:
             f |= 0x40 | 0x08                             # playing, on air
         if self.master:
