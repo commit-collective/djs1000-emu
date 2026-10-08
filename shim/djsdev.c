@@ -1403,6 +1403,8 @@ static volatile int packet_cooked[PACKET_FDS];  /* SOCK_DGRAM: no link header */
 static int link_port[MAX_FD];
 static unsigned char link_seen[3][256][4];
 static int link_started;
+static unsigned char own_ip[4];
+static int own_ip_known;
 
 extern ssize_t recvfrom(int fd, void *buf, size_t n, int flags, void *addr, unsigned *len);
 
@@ -1498,16 +1500,20 @@ static void *link_listener(void *arg)
         if (!first[port - 50000]++) {
             fprintf(stderr, "[djsdev] Pro DJ Link: first datagram on UDP %d, %d bytes\n", port, n);
         }
-        /* The decks are on 127.0.0.n; what comes from any other address is the
-         * unit's own broadcast looping back, which a packet socket on a real
-         * network would not be given as an incoming frame (the unit would be
-         * a player of its own network). */
-        if (sa[4] != 127) {
+        /* What comes from the unit's own address is its own broadcast looping
+         * back, which a packet socket on a real network would not be given as an
+         * incoming frame (the unit would be a player of its own network). Decks
+         * are on other addresses: 127.0.0.n, or addresses of the host's network
+         * of their own. (If the unit's address is not known: whatever is not
+         * from the loopback.) */
+        if (own_ip_known ? (sa[4] == own_ip[0] && sa[5] == own_ip[1] && sa[6] == own_ip[2]
+                            && sa[7] == own_ip[3])
+                         : sa[4] != 127) {
             static int dropped[3];
 
             if (!dropped[port - 50000]++) {
                 fprintf(stderr, "[djsdev] Pro DJ Link: not passing the unit's own datagrams (UDP %d, from %d.%d.%d.%d)\n",
-                        port,sa[4], sa[5], sa[6], sa[7]);
+                        port, sa[4], sa[5], sa[6], sa[7]);
             }
             continue;
         }
@@ -1524,6 +1530,32 @@ static void *link_listener(void *arg)
     }
 }
 
+static void find_own_ip(void)
+{
+    unsigned char ifr[40];
+    int fd = socket(AF_INET, SOCK_DGRAM, 0), i;
+
+    if (fd < 0) {
+        return;
+    }
+    for (i = 0; i < 40; i++) {
+        ifr[i] = 0;
+    }
+    ifr[0] = 'e';
+    ifr[1] = 't';
+    ifr[2] = 'h';
+    ifr[3] = '0';
+    if (ioctl(fd, 0x8915 /* SIOCGIFADDR */, ifr) == 0) {
+        for (i = 0; i < 4; i++) {
+            own_ip[i] = ifr[20 + i];
+        }
+        own_ip_known = 1;
+        fprintf(stderr, "[djsdev] Pro DJ Link: the unit's address is %d.%d.%d.%d\n",
+                own_ip[0], own_ip[1], own_ip[2], own_ip[3]);
+    }
+    close(fd);
+}
+
 static void start_link(void)
 {
     static const int ports[] = { 50000, 50001, 50002 };
@@ -1534,6 +1566,7 @@ static void start_link(void)
         return;
     }
     link_started = 1;
+    find_own_ip();
     for (i = 0; i < 3; i++) {
         pthread_create(&t, 0, link_listener, (void *)(long)ports[i]);
     }
