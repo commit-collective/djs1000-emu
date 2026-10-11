@@ -108,7 +108,7 @@ if [ -n "$PID" ] && [ -n "$(find "$B/deckbench" -name '*.py' -newer "/proc/$PID"
     sleep 0.5
 fi
 if ! pgrep -f '[d]eckbench --numbers' > /dev/null; then
-    cd "$B" && setsid nohup python3 -m deckbench --numbers 2,3,4 > "$RUN/deckbench.log" 2>&1 < /dev/null &
+    cd "$B" && setsid nohup python3 -m deckbench --numbers 1,2,3,4 > "$RUN/deckbench.log" 2>&1 < /dev/null &
     sleep 1
 fi
 pgrep -f '[d]eckbench --numbers' > /dev/null && echo http://localhost:8750/
