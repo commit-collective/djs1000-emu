@@ -128,12 +128,14 @@ pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh' 2> /dev/null    # one left by a 
 if [ $# -eq 0 ]; then
     set -- /bin/sh /opt/djsemu/init.sh
     QARGS=
-    # The emulator ends when the app has: none seen for five seconds, once
-    # one has been (an autoexec may stop the app to start it again).
+    # The emulator ends when the app has: none seen for 25 seconds, once
+    # one has been (an autoexec may stop the app to start it again, which
+    # on a cold or busy machine takes more than the five seconds it took
+    # once: the emulator was then ended in the middle of the restart).
     (
         seen=0
         gone=0
-        while [ "$gone" -lt 5 ]; do
+        while [ "$gone" -lt 25 ]; do
             sleep 1
             if pgrep -f 'qemu-arm-static.*/root/pdj/EP113_Main_R' > /dev/null; then
                 seen=1
