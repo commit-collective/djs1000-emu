@@ -72,6 +72,26 @@ cd /root/pdj
 echo "[djsemu] start $APP"
 $APP &
 
+# The stick's autoexec leaves the restart of the app (with the mods) to a copy of itself, detached; on this
+# emulator that copy has now and then died without a word, and the app ran without the mods. So: if the mods
+# were put in /tmp but the app does not have them some time later, the autoexec is run again, which does the
+# restart as it does for a stick plugged in later (twice at most).
+if [ "$DJSDEV_USB" != 0 ] && [ -f /mnt/iso/autoexec.sh ]; then
+    (
+        tries=0
+        while [ $tries -lt 2 ]; do
+            sleep 40
+            set -- $(pidof EP113_Main_R)
+            pid=$1
+            [ -f /tmp/djs1000-mods/libmods.so ] || break
+            grep -q libmods.so "/proc/$pid/maps" 2> /dev/null && break
+            echo "[djsemu] the mods did not start: running the stick's autoexec again"
+            (cd /mnt/iso && ./autoexec.sh "$USB")
+            tries=$((tries + 1))
+        done
+    ) &
+fi
+
 # The unit runs until it is switched off, and an autoexec may well stop the
 # app to start it again: so this stays, and run.sh ends it once no app has
 # run for a while.
