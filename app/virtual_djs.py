@@ -610,17 +610,26 @@ class Deck:
         t2 = self.font.render("click to switch - takes effect as the app runs", True, (150, 152, 158))
         win.blit(t2, (x + t.get_width() + 14, y))
         y += 26
-        for name, on, about in items:
+        # Many mods do not fit in a column under the screen: more columns, the text cut at their edge.
+        bottom = win.get_size()[1] - STATUS_H - 8
+        rows = max(1, (bottom - y) // 26)
+        cols = -(-len(items) // rows)
+        width = self.dock.width // cols
+        top = y
+        for i, (name, on, about) in enumerate(items):
+            cx, y = x + (i // rows) * width, top + (i % rows) * 26
             t = self.small.render("ON" if on else "OFF", True, (10, 10, 10) if on else (150, 152, 158))
-            r = pygame.Rect(x, y - 1, 40, 20)
+            r = pygame.Rect(cx, y - 1, 40, 20)
             pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r, border_radius=4)
             win.blit(t, t.get_rect(center=r.center))
             t = self.font.render(name, True, (225, 228, 232))
-            win.blit(t, (x + 52, y))
+            win.blit(t, (cx + 52, y))
             t2 = self.font.render(about, True, (150, 152, 158))
-            win.blit(t2, (x + 52 + t.get_width() + 14, y))
-            self.mod_rects.append((pygame.Rect(x, y - 3, 52 + t.get_width(), 24), name))
-            y += 26
+            win.set_clip(pygame.Rect(cx, y - 2, width - 8, 24))
+            win.blit(t2, (cx + 52 + t.get_width() + 14, y))
+            win.set_clip(None)
+            self.mod_rects.append((pygame.Rect(cx, y - 3, 52 + t.get_width(), 24), name))
+        y = top + min(len(items), rows) * 26
         return y + 10
 
     def draw_help(self, x, y):
