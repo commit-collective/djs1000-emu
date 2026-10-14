@@ -54,6 +54,8 @@ TITLE = "Virtual DJS-1000"
 BG = (5, 5, 5)
 DOCK_PAD = 16
 STATUS_H = 26
+ROW = 26                                 # a row of the side panel's lists
+HEAD = 28                                # a section's header
 FPS = 60
 MIN_HOLD = 120                           # ms a clicked key or pad stays down at least
 BOOT_S = 24                              # about how long the app takes to draw its first screen
@@ -102,6 +104,12 @@ class Deck:
         self.link = link
         self.mods = mods or Mods(None)   # what a patch on the USB drive carries
         self.mod_rects = []              # (where, name): the switches drawn in the side panel
+        self.fold = {"mods": False, "help": False}      # the side panel's two sections: folded or not
+        self.scroll = {"mods": 0, "help": 0}            # how far each is scrolled, in pixels
+        self.fold_rects = []             # (where, section): the headers
+        self.body_rects = {}             # section: where its body is drawn (the mouse wheel scrolls it)
+        self.track_rects = {}            # section: (the scrollbar's track, the thumb, the most it scrolls)
+        self.thumb = None                # (section, where in the thumb it was taken): being dragged
         self.master, self.phones = players
         self.recorder = recorder
         self.show_dock = True            # the large screen beside the face (F10)
@@ -225,6 +233,12 @@ class Deck:
         for r, name in self.mod_rects:
             if r.collidepoint(pos):
                 return ("mod", name)
+        for r, key in self.fold_rects:
+            if r.collidepoint(pos):
+                return ("fold", key)
+        for key, (track, thumb, _) in self.track_rects.items():
+            if track.collidepoint(pos):
+                return ("thumb", key, pos[1] - thumb.top if thumb.collidepoint(pos) else -1)
         if pos[0] >= self.face_w:
             return None
         x, y = self.to_units(pos)
@@ -350,6 +364,16 @@ class Deck:
         if what[0] == "mod":
             self.mods.toggle(what[1])
             return
+        if what[0] == "fold":
+            self.fold[what[1]] = not self.fold[what[1]]
+            self.scroll[what[1]] = 0
+            return
+        if what[0] == "thumb":
+            _, thumb, _ = self.track_rects[what[1]]
+            grip = what[2] if what[2] >= 0 else thumb.height // 2     # beside the thumb: it comes there
+            self.thumb = (what[1], grip)
+            self.drag_thumb(pos[1])
+            return
         self.down = what
         self.down_at = pygame.time.get_ticks()
         self.flush(now=True)
@@ -378,6 +402,7 @@ class Deck:
                 self.link.send(f"bit {key.bit[0]} {key.bit[1]} 1")
 
     def release(self, pos):
+        self.thumb = None
         what, self.down = self.down, None
         if not what:
             return
@@ -415,8 +440,16 @@ class Deck:
                 self.link.send(line)
         self.later = [(w, l) for w, l in self.later if not now and w > t]
 
+    def drag_thumb(self, y):
+        key, grip = self.thumb
+        track, thumb, most = self.track_rects[key]
+        span = max(1, track.height - thumb.height)
+        self.scroll[key] = int(min(1.0, max(0.0, (y - grip - track.top) / span)) * most)
+
     def motion(self, pos):
-        if self.down and self.down[0] == "lcd":
+        if self.thumb:
+            self.drag_thumb(pos[1])
+        elif self.down and self.down[0] == "lcd":
             p = self.lcd_point(pos)
             if p:
                 self.link.send(f"touch 2 {p[0]} {p[1]}")
@@ -434,6 +467,10 @@ class Deck:
             self.hover = self.describe(self.find(pos))
 
     def wheel(self, pos, dy):
+        for key, rect in self.body_rects.items():
+            if rect.collidepoint(pos) and key in self.track_rects:
+                self.scroll[key] = min(self.track_rects[key][2], max(0, self.scroll[key] - dy * ROW))
+                return
         what = self.find(pos)
         if what and what[0] == "knob" and dy:
             self.turn(what[1], dy)
@@ -574,8 +611,10 @@ class Deck:
         pygame.draw.rect(win, (46, 47, 51), self.dock.inflate(2, 2), 1)
         self.mod_rects = []
         if not self.show_lamps:
-            y = self.draw_mods(self.dock.left, self.dock.bottom + 22)
-            self.draw_help(self.dock.left, y)
+            self.fold_rects = []
+            self.body_rects = {}
+            self.track_rects = {}
+            self.draw_panel(self.dock.left, self.dock.bottom + 18)
             return
         held = self.down[1] if self.down and self.down[0] == "bit" else None
         if self.grid:
@@ -598,52 +637,99 @@ class Deck:
             t = self.small.render(f"{lamp:02x}", True, (10, 10, 10) if level > 1 else (200, 203, 208))
             win.blit(t, t.get_rect(center=r.center))
 
-    def draw_mods(self, x, y):
-        """Under the large screen, if the patch on the USB drive carries mods:
-        a switch for each. Returns where the next thing goes."""
+    def draw_panel(self, x, y):
+        """Under the large screen: the installed mods (if the patch on the USB drive carries any) and what the mouse and
+        the keyboard do, each a section that folds (click its title) and scrolls (the wheel, or its bar) when it does
+        not fit: the two share the height there is."""
+        win = self.win
+        width = self.dock.width
+        bottom = win.get_size()[1] - STATUS_H - 8
+        cols = max(1, width // 300)
+        sections = []
+        if self.mods.items:
+            rows = -(-len(self.mods.items) // cols)
+            sections.append(("mods", "Installed mods (USB)", "click a switch - takes effect as the app runs",
+                             rows * ROW, self.draw_mods_body))
+        sections.append(("help", "Controls", "", len(HELP) * 24 + 4, self.draw_help_body))
+        free = bottom - y - HEAD * len(sections) - 8 * (len(sections) - 1)
+        views = {}
+        open_ = [s for s in sections if not self.fold[s[0]]]
+        if len(open_) == 1:
+            views[open_[0][0]] = min(open_[0][3], max(0, free))
+        elif len(open_) == 2:
+            first = min(open_[0][3], max(free // 2, free - open_[1][3]))
+            views[open_[0][0]] = max(0, first)
+            views[open_[1][0]] = max(0, min(open_[1][3], free - first))
+        for key, title, hint, content, body in sections:
+            head = pygame.Rect(x, y, width, HEAD - 4)
+            pygame.draw.rect(win, (26, 27, 30), head, border_radius=4)
+            ax, ay = head.left + 12, head.centery        # a triangle: pointing right when folded, down when open
+            tri = [(ax - 4, ay - 5), (ax - 4, ay + 5), (ax + 4, ay)] if self.fold[key] else \
+                [(ax - 5, ay - 3), (ax + 5, ay - 3), (ax, ay + 4)]
+            pygame.draw.polygon(win, (190, 192, 198), tri)
+            t = self.font.render(title, True, (225, 228, 232))
+            win.blit(t, (head.left + 28, head.top + 3))
+            if hint and not self.fold[key]:
+                t2 = self.font.render(hint, True, (150, 152, 158))
+                win.blit(t2, (head.left + 28 + t.get_width() + 14, head.top + 3))
+            self.fold_rects.append((head, key))
+            y += HEAD
+            if self.fold[key]:
+                y += 8
+                continue
+            view = views.get(key, 0)
+            body_rect = pygame.Rect(x, y, width, view)
+            most = max(0, content - view)
+            self.scroll[key] = min(self.scroll[key], most)
+            win.set_clip(body_rect)
+            body(x, y - self.scroll[key], width - (12 if most else 0), body_rect)
+            win.set_clip(None)
+            self.body_rects[key] = body_rect
+            if most:
+                track = pygame.Rect(x + width - 8, y, 8, view)
+                size = max(24, view * view // content)
+                thumb = pygame.Rect(track.left, y + int((view - size) * self.scroll[key] / most), 8, size)
+                pygame.draw.rect(win, (26, 27, 30), track, border_radius=4)
+                pygame.draw.rect(win, (110, 112, 120) if self.thumb and self.thumb[0] == key else (80, 82, 90), thumb,
+                                 border_radius=4)
+                self.track_rects[key] = (track, thumb, most)
+            y += view + 8
+
+    def draw_mods_body(self, x, y, width, clip):
+        """The switches, in as many columns as fit; a switch can be clicked where it is drawn."""
         win = self.win
         items = self.mods.items
-        if not items:
-            return y
-        t = self.font.render("Installed mods (USB)", True, (225, 228, 232))
-        win.blit(t, (x, y))
-        t2 = self.font.render("click to switch - takes effect as the app runs", True, (150, 152, 158))
-        win.blit(t2, (x + t.get_width() + 14, y))
-        y += 26
-        # Many mods do not fit in a column under the screen: more columns, the text cut at their edge.
-        bottom = win.get_size()[1] - STATUS_H - 8
-        rows = max(1, (bottom - y) // 26)
-        cols = -(-len(items) // rows)
-        width = self.dock.width // cols
-        top = y
+        cols = max(1, self.dock.width // 300)
+        rows = -(-len(items) // cols)
+        col_w = width // cols
         for i, (name, on, about) in enumerate(items):
-            cx, y = x + (i // rows) * width, top + (i % rows) * 26
+            cx, cy = x + (i // rows) * col_w, y + (i % rows) * ROW
+            if cy + 22 < clip.top or cy > clip.bottom:
+                continue
             t = self.small.render("ON" if on else "OFF", True, (10, 10, 10) if on else (150, 152, 158))
-            r = pygame.Rect(cx, y - 1, 40, 20)
+            r = pygame.Rect(cx, cy - 1, 40, 20)
             pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r, border_radius=4)
             win.blit(t, t.get_rect(center=r.center))
             t = self.font.render(name, True, (225, 228, 232))
-            win.blit(t, (cx + 52, y))
+            win.blit(t, (cx + 52, cy))
             t2 = self.font.render(about, True, (150, 152, 158))
-            win.set_clip(pygame.Rect(cx, y - 2, width - 8, 24))
-            win.blit(t2, (cx + 52 + t.get_width() + 14, y))
-            win.set_clip(None)
-            self.mod_rects.append((pygame.Rect(cx, y - 3, 52 + t.get_width(), 24), name))
-        y = top + min(len(items), rows) * 26
-        return y + 10
+            win.set_clip(clip.clip(pygame.Rect(cx, cy - 2, col_w - 8, 24)))
+            win.blit(t2, (cx + 52 + t.get_width() + 14, cy))
+            win.set_clip(clip)
+            hit = pygame.Rect(cx, cy - 3, 52 + t.get_width(), 24).clip(clip)
+            if hit.width and hit.height:
+                self.mod_rects.append((hit, name))
 
-    def draw_help(self, x, y):
-        """Under the large screen: what the mouse and the keyboard do."""
+    def draw_help_body(self, x, y, width, clip):
         win = self.win
-        bottom = win.get_size()[1] - STATUS_H - 8
-        for keys, what in HELP:
-            if y + 20 > bottom:
-                break
+        for i, (keys, what) in enumerate(HELP):
+            cy = y + i * 24
+            if cy + 20 < clip.top or cy > clip.bottom:
+                continue
             t = self.font.render(keys, True, (225, 228, 232))
-            win.blit(t, (x, y))
+            win.blit(t, (x + 8, cy))
             t = self.font.render(what, True, (150, 152, 158))
-            win.blit(t, (x + 130, y))
-            y += 24
+            win.blit(t, (x + 138, cy))
 
     def draw_sound(self, x, top):
         """The status line's sound part: the MASTER / PHONES switch for the main
