@@ -648,12 +648,10 @@ class Deck:
         win = self.win
         width = self.dock.width
         bottom = win.get_size()[1] - STATUS_H - 8
-        cols = max(1, width // 300)
         sections = []
         if self.mods.items:
-            rows = -(-len(self.mods.items) // cols)
             sections.append(("mods", "Installed mods (USB)", "click a switch - takes effect as the app runs",
-                             rows * ROW, self.draw_mods_body))
+                             sum(h for _, h in self.mod_rows(width - 12)), self.draw_mods_body))
         sections.append(("help", "Controls", "", len(HELP) * 24 + 4, self.draw_help_body))
         free = bottom - y - HEAD * len(sections) - 8 * (len(sections) - 1)
         views = {}
@@ -699,30 +697,42 @@ class Deck:
                 self.track_rects[key] = (track, thumb, most)
             y += view + 8
 
+    def mod_rows(self, width):
+        """Each mod's row: the lines its description wraps to in `width`, and the row's height."""
+        rows = []
+        for name, on, about in self.mods.items:
+            room = max(80, width - 52 - self.font.size(name)[0] - 14)
+            lines, line = [], ""
+            for word in about.split():
+                if line and self.font.size(line + " " + word)[0] > room:
+                    lines.append(line)
+                    line = word
+                else:
+                    line = (line + " " + word) if line else word
+            lines.append(line)
+            rows.append((lines, max(ROW, 18 * len(lines) + 8)))
+        return rows
+
     def draw_mods_body(self, x, y, width, clip):
-        """The switches, in as many columns as fit; a switch can be clicked where it is drawn."""
+        """The switches, one under the other, a description wrapped to as many lines as it needs; a switch can be
+        clicked where it is drawn."""
         win = self.win
-        items = self.mods.items
-        cols = max(1, self.dock.width // 300)
-        rows = -(-len(items) // cols)
-        col_w = width // cols
-        for i, (name, on, about) in enumerate(items):
-            cx, cy = x + (i // rows) * col_w, y + (i % rows) * ROW
-            if cy + 22 < clip.top or cy > clip.bottom:
-                continue
-            t = self.small.render("ON" if on else "OFF", True, (10, 10, 10) if on else (150, 152, 158))
-            r = pygame.Rect(cx, cy - 1, 40, 20)
-            pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r, border_radius=4)
-            win.blit(t, t.get_rect(center=r.center))
-            t = self.font.render(name, True, (225, 228, 232))
-            win.blit(t, (cx + 52, cy))
-            t2 = self.font.render(about, True, (150, 152, 158))
-            win.set_clip(clip.clip(pygame.Rect(cx, cy - 2, col_w - 8, 24)))
-            win.blit(t2, (cx + 52 + t.get_width() + 14, cy))
-            win.set_clip(clip)
-            hit = pygame.Rect(cx, cy - 3, 52 + t.get_width(), 24).clip(clip)
-            if hit.width and hit.height:
-                self.mod_rects.append((hit, name))
+        rows = self.mod_rows(width)
+        for (name, on, about), (lines, height) in zip(self.mods.items, rows):
+            if y + height >= clip.top and y <= clip.bottom:
+                t = self.small.render("ON" if on else "OFF", True, (10, 10, 10) if on else (150, 152, 158))
+                r = pygame.Rect(x, y - 1, 40, 20)
+                pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r, border_radius=4)
+                win.blit(t, t.get_rect(center=r.center))
+                t = self.font.render(name, True, (225, 228, 232))
+                win.blit(t, (x + 52, y))
+                for i, text in enumerate(lines):
+                    t2 = self.font.render(text, True, (150, 152, 158))
+                    win.blit(t2, (x + 52 + t.get_width() + 14, y + 18 * i))
+                hit = pygame.Rect(x, y - 3, 52 + t.get_width(), 24).clip(clip)
+                if hit.width and hit.height:
+                    self.mod_rects.append((hit, name))
+            y += height
 
     def draw_help_body(self, x, y, width, clip):
         win = self.win
