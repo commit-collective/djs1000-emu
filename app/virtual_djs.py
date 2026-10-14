@@ -273,6 +273,10 @@ class Deck:
                               "whoever has it (the unit included)"}[what[2]]
         if what[0] == "mod":
             return f"mod {what[1]}  ·  click to switch it on or off, as the app runs"
+        if what[0] == "fold":
+            return "click to fold or unfold this section"
+        if what[0] == "thumb":
+            return "scrollbar  \u00b7  drag, or the mouse wheel over the section"
         if what[0] == "strip":
             return "touch strip  \u00b7  hold and slide; right-click leaves a finger on it"
         if what[0] == "slider":
