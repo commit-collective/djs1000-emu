@@ -697,11 +697,15 @@ class Deck:
                 self.track_rects[key] = (track, thumb, most)
             y += view + 8
 
+    def mod_names_w(self):
+        """The width of the widest name: the descriptions all begin this far in."""
+        return max((self.font.size(name)[0] for name, _, _ in self.mods.items), default=0)
+
     def mod_rows(self, width):
         """Each mod's row: the lines its description wraps to in `width`, and the row's height."""
         rows = []
+        room = max(80, width - 52 - self.mod_names_w() - 14)
         for name, on, about in self.mods.items:
-            room = max(80, width - 52 - self.font.size(name)[0] - 14)
             lines, line = [], ""
             for word in about.split():
                 if line and self.font.size(line + " " + word)[0] > room:
@@ -718,6 +722,7 @@ class Deck:
         clicked where it is drawn."""
         win = self.win
         rows = self.mod_rows(width)
+        about_x = x + 52 + self.mod_names_w() + 14
         for (name, on, about), (lines, height) in zip(self.mods.items, rows):
             if y + height >= clip.top and y <= clip.bottom:
                 t = self.small.render("ON" if on else "OFF", True, (10, 10, 10) if on else (150, 152, 158))
@@ -728,7 +733,7 @@ class Deck:
                 win.blit(t, (x + 52, y))
                 for i, text in enumerate(lines):
                     t2 = self.font.render(text, True, (150, 152, 158))
-                    win.blit(t2, (x + 52 + t.get_width() + 14, y + 18 * i))
+                    win.blit(t2, (about_x, y + 18 * i))
                 hit = pygame.Rect(x, y - 3, 52 + t.get_width(), 24).clip(clip)
                 if hit.width and hit.height:
                     self.mod_rects.append((hit, name))
