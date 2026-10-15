@@ -81,10 +81,13 @@ if [ "$DJSDEV_USB" != 0 ] && [ -f /mnt/iso/autoexec.sh ]; then
         tries=0
         while [ $tries -lt 2 ]; do
             sleep 40
-            set -- $(pidof EP113_Main_R)
-            pid=$1
             [ -f /tmp/djs1000-mods/libmods.so ] || break
-            grep -q libmods.so "/proc/$pid/maps" 2> /dev/null && break
+            # any of the app's processes (qemu, its wrapper, one on its way out) having the mods is enough
+            have=0
+            for pid in $(pidof EP113_Main_R); do
+                grep -q libmods.so "/proc/$pid/maps" 2> /dev/null && have=1
+            done
+            [ $have = 1 ] && break
             echo "[djsemu] the mods did not start: running the stick's autoexec again"
             (cd /mnt/iso && ./autoexec.sh "$USB")
             tries=$((tries + 1))
