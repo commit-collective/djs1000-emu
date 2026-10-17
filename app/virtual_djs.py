@@ -818,6 +818,8 @@ def main():
                     help="start without the side panel (the large screen; F10 shows it)")
     ap.add_argument("--usb", metavar="DIR",
                     help="the emulator's USB folder, to show and switch the mods of a patch on it")
+    ap.add_argument("--modlist", metavar="FILE",
+                    help="the list of mods the patch carries (modlist.txt in the folder the emulator opened it in)")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
     args = ap.parse_args()
@@ -849,7 +851,7 @@ def main():
             recorder = audio.Recorder(link.send_input, audio.pick(args.input, True))
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
-    deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb))
+    deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb, args.modlist))
     if args.compact:
         deck.show_dock = False
         deck.layout()

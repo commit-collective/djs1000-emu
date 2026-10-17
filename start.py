@@ -81,6 +81,17 @@ D="${DJS_USB:-${DJS_HOME:-$HOME/djs}/usb}"
 """ % ("export " + self.env if self.env else "", 'wslpath -w "$D"' if WINDOWS else 'echo "$D"'))
         return out.splitlines()[-1] if not code and out else None
 
+    def modlist(self):
+        """The list of mods of the patch on the USB drive (modlist.txt, in the folder the emulator opened the patch
+        in) as this side can open it, or None if the patch has none."""
+        code, out = self.sh("""
+%s
+F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
+[ -f "$F" ] || exit 1
+%s
+""" % ("export " + self.env if self.env else "", 'wslpath -w "$F"' if WINDOWS else 'echo "$F"'))
+        return out.splitlines()[-1] if not code and out else None
+
     def deckbench(self):
         """Starts deckbench (Pro DJ Link decks: its repo is $DECKBENCH, else
         ../deckbench beside this one) in the emulator's network, if it is not
@@ -281,11 +292,12 @@ def main():
         return 0
     say("Deck open. The app takes about half a minute to start. Close the deck to quit.")
     try:
-        usb, bench = emu.usb(), emu.deckbench()
+        usb, bench, modlist = emu.usb(), emu.deckbench(), emu.modlist()
         if bench:
             say("Pro DJ Link decks (deckbench): %s" % bench)
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
-                                "--port", str(emu.port)] + (["--usb", usb] if usb else []) + args)
+                                "--port", str(emu.port)] + (["--usb", usb] if usb else [])
+                                + (["--modlist", modlist] if modlist else []) + args)
     except KeyboardInterrupt:
         code = 130
     if ours and not keep:
