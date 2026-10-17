@@ -68,6 +68,8 @@ class Mods:
         for mod in mods:
             wip = mod.get("status") == "wip"
             about = mod.get("about", "") + (" (work in progress)" if wip else " (beta)" if mod.get("status") == "beta" else "")
+            if mod.get("requires"):
+                about += " (needs " + ", ".join(mod["requires"]) + ")"
             items.append((mod["name"], state.get(mod["name"], not wip), about))
         self._seen, self.items = seen, items
 
