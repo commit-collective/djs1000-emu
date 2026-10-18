@@ -17,6 +17,11 @@
 #   init.sh plug        a stick has just been plugged in ("usb 1")
 #   init.sh unplug      and taken out ("usb 0")
 #
+# DJSDEV_DIRECT=1 (a test's shortcut, DJS_FAST_BOOT=1 on the host): when the stick
+# holds an autoexec, the app is not started here first and stopped again by the
+# patch: the patch starts it once, with the mods. That saves a whole boot of the
+# app; the restart itself is what the tests without the shortcut see.
+#
 # run.sh has already opened autoexec.bin (the loop device it takes needs
 # root) and put what it holds on /mnt/iso, where the unit mounts it.
 APP=/root/pdj/EP113_Main_R
@@ -69,8 +74,12 @@ esac
 # apl_start gets to the app; the queues keep what udev wrote for it.
 [ "$DJSDEV_USB" = 0 ] || plug
 cd /root/pdj
-echo "[djsemu] start $APP"
-$APP &
+if [ "$DJSDEV_DIRECT" = 1 ] && [ "$DJSDEV_USB" != 0 ] && [ -f /mnt/iso/autoexec.sh ]; then
+    echo "[djsemu] the stick's autoexec starts the app"
+else
+    echo "[djsemu] start $APP"
+    $APP &
+fi
 
 # The stick's autoexec leaves the restart of the app (with the mods) to a copy of itself, detached; on this
 # emulator that copy has now and then died without a word, and the app ran without the mods. So: if the mods

@@ -42,6 +42,8 @@ class Emulator:
         self.port = port
         self.window = window
         self.env = env                   # more environment for run.sh: "NAME=value ..."
+        if os.environ.get("DJS_FAST_BOOT"):
+            self.env += " DJSDEV_DIRECT=1"   # see scripts/guest/init.sh
         self._repo = None
 
     def sh(self, script):

@@ -162,6 +162,20 @@ def scenario(s, r, emu):
     r.note("projects", out.split())
 
 
+def wait_patch(emu, s, timeout=150):
+    """A patch restarts the app once (the unit's own app is stopped, then started with the mods): the
+    session begins on the app that has them."""
+    end = time.time() + timeout
+    while time.time() < end:
+        code, out = emu.sh('grep -c "the app started with the mods" "${DJS_HOME:-$HOME/djs}/run/console.log"')
+        if out.strip().splitlines()[-1:] not in (["0"], []):
+            break
+        s.pump(2.0)
+    s.pump(3.0)
+    s.wait_screen(quiet=1.5, timeout=60)
+    s.wait_usb(timeout=60)
+
+
 def run(name, patch=None):
     out = os.path.join(BASE, name)
     os.makedirs(out, exist_ok=True)
@@ -196,6 +210,8 @@ cp "$P" "$HOME/djs/regress/usb/autoexec.bin"
             sys.exit("the app never drew its first screen:\n" + emu.log_tail())
         if not s.wait_usb():
             sys.exit("the app never took the USB drive:\n" + emu.log_tail())
+        if patch:
+            wait_patch(emu, s)
         r = Recorder(s, out)
         scenario(s, r, emu)
         s.close()
