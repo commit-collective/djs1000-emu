@@ -2,6 +2,8 @@
 
 The Pioneer DJ DJS-1000's own application, running on a PC.
 
+Follow development: [commitcollective.cc](https://commitcollective.cc), [Instagram](https://www.instagram.com/commit.collective), [YouTube](https://www.youtube.com/@CommitCollective); on GitHub, Watch, then Releases.
+
 The DJS-1000 is an embedded Linux machine (Freescale i.MX6). Its sampler is
 one program, `EP113_Main_R`, a JUCE application that draws through X11. This
 project runs that program unmodified under `qemu-arm` user mode, inside the
