@@ -72,8 +72,10 @@ Not yet:
 
 ## Quick start
 
-On Windows, in WSL2 (Ubuntu 24.04); on Linux. `xvfb` is optional: without it
-the app's window opens on the X display (WSLg's on Windows).
+On Windows, in WSL2 (Ubuntu 24.04); on Linux. macOS is not supported: the emulator needs Linux's
+`qemu-arm` user mode and `proot`, which a Mac would have to get from a Linux virtual machine (a patch that
+does that is welcome). `xvfb` is optional: without it the app's window opens on the X display (WSLg's on
+Windows).
 
 ```sh
 sudo apt install qemu-user-static binfmt-support proot squashfs-tools \
