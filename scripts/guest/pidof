@@ -16,6 +16,7 @@ if [ "$me" = killall ]; then
     case "$1" in -*) sig=$1; shift ;; esac
 fi
 found=1
+ns=$(readlink /proc/self/ns/mnt 2> /dev/null)
 for name in "$@"; do
     # One grep over every command line. "[/]" keeps the grep itself, whose
     # arguments hold the pattern, from being taken for the program.
@@ -23,8 +24,8 @@ for name in "$@"; do
         pid=${f#/proc/}
         pid=${pid%/cmdline}
         [ "$pid" = "$$" ] && continue
-        # Under an emulator with a tag (see start.py) the processes of the others are not ours.
-        if [ -n "${DJSDEV_TAG:-}" ] && ! tr '\0' '\n' < "/proc/$pid/environ" 2> /dev/null | grep -qx "DJSDEV_TAG=$DJSDEV_TAG"; then
+        # Another emulator's processes are not ours: each runs in a mount namespace of its own (see run.sh).
+        if [ -n "$ns" ] && [ "$(readlink "/proc/$pid/ns/mnt" 2> /dev/null)" != "$ns" ]; then
             continue
         fi
         if [ "$me" = killall ]; then
