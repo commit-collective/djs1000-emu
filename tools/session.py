@@ -31,7 +31,7 @@ RATE = 44100
 
 
 class Session:
-    def __init__(self, host="127.0.0.1", port=7310, connect=30):
+    def __init__(self, host="127.0.0.1", port=int(os.environ.get("DJS_PORT") or 7310), connect=30):
         self._lock = threading.Lock()
         self._sound = [[], []]           # master, headphones: interleaved floats
         self._start = [None, None]       # the output position of each's first frame

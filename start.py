@@ -31,9 +31,21 @@ import time
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 WINDOWS = os.name == "nt"
-RUNNING = "pgrep -f 'qemu-arm-static.*EP113_Main_R' > /dev/null"
-# The app, or the start-up before it (a stick's autoexec runs first).
-STARTING = "pgrep -f 'qemu-arm-static.*(EP113_Main_R|/opt/djsemu/init.sh)' > /dev/null"
+# Several emulators can run at once, each in a slot (DJS_SLOT=N in the environment of whatever starts them, as the
+# tests' runner does): the slot has a home of its own, ~/djs-sN (made from ~/djs the first time), a deck link port of
+# its own (DJS_PORT, 7310 + N) and a tag, DJSDEV_TAG=sN, among the arguments of every one of its processes, by which
+# it finds and ends its own and no other's. Without a slot there is one emulator, in ~/djs, on 7310.
+
+
+# A shell function: the ids of the processes whose command line matches the pattern, and, for a slot, which carry its tag.
+PIDS = r'''
+pids_of() {
+    for p in $(pgrep -f "$1"); do
+        [ "$p" = "$$" ] && continue
+        if [ -z "${DJSDEV_TAG:-}" ] || grep -qaP "DJSDEV_TAG=$DJSDEV_TAG\x00" "/proc/$p/environ" 2> /dev/null; then echo "$p"; fi
+    done
+}
+'''
 
 
 class Emulator:
@@ -42,6 +54,19 @@ class Emulator:
         self.port = port
         self.window = window
         self.env = env                   # more environment for run.sh: "NAME=value ..."
+        slot = os.environ.get("DJS_SLOT", "")
+        self.tag = "s" + slot if slot != "" else ""
+        if os.environ.get("DJS_PORT"):
+            self.port = int(os.environ["DJS_PORT"])
+        # What runs the guest (proot, or a chroot, see scripts/run.sh) shows the program in its command line; a slot's
+        # processes are told from the others' by DJSDEV_TAG in their environment (every process of the guest has it).
+        self.prelude = ('export DJS_HOME="$HOME/djs-%s" DJSDEV_TAG=%s\n' % (self.tag, self.tag)) if self.tag else ""
+        self.prelude += PIDS
+        self.running_cmd = '[ -n "$(pids_of EP113_Main_R)" ]'
+        # The app, or the start-up before it (a stick's autoexec runs first).
+        self.starting_cmd = '[ -n "$(pids_of "EP113_Main_R|/opt/djsemu/init.sh")" ]'
+        if os.environ.get("DJS_PROOT"):
+            self.env += " DJS_PROOT=1"       # proot in place of a chroot, see scripts/run.sh
         if os.environ.get("DJS_FAST_BOOT"):
             self.env += " DJSDEV_DIRECT=1"   # see scripts/guest/init.sh
         self._repo = None
@@ -53,7 +78,7 @@ class Emulator:
         else:
             cmd = ["bash", "-s"]
         try:
-            p = subprocess.run(cmd, input=script.encode(), stdout=subprocess.PIPE,
+            p = subprocess.run(cmd, input=(self.prelude + script).encode(), stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
         except FileNotFoundError:
             sys.exit("wsl.exe not found: the emulator needs WSL2 (see README.md)" if WINDOWS
@@ -129,13 +154,23 @@ pgrep -f '[d]eckbench --numbers' > /dev/null && echo http://localhost:8750/
         return out.splitlines()[-1] if not code and out.startswith("http") else None
 
     def running(self):
-        return self.sh(RUNNING)[0] == 0
+        return self.sh(self.running_cmd)[0] == 0
+
+    def ensure_home(self):
+        """The slot's home, made from ~/djs the first time (the unit's root file system and the key: 250 MB)."""
+        if self.tag:
+            self.sh("""
+[ -x "$DJS_HOME/root/root/pdj/EP113_Main_R" ] && exit 0
+mkdir -p "$DJS_HOME"
+cp -a "$HOME/djs/aes256.key" "$DJS_HOME/" 2> /dev/null
+if command -v rsync > /dev/null; then rsync -a "$HOME/djs/root/" "$DJS_HOME/root/"; else cp -a "$HOME/djs/root" "$DJS_HOME/"; fi
+""")
 
     def stale(self):
         """Whether the running emulator started before the shim's source (or
         the script that builds it) last changed: it still has the old shim."""
         return self.sh("""
-PID=$(pgrep -f 'qemu-arm-static.*EP113_Main_R' | head -1)
+PID=$(pids_of EP113_Main_R | head -1)
 [ -n "$PID" ] && { [ '%s/shim/djsdev.c' -nt "/proc/$PID" ] || [ '%s/scripts/run.sh' -nt "/proc/$PID" ]; }
 """ % (self.repo(), self.repo()))[0] == 0
 
@@ -146,19 +181,33 @@ mkdir -p "$RUN"
 DJSDEV_PORT=%d DJS_WINDOW=%s %s setsid nohup bash '%s/scripts/run.sh' 0 > "$RUN/emulator.log" 2>&1 < /dev/null &
 for i in $(seq 1 30); do sleep 0.5; %s && exit 0; done
 tail -n 15 "$RUN/emulator.log"; exit 1
-""" % (self.port, "1" if self.window else "", self.env, self.repo(), RUNNING))
+""" % (self.port, "1" if self.window else "", self.env, self.repo(), self.running_cmd))
         if code:
             sys.exit("the emulator did not start:\n" + out)
 
     def stop(self):
+        # A slot ends its own processes only (they carry its tag); the bench is the network tests', started by the
+        # one that needs it.
+        # A slot ends what carries its tag (everything of its guest, and what runs it); without a slot, the app and
+        # the guest's processes as before (the bench too).
         self.sh("""
-pkill -f '[d]eckbench --numbers'
-pkill -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh'
-for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
-pkill -9 -f 'qemu-arm-static.*EP113_Main_R'; pkill -f 'proot -q qemu-arm-static.*djsemu'
-# Whatever else runs in the guest (a stick's autoexec may leave something).
-pkill -9 -f 'qemu-arm-static.*libdjsdev.so'; true
-""" % RUNNING)
+if [ -n "${DJSDEV_TAG:-}" ]; then
+    for i in 1 2 3; do
+        for f in $(grep -laP "DJSDEV_TAG=$DJSDEV_TAG\\x00" /proc/[0-9]*/environ 2> /dev/null); do
+            p=${f#/proc/}; p=${p%%/environ}
+            [ "$p" = "$$" ] || kill -9 "$p" 2> /dev/null
+        done
+        sleep 0.3
+    done
+else
+    pkill -f '[d]eckbench --numbers'
+    kill $(pids_of EP113_Main_R) $(pids_of /opt/djsemu/init.sh) 2> /dev/null
+    for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
+    kill -9 $(pids_of EP113_Main_R) 2> /dev/null
+    pkill -9 -f 'qemu-arm-static.*libdjsdev.so'; pkill -9 -f 'qemu-binfmt/arm-binfmt'
+fi
+true
+""" % self.running_cmd)
 
     def alive(self, seconds=6):
         """Whether the app is really running: its sound arrives on the deck
@@ -208,7 +257,7 @@ pkill -9 -f 'qemu-arm-static.*libdjsdev.so'; true
                 return True
             except OSError:
                 time.sleep(1)
-                if self.sh(STARTING)[0]:
+                if self.sh(self.starting_cmd)[0]:
                     break
         return False
 

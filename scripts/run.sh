@@ -19,8 +19,19 @@ DJS="${DJS_HOME:-$HOME/djs}"
 ROOT=$DJS/root
 secs=${1:-60}
 shift || true
+# An emulator of a slot (see start.py) has a tag among the arguments of every process of its guest, and finds
+# and ends only those.
+TAG="${DJSDEV_TAG:-}"
+# The ids of the processes of this emulator whose command line matches the pattern (with a tag: those that have it in
+# their environment; the guest is run by proot or by a chroot, and the program is in the command line in both).
+pids_of() {
+    for p in $(pgrep -f "$1"); do
+        [ "$p" = "$$" ] && continue
+        if [ -z "$TAG" ] || grep -qaP "DJSDEV_TAG=$TAG\x00" "/proc/$p/environ" 2> /dev/null; then echo "$p"; fi
+    done
+}
 
-if pgrep -f 'qemu-arm-static.*EP113_Main_R' > /dev/null; then
+if [ -n "$(pids_of EP113_Main_R)" ]; then
     echo "the emulator is already running: stop it first (python start.py stop)" >&2
     exit 1
 fi
@@ -70,7 +81,10 @@ XDISPLAY=
 if [ -z "${DJS_WINDOW:-}" ] && command -v Xvfb > /dev/null; then
     # A display is looked for among the sockets in use, not among the files
     # of /tmp/.X11-unix: under WSLg that folder is read-only, and Xvfb is
-    # reached by its abstract socket alone.
+    # reached by its abstract socket alone. Emulators that start together take turns (a lock), or two would
+    # choose the same one.
+    exec 8> /tmp/.djsemu-xvfb.lock
+    flock 8
     listening() { grep -q "@/tmp/.X11-unix/X$1\$" /proc/net/unix || [ -e "/tmp/.X11-unix/X$1" ]; }
     n=77
     while listening "$n"; do n=$((n + 1)); done
@@ -86,6 +100,7 @@ if [ -z "${DJS_WINDOW:-}" ] && command -v Xvfb > /dev/null; then
         echo "Xvfb did not start (see $DJS/run/xvfb.log): using the display ${DISPLAY:-:0}" >&2
         XVFB_PID=
     fi
+    flock -u 8
 fi
 WATCH_PID=
 trap 'for p in $XVFB_PID $WATCH_PID; do kill "$p" 2> /dev/null; done' EXIT
@@ -124,7 +139,7 @@ mkdir -p "$ROOT/opt/djsemu/bin"
 install -m 755 "$REPO/scripts/guest/init.sh" "$ROOT/opt/djsemu/init.sh"
 install -m 755 "$REPO/scripts/guest/pidof" "$ROOT/opt/djsemu/bin/pidof"
 install -m 755 "$REPO/scripts/guest/pidof" "$ROOT/opt/djsemu/bin/killall"
-pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh' 2> /dev/null    # one left by a stopped emulator
+kill $(pids_of /opt/djsemu/init.sh) 2> /dev/null    # one left by a stopped emulator
 if [ $# -eq 0 ]; then
     set -- /bin/sh /opt/djsemu/init.sh
     QARGS=
@@ -137,14 +152,14 @@ if [ $# -eq 0 ]; then
         gone=0
         while [ "$gone" -lt 25 ]; do
             sleep 1
-            if pgrep -f 'qemu-arm-static.*/root/pdj/EP113_Main_R' > /dev/null; then
+            if [ -n "$(pids_of /root/pdj/EP113_Main_R)" ]; then
                 seen=1
                 gone=0
             elif [ "$seen" = 1 ]; then
                 gone=$((gone + 1))
             fi
         done
-        pkill -f 'qemu-arm-static.*/opt/djsemu/init.sh'
+        kill $(pids_of /opt/djsemu/init.sh) 2> /dev/null
     ) &
     WATCH_PID=$!
 else
@@ -152,13 +167,30 @@ else
     set -- /root/pdj/EP113_Main_R
 fi
 
-QENV="-E DISPLAY=${DISPLAY:-:0} -E HOME=/root -E PATH=/opt/djsemu/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+QENV="${TAG:+-E DJSDEV_TAG=$TAG }-E DISPLAY=${DISPLAY:-:0} -E HOME=/root -E PATH=/opt/djsemu/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 QENV="$QENV -E LD_LIBRARY_PATH=/usr/lib:/lib -E LD_PRELOAD=/opt/djsemu/libdjsdev.so $XDISPLAY"
 [ -n "${DJSDEV_USB:-}" ] && QENV="$QENV -E DJSDEV_USB=$DJSDEV_USB"
 [ -n "${DJSDEV_DIRECT:-}" ] && QENV="$QENV -E DJSDEV_DIRECT=$DJSDEV_DIRECT"
 # The unit's console (its serial port), where a process started by a stick's
 # autoexec may send its output: a file here, $DJS_HOME/run/console.log.
 : > "$DJS/run/console.log"
+if [ -z "${DJS_PROOT:-}" ] && unshare -rm true 2> /dev/null; then
+    # Without proot: a chroot in a user namespace of our own (no root needed), unless DJS_PROOT is set or user
+    # namespaces are not allowed. proot stops the guest at every system call and the app makes very many: the app is
+    # ready in 17 s here, against 45 s. The same places are bound; the
+    # processes of the guest under qemu are the kernel's (binfmt_misc), and carry the tag in their environment.
+    export ROOT USB DATA AUTO QENV QARGS DJS DJSDEV_TAG="${TAG:-}"
+    mkdir -p "$ROOT/tmp/.X11-unix" "$ROOT/dev" "$ROOT/proc" "$ROOT/sys" "$ROOT/media/usb1/sda1" "$ROOT/root/data" "$ROOT/mnt/iso"
+    install -m 755 "$(command -v qemu-arm-static)" "$ROOT/usr/bin/qemu-arm-static"
+    timeout "$secs" unshare -rm bash -c '
+        mount --rbind /dev "$ROOT/dev" && mount --bind "$DJS/run/console.log" "$ROOT/dev/console" &&
+        mount --rbind /proc "$ROOT/proc" && mount --rbind /sys "$ROOT/sys" &&
+        mount --rbind /tmp/.X11-unix "$ROOT/tmp/.X11-unix" && mount --bind "$USB" "$ROOT/media/usb1/sda1" &&
+        mount --bind "$DATA" "$ROOT/root/data" && mount --bind "$AUTO" "$ROOT/mnt/iso" || exit 1
+        exec chroot "$ROOT" /bin/sh -c '"'"'cd /root/pdj && exec /usr/bin/qemu-arm-static $QENV $QARGS "$@"'"'"' sh "$@"
+    ' sh "$@"
+else
 timeout "$secs" proot -q "qemu-arm-static $QENV $QARGS" -r "$ROOT" \
     -b /dev -b "$DJS/run/console.log:/dev/console" -b /proc -b /sys -b /tmp/.X11-unix \
     -b "$USB:/media/usb1/sda1" -b "$DATA:/root/data" -b "$AUTO:/mnt/iso" -w /root/pdj "$@"
+fi

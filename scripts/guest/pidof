@@ -23,6 +23,10 @@ for name in "$@"; do
         pid=${f#/proc/}
         pid=${pid%/cmdline}
         [ "$pid" = "$$" ] && continue
+        # Under an emulator with a tag (see start.py) the processes of the others are not ours.
+        if [ -n "${DJSDEV_TAG:-}" ] && ! tr '\0' '\n' < "/proc/$pid/environ" 2> /dev/null | grep -qx "DJSDEV_TAG=$DJSDEV_TAG"; then
+            continue
+        fi
         if [ "$me" = killall ]; then
             kill $sig "$pid" 2> /dev/null && found=0
         else

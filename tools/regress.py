@@ -41,7 +41,7 @@ import start  # noqa: E402
 from session import RATE, Session, save_wav  # noqa: E402
 
 BASE = os.path.join(REPO, "regress")
-ENV = 'DJS_USB="$HOME/djs/regress/usb" DJS_DATA="$HOME/djs/regress/data"'
+ENV = 'DJS_USB="${DJS_HOME:-$HOME/djs}/regress/usb" DJS_DATA="${DJS_HOME:-$HOME/djs}/regress/data"'
 
 # Where things are on the app's screen and in the panel's frame.
 OK = (487, 333)                          # the OK of a confirmation
@@ -158,7 +158,7 @@ def scenario(s, r, emu):
     s.touch(*SAVE_BUTTON)
     s.pump(3.0)
     r.screen("09-saved")
-    code, out = emu.sh('ls "$HOME/djs/regress/usb/PIONEER DJ SAMPLER/Projects/"')
+    code, out = emu.sh('ls "${DJS_HOME:-$HOME/djs}/regress/usb/PIONEER DJ SAMPLER/Projects/"')
     r.note("projects", out.split())
 
 
@@ -185,8 +185,8 @@ def run(name, patch=None):
     if emu.running():
         sys.exit("An emulator is running: stop it first (start.py stop).")
     code, text = emu.sh('''
-rm -rf "$HOME/djs/regress"; mkdir -p "$HOME/djs/regress/usb" "$HOME/djs/regress/data"
-python3 '%s/tools/make_test_kit.py' "$HOME/djs/regress/usb/PIONEER DJ SAMPLER/Samples/Test Kit"
+rm -rf "${DJS_HOME:-$HOME/djs}/regress"; mkdir -p "${DJS_HOME:-$HOME/djs}/regress/usb" "${DJS_HOME:-$HOME/djs}/regress/data"
+python3 '%s/tools/make_test_kit.py' "${DJS_HOME:-$HOME/djs}/regress/usb/PIONEER DJ SAMPLER/Samples/Test Kit"
 ''' % emu.repo())
     if code:
         sys.exit("could not prepare the fresh unit:\n" + text)
@@ -194,7 +194,7 @@ python3 '%s/tools/make_test_kit.py' "$HOME/djs/regress/usb/PIONEER DJ SAMPLER/Sa
         # The path is the host's; where the emulator lives it may read otherwise.
         code, text = emu.sh('''
 P='%s'; command -v wslpath > /dev/null && P=$(wslpath -a "$P")
-cp "$P" "$HOME/djs/regress/usb/autoexec.bin"
+cp "$P" "${DJS_HOME:-$HOME/djs}/regress/usb/autoexec.bin"
 ''' % os.path.abspath(patch).replace("\\", "/"))
         if code:
             sys.exit("could not put the patch on the drive:\n" + text)
