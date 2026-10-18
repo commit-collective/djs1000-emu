@@ -15,15 +15,35 @@ with sound in and out.
 <img src="docs/img/deck.png" alt="The virtual deck: the DJS-1000's face with five samples loaded, their pads lit and a pattern on the step keys, beside the app's screen at full size" width="900">
 </p>
 
-## Nothing from Pioneer DJ is included
+> [!CAUTION]
+>
+> ## What it is **not**
+>
+> - **It does not ship Pioneer DJ's firmware.** This repository holds no
+>   firmware, nothing unpacked from it, no manuals and no key. You supply
+>   your own copy of the public update file (`DJS1000.UPD`, v1.22) and of
+>   the key that opens it; `scripts/setup.sh` unpacks the update on your
+>   machine, outside the repository.
+> - Not endorsed by, affiliated with, or sponsored by AlphaTheta Corporation
+>   or Pioneer DJ. DJS-1000, Pioneer DJ, Pro DJ Link and rekordbox are
+>   trademarks of their respective owners. The deck's face is drawn by this
+>   project, without the maker's logo; the picture above shows the
+>   firmware's own interface inside it, for illustration.
+> - **Not a replacement for a DJS-1000.** It is an environment for people
+>   who own one, to study how it works, to write and try modifications
+>   before putting them on the unit, and to test software that talks to it.
+>   It has no pressure-sensitive pads, no real audio timing and no
+>   hardware, and it needs the firmware and key described below.
 
-This repository holds no firmware, nothing unpacked from it, no manuals and
-no key. You supply your own copy of the public update file (`DJS1000.UPD`,
-v1.22) and of the key that opens it; `scripts/setup.sh` unpacks the update
-on your machine, outside the repository. The
-picture shows the firmware's own interface inside the deck, for illustration;
-the deck's face is drawn by this project, without the maker's logo. This project
-is not affiliated with Pioneer DJ or AlphaTheta.
+## About the key
+
+Pioneer DJ ships the update as an encrypted `.UPD` file. The key that
+opens it is the text file `/usr/local/pdj/aes256.key` in the unit's own
+root filesystem. It is Pioneer DJ's material, so it is not in this
+repository, and no one here has the right to pass it on. Getting a copy
+is up to you, by whatever means you are yourself entitled to, for
+example from a unit you own. `setup.sh` keeps it as `~/djs/aes256.key`,
+readable by you alone, for the tools that need it later.
 
 ## State
 
@@ -61,11 +81,7 @@ sudo apt install qemu-user-static binfmt-support proot squashfs-tools \
 scripts/setup.sh /path/to/DJS1000.UPD /path/to/aes256.key    # once: builds ~/djs/root
 ```
 
-The update file is encrypted. The key is the unit's own: the text file
-`/usr/local/pdj/aes256.key` in its root filesystem. It is Pioneer DJ's, so it
-is not in this repository, and getting a copy from a unit you own is up to
-you. `setup.sh` keeps it as `~/djs/aes256.key`, readable by you alone, for
-the tools that need it later.
+The update file is encrypted: _About the key_ above says what opens it.
 
 Then, on the host (Windows itself, or the Linux machine), once:
 
