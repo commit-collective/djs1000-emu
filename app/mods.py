@@ -4,7 +4,7 @@
 A patch that carries mods (the djs1000-mods project) holds the list of them, modlist.txt (JSON: a name, a line on
 what it does and a status for each), next to its autoexec.sh; the emulator opens the patch at each start and the
 list is there, in the run folder. That is the one list: this does not know any mod by name. Which of them are on
-is djs1000-mods.cfg on the USB drive, a line a mod:
+is djs1000-mods.txt on the USB drive, a line a mod:
 
     name = on    # what it does
 
@@ -18,7 +18,7 @@ import re
 import threading
 import time
 
-FILE = "djs1000-mods.cfg"
+FILE = "djs1000-mods.txt"
 LINE = re.compile(r"^(\s*)([A-Za-z0-9_.-]+)(\s*=\s*)(on|off)\b(.*)$")
 
 
