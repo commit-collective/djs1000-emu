@@ -15,7 +15,7 @@
 # (readable by you alone), where the tools look for it; with one already
 # there the second argument can be left out.
 #
-# Needs (Ubuntu 24.04): qemu-user-static binfmt-support proot squashfs-tools
+# Needs (Ubuntu 24.04): qemu-user-static binfmt-support squashfs-tools
 # p7zip-full gcc-arm-linux-gnueabihf openssl python3; and xvfb, to run the
 # app without its own window (scripts/run.sh does without it if it is not
 # there).
@@ -26,7 +26,7 @@ UPD="${1:?usage: setup.sh <DJS1000.UPD> <aes256.key>}"
 KEY="${2:-$DJS/aes256.key}"
 test -f "$KEY" || { echo "no key file: usage: setup.sh <DJS1000.UPD> <aes256.key>" >&2; exit 1; }
 
-for t in qemu-arm-static proot unsquashfs 7z arm-linux-gnueabihf-gcc openssl python3; do
+for t in qemu-arm-static unsquashfs 7z arm-linux-gnueabihf-gcc openssl python3; do
     command -v "$t" >/dev/null || { echo "missing: $t (see the package list at the top of this script)" >&2; exit 1; }
 done
 case "$(df -T "$(dirname "$DJS")" | awk 'NR==2 {print $2}')" in

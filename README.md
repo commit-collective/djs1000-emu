@@ -75,17 +75,21 @@ Not yet:
 ## Quick start
 
 On Windows, in WSL2 (Ubuntu 24.04); on Linux. macOS is not supported: the emulator needs Linux's
-`qemu-arm` user mode and `proot`, which a Mac would have to get from a Linux virtual machine (a patch that
-does that is welcome). `xvfb` is optional: without it the app's window opens on the X display (WSLg's on
+`qemu-arm` user mode and Linux's chroot and namespaces, which a Mac would have to get from a Linux virtual machine
+(a patch that does that is welcome). `xvfb` is optional: without it the app's window opens on the X display (WSLg's on
 Windows).
 
 ```sh
-sudo apt install qemu-user-static binfmt-support proot squashfs-tools \
+sudo apt install qemu-user-static binfmt-support squashfs-tools \
     p7zip-full gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl xvfb
 scripts/setup.sh /path/to/DJS1000.UPD /path/to/aes256.key    # once: builds ~/djs/root
 ```
 
 The update file is encrypted: _About the key_ above says what opens it.
+
+The app runs in a chroot inside a user namespace of its own (`unshare -rm`), which needs no root. Where the
+system does not allow user namespaces (some hardened kernels and containers), the launcher falls back to `proot`,
+which is about three times slower to start the app; `DJS_PROOT=1` forces it. `proot` is only needed for that.
 
 Then, on the host (Windows itself, or the Linux machine), once:
 
