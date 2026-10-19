@@ -56,6 +56,7 @@ DOCK_PAD = 16
 STATUS_H = 26
 ROW = 26                                 # a row of the side panel's lists
 HEAD = 28                                # a section's header
+DETAIL_H = 18 * 5 + 12                   # what the mods' list shows of the mod the mouse is on: its page text
 FPS = 60
 MIN_HOLD = 120                           # ms a clicked key or pad stays down at least
 BOOT_S = 24                              # about how long the app takes to draw its first screen
@@ -104,6 +105,8 @@ class Deck:
         self.link = link
         self.mods = mods or Mods(None)   # what a patch on the USB drive carries
         self.mod_rects = []              # (where, name): the switches drawn in the side panel
+        self.mod_hover = None            # the mod the mouse was last on in the list (its text shows under it)
+        self.hover_pinned = False        # --hover: the mod shown is the one asked for, whatever the mouse does
         self.fold = {"mods": False, "help": False}      # the side panel's two sections: folded or not
         self.scroll = {"mods": 0, "help": 0}            # how far each is scrolled, in pixels
         self.fold_rects = []             # (where, section): the headers
@@ -651,7 +654,7 @@ class Deck:
         sections = []
         if self.mods.items:
             sections.append(("mods", "Installed mods (USB)", "click a switch - takes effect as the app runs",
-                             sum(h for _, h in self.mod_rows(width - 12)), self.draw_mods_body))
+                             sum(h for _, _, h in self.mod_rows()) + DETAIL_H + 8, self.draw_mods_body))
         sections.append(("help", "Controls", "", len(HELP) * 24 + 4, self.draw_help_body))
         free = bottom - y - HEAD * len(sections) - 8 * (len(sections) - 1)
         views = {}
@@ -659,7 +662,7 @@ class Deck:
         if len(open_) == 1:
             views[open_[0][0]] = min(open_[0][3], max(0, free))
         elif len(open_) == 2:
-            first = min(open_[0][3], max(free // 2, free - open_[1][3]))
+            first = min(open_[0][3], max(free // 2, free - open_[1][3], free - 130))   # the second keeps five rows
             views[open_[0][0]] = max(0, first)
             views[open_[1][0]] = max(0, min(open_[1][3], free - first))
         for key, title, hint, content, body in sections:
@@ -680,6 +683,9 @@ class Deck:
                 y += 8
                 continue
             view = views.get(key, 0)
+            extra = DETAIL_H + 8 if key == "mods" else 0     # the mods' list has the mod's text under it, not scrolled
+            content -= extra
+            view_all, view = view, max(0, view - extra)
             body_rect = pygame.Rect(x, y, width, view)
             most = max(0, content - view)
             self.scroll[key] = min(self.scroll[key], most)
@@ -687,6 +693,8 @@ class Deck:
             body(x, y - self.scroll[key], width - (12 if most else 0), body_rect)
             win.set_clip(None)
             self.body_rects[key] = body_rect
+            if key == "mods":
+                self.draw_mod_detail(x, y + view + 8, width)
             if most:
                 track = pygame.Rect(x + width - 8, y, 8, view)
                 size = max(24, view * view // content)
@@ -695,49 +703,94 @@ class Deck:
                 pygame.draw.rect(win, (110, 112, 120) if self.thumb and self.thumb[0] == key else (80, 82, 90), thumb,
                                  border_radius=4)
                 self.track_rects[key] = (track, thumb, most)
-            y += view + 8
+            y += view_all + 8
 
-    def mod_names_w(self):
-        """The width of the widest name: the descriptions all begin this far in."""
-        return max((self.font.size(name)[0] for name, _, _ in self.mods.items), default=0)
-
-    def mod_rows(self, width):
-        """Each mod's row: the lines its description wraps to in `width`, and the row's height."""
-        rows = []
-        room = max(80, width - 52 - self.mod_names_w() - 14)
-        for name, on, about in self.mods.items:
-            lines, line = [], ""
-            for word in about.split():
-                if line and self.font.size(line + " " + word)[0] > room:
-                    lines.append(line)
-                    line = word
-                else:
-                    line = (line + " " + word) if line else word
-            lines.append(line)
-            rows.append((lines, max(ROW, 18 * len(lines) + 8)))
+    def mod_rows(self):
+        """The list's rows, top to bottom: ("group", the heading, height) where the group changes, ("mod", the mod, height)."""
+        rows, group = [], None
+        for mod in self.mods.items:
+            if mod["group"] and mod["group"] != group:
+                group = mod["group"]
+                rows.append(("group", group, ROW))
+            rows.append(("mod", mod, ROW))
         return rows
 
+    def wrap(self, text, width, limit):
+        """`text` in lines of at most `width` pixels, at most `limit` of them (the last ends in ... if there is more)."""
+        lines, line = [], ""
+        for word in text.split():
+            if line and self.font.size(line + " " + word)[0] > width:
+                lines.append(line)
+                line = word
+            else:
+                line = (line + " " + word) if line else word
+        lines.append(line)
+        if len(lines) > limit:
+            lines = lines[:limit]
+            while lines[-1] and self.font.size(lines[-1] + "...")[0] > width:
+                lines[-1] = lines[-1].rsplit(" ", 1)[0] if " " in lines[-1] else lines[-1][:-1]
+            lines[-1] += "..."
+        return lines
+
     def draw_mods_body(self, x, y, width, clip):
-        """The switches, one under the other, a description wrapped to as many lines as it needs; a switch can be
-        clicked where it is drawn."""
+        """The mods, grouped as the website groups them: a switch, the title and the key of each. The mouse on a row shows
+        the mod's text under the list; a switch (and the title beside it) can be clicked where it is drawn."""
         win = self.win
-        rows = self.mod_rows(width)
-        about_x = x + 52 + self.mod_names_w() + 14
-        for (name, on, about), (lines, height) in zip(self.mods.items, rows):
+        mouse = pygame.mouse.get_pos()
+        for kind, what, height in self.mod_rows():
             if y + height >= clip.top and y <= clip.bottom:
-                t = self.small.render("ON" if on else "OFF", True, (10, 10, 10) if on else (150, 152, 158))
-                r = pygame.Rect(x, y - 1, 40, 20)
-                pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r, border_radius=4)
-                win.blit(t, t.get_rect(center=r.center))
-                t = self.font.render(name, True, (225, 228, 232))
-                win.blit(t, (x + 52, y))
-                for i, text in enumerate(lines):
-                    t2 = self.font.render(text, True, (150, 152, 158))
-                    win.blit(t2, (about_x, y + 18 * i))
-                hit = pygame.Rect(x, y - 3, 52 + t.get_width(), 24).clip(clip)
-                if hit.width and hit.height:
-                    self.mod_rects.append((hit, name))
+                if kind == "group":
+                    t = self.small.render(what.upper(), True, (150, 152, 158))
+                    win.blit(t, (x + 2, y + 10))
+                else:
+                    mod = what
+                    row = pygame.Rect(x, y - 3, width, ROW - 2)
+                    if row.collidepoint(mouse) and clip.collidepoint(mouse) and not self.hover_pinned:
+                        self.mod_hover = mod["name"]
+                    if self.mod_hover == mod["name"]:
+                        pygame.draw.rect(win, (26, 27, 30), row, border_radius=4)
+                    on = mod["on"]
+                    t = self.small.render("ON" if on else "OFF", True, (10, 10, 10) if on else (150, 152, 158))
+                    r = pygame.Rect(x + 4, y - 1, 40, 20)
+                    pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r, border_radius=4)
+                    win.blit(t, t.get_rect(center=r.center))
+                    t = self.font.render(mod["title"], True, (225, 228, 232))
+                    win.blit(t, (x + 56, y))
+                    key = self.font.render(mod["name"], True, (130, 132, 138))
+                    win.blit(key, (x + 56 + t.get_width() + 10, y))
+                    if mod["status"] in ("beta", "wip"):
+                        tag = self.small.render("BETA" if mod["status"] == "beta" else "WIP", True, (150, 152, 158))
+                        tx = x + 56 + t.get_width() + 20 + key.get_width()
+                        pygame.draw.rect(win, (110, 112, 120), (tx, y + 1, tag.get_width() + 10, 16), 1, border_radius=3)
+                        win.blit(tag, (tx + 5, y + 3))
+                    hit = pygame.Rect(x, y - 3, 56 + t.get_width(), 24).clip(clip)
+                    if hit.width and hit.height:
+                        self.mod_rects.append((hit, mod["name"]))
             y += height
+
+    def draw_mod_detail(self, x, y, width):
+        """The text of the mod the mouse was last on: the website's own words, then what it needs."""
+        win = self.win
+        box = pygame.Rect(x, y, width, DETAIL_H)
+        pygame.draw.rect(win, (20, 21, 24), box, border_radius=4)
+        mod = next((m for m in self.mods.items if m["name"] == self.mod_hover), None)
+        if not mod:
+            t = self.font.render("Point at a mod to read what it does.", True, (110, 112, 120))
+            win.blit(t, (x + 12, y + 10))
+            return
+        room = width - 24
+        lines = [(l, (200, 203, 208)) for l in self.wrap(mod["page"], room, 3)]
+        notes = []
+        if mod["status"] == "beta":
+            notes.append("Still being tested")
+        if mod["requires"]:
+            notes.append("Also installs " + ", ".join(mod["requires"]))
+        if mod["needs"]:
+            notes.append(mod["needs"])
+        for note in notes[:5 - len(lines)]:
+            lines.append((self.wrap("› " + note, room, 1)[0], (150, 152, 158)))
+        for i, (text, color) in enumerate(lines):
+            win.blit(self.font.render(text, True, color), (x + 12, y + 8 + 18 * i))
 
     def draw_help_body(self, x, y, width, clip):
         win = self.win
@@ -820,6 +873,8 @@ def main():
                     help="the emulator's USB folder, to show and switch the mods of a patch on it")
     ap.add_argument("--modlist", metavar="FILE",
                     help="the list of mods the patch carries (modlist.txt in the folder the emulator opened it in)")
+    ap.add_argument("--hover", metavar="MOD",
+                    help="start with this mod's text shown under the list of mods (for a picture)")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
     args = ap.parse_args()
@@ -852,6 +907,8 @@ def main():
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
     deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb, args.modlist))
+    deck.mod_hover = args.hover
+    deck.hover_pinned = bool(args.hover)
     if args.compact:
         deck.show_dock = False
         deck.layout()

@@ -2,7 +2,7 @@
 """The mods a patch carries, and which of them are on.
 
 A patch that carries mods (the djs1000-mods project) holds the list of them, modlist.txt (JSON: a name, a line on
-what it does and a status for each), next to its autoexec.sh; the emulator opens the patch at each start and the
+what it does, a title, a group, the page text, what it needs and a status for each), next to its autoexec.sh; the emulator opens the patch at each start and the
 list is there, in the run folder. That is the one list: this does not know any mod by name. Which of them are on
 is djs1000-mods.txt on the USB drive, a line a mod:
 
@@ -26,7 +26,7 @@ class Mods:
     def __init__(self, folder, modlist=None):
         self.path = os.path.join(folder, FILE) if folder else None
         self.modlist = modlist
-        self.items = []                  # (name, on, what it does)
+        self.items = []                  # a dict for each mod: name, on, title, group, page, needs, requires, status
         self._seen = None
         if self.path and self.modlist:
             threading.Thread(target=self._watch, daemon=True).start()
@@ -67,10 +67,18 @@ class Mods:
         items = []
         for mod in mods:
             wip = mod.get("status") == "wip"
-            about = mod.get("about", "") + (" (work in progress)" if wip else " (beta)" if mod.get("status") == "beta" else "")
-            if mod.get("requires"):
-                about += " (needs " + ", ".join(mod["requires"]) + ")"
-            items.append((mod["name"], state.get(mod["name"], not wip), about))
+            items.append({
+                "name": mod["name"],
+                "on": state.get(mod["name"], not wip),
+                # the website's own words (title, page, group); a patch from before them has only the short clause
+                "title": mod.get("title") or mod["name"],
+                "group": mod.get("group", ""),
+                "page": mod.get("page") or mod.get("about", ""),
+                "needs": mod.get("needs", ""),
+                "requires": mod.get("requires", []),
+                "status": mod.get("status", ""),
+                "settings": len(mod.get("settings", [])),
+            })
         self._seen, self.items = seen, items
 
     def _stat_cfg(self):
@@ -81,7 +89,7 @@ class Mods:
 
     def toggle(self, name):
         """Switches the mod on or off in the file (a line is added if there is none). False if it could not."""
-        on_now = dict((n, on) for n, on, _ in self.items).get(name)
+        on_now = dict((m["name"], m["on"]) for m in self.items).get(name)
         if on_now is None:
             return False
         try:
