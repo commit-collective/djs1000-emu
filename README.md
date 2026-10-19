@@ -16,7 +16,7 @@ screen, its lamps as the app lights them, and its controls under the mouse,
 with sound in and out.
 
 <p align="center">
-<img src="docs/img/deck.png" alt="The virtual deck: the DJS-1000's face with five samples loaded, their pads lit and a pattern on the step keys, beside the app's screen at full size" width="900">
+<img src="docs/img/hero.png" alt="The virtual deck: the DJS-1000's face with five samples loaded, their pads lit and a pattern on the step keys, beside the app's screen at full size and the list of installed mods with a switch on each" width="1000">
 </p>
 
 > [!CAUTION]
