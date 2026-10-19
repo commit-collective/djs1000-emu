@@ -1,0 +1,33 @@
+# A tag becomes a GitHub release, with the changelog's entry as the notes. The emulator needs Pioneer's firmware to
+# run, so there is nothing to test here.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 - "$TAG" > notes.md <<'PY'
+          import re, sys
+          text = open("CHANGELOG.md", encoding="utf-8").read().replace("\r\n", "\n")
+          found = re.search(r"^## %s\b[^\n]*\n(.*?)(?=^## |\Z)" % re.escape(sys.argv[1]), text, re.M | re.S)
+          if not found or not found.group(1).strip():
+              sys.exit("CHANGELOG.md has no entry for " + sys.argv[1])
+          print(found.group(1).strip())
+          PY
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md
+          fi

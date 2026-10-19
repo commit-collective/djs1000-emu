@@ -1,5 +1,7 @@
 # djs1000-emu
 
+[![release](https://img.shields.io/github/v/release/commit-collective/djs1000-emu)](https://github.com/commit-collective/djs1000-emu/releases)
+
 The Pioneer DJ DJS-1000's own application, running on a PC.
 
 Follow development: [commitcollective.cc](https://commitcollective.cc), [Instagram](https://www.instagram.com/commit.collective), [YouTube](https://www.youtube.com/@CommitCollective); on GitHub, Watch, then Releases.
