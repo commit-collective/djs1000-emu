@@ -10,14 +10,16 @@ The Pioneer DJ DJS-1000's own application, running on your computer.
 
 Follow development: [commitcollective.cc](https://commitcollective.cc), [Instagram](https://www.instagram.com/commit.collective), [YouTube](https://www.youtube.com/@CommitCollective); on GitHub, Watch, then Releases.
 
-The DJS-1000 is an embedded Linux machine (Freescale i.MX6). Its sampler is
-one program, `EP113_Main_R`, a JUCE application that draws through X11. This
-project runs that program unmodified under `qemu-arm` user mode, inside the
-unit's own root filesystem, with a small preloaded library standing in for
-the board's devices: the panel microcontroller, the touch strip, GPIO, the
-backlight, the sound card. A virtual deck draws the machine around it: its
-screen, its lamps as the app lights them, and its controls under the mouse,
-with sound in and out.
+## What it is
+
+The DJS-1000 is Pioneer DJ's standalone performance sampler. This project runs the sampler's own software on your
+computer and draws the machine around it in a window, the **virtual deck**: the screen, the lamps as the software lights
+them, and every control under the mouse (pads, step keys, knobs, the rotary selector, the tempo slider, the touch
+strip), with sound in and out.
+
+It is for people who own a DJS-1000: to study how it works, to write and try modifications (such as
+[the mods](https://commitcollective.cc/djs1000/mods/)) before putting them on the unit, and to test software that talks to
+it. How it does this is under [How it works](#how-it-works).
 
 > [!CAUTION]
 >
@@ -33,11 +35,15 @@ with sound in and out.
 >   trademarks of their respective owners. The deck's face is drawn by this
 >   project, without the maker's logo; the picture above shows the
 >   firmware's own interface inside it, for illustration.
-> - **Not a replacement for a DJS-1000.** It is an environment for people
->   who own one, to study how it works, to write and try modifications
->   before putting them on the unit, and to test software that talks to it.
->   It has no pressure-sensitive pads, no real audio timing and no
->   hardware, and it needs the firmware and key described below.
+> - **Not a replacement for a DJS-1000.** It has no pressure-sensitive pads,
+>   no real audio timing and no hardware.
+
+## What you need
+
+- **The update file**, `DJS1000.UPD` (version 1.22), the public update from the maker.
+- **The key that opens it** (the update is encrypted): see [About the key](#about-the-key).
+- **Linux, or Windows with WSL2** (Windows Subsystem for Linux) and Ubuntu 24.04 installed in it. macOS is not supported.
+- **Python 3** on the computer you sit at (Windows itself, or the Linux machine), to run the deck.
 
 ## About the key
 
@@ -49,17 +55,61 @@ is up to you, by whatever means you are yourself entitled to, for
 example from a unit you own. `setup.sh` keeps it as `~/djs/aes256.key`,
 readable by you alone, for the tools that need it later.
 
-## State
+## Quick start
 
-Working:
+The emulator itself runs in Linux. On Windows that is the Ubuntu terminal of WSL2: steps 2 and 3 go there, and the deck
+(steps 4 and 5) is started from Windows itself. On Linux everything runs in one place. macOS is not supported: the
+emulator needs Linux's `qemu-arm` user mode and Linux's chroot and namespaces, which a Mac would have to get from a
+Linux virtual machine (a patch that does that is welcome).
+
+1. **Get the code**: clone this repository (or download a [release](https://github.com/commit-collective/djs1000-emu/releases)).
+   The commands below are run from its folder.
+
+2. **Install what it runs on**, in Ubuntu 24.04 (`xvfb` is optional: without it the app's window opens on the X
+   display, WSLg's on Windows):
+
+   ```sh
+   sudo apt install qemu-user-static binfmt-support squashfs-tools \
+       p7zip-full gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl xvfb
+   ```
+
+3. **Build the unit's root filesystem** from your update file and key, once. It goes in `~/djs/root`, on your machine,
+   outside the repository:
+
+   ```sh
+   scripts/setup.sh /path/to/DJS1000.UPD /path/to/aes256.key
+   ```
+
+4. **Install the deck's two libraries** (pygame-ce and Pillow), once, on the computer you sit at (Windows itself, or the
+   Linux machine):
+
+   ```sh
+   python -m pip install -r requirements.txt
+   ```
+
+5. **Run it**:
+
+   ```sh
+   python start.py          # or start.cmd / ./start.sh
+   ```
+
+That starts the emulator (in WSL on Windows), opens the virtual deck when it answers, and stops the emulator when the
+deck is closed. The app is ready on its PROJECT menu about half a minute later. `python start.py --help` lists the
+options; anything it does not know goes to the deck (`--audio NAME`, `--headphones NAME`, `--no-input` ...).
+
+The app runs in a chroot inside a user namespace of its own (`unshare -rm`), which needs no root. Where the
+system does not allow user namespaces (some hardened kernels and containers), the launcher falls back to `proot`
+(install it with `sudo apt install proot`), which is about three times slower to start the app; `DJS_PROOT=1` forces it.
+
+## What works
 
 - the app starts in about half a minute and runs for as long as you leave it
 - the virtual deck ([docs/virtual-deck.md](docs/virtual-deck.md)): every
   control of the panel (buttons, pads, step keys, knobs, the rotary selector,
   the tempo slider, the touch strip), every lamp, and the touch screen
-- sound: the master and headphone outputs play on the host's devices, and
+- sound: the master and headphone outputs play on the computer's devices, and
   the input is fed from a recording device (LIVE SAMPLING works)
-- a USB drive, which is the folder `~/djs/usb`: samples load from
+- a USB drive, which is the folder `~/djs/usb` (in WSL, on Windows): samples load from
   `PIONEER DJ SAMPLER/Samples` there, and projects are created, saved,
   opened, deleted, saved as packages and rendered to audio
 - settings are kept from one run to the next
@@ -70,55 +120,16 @@ Working:
   recorded regression session (`tools/regress.py`) that comes out identical
   from one run to the next
 
-Not yet:
+**Not yet:** MIDI, Pro DJ Link and the network. macOS.
 
-- MIDI, Pro DJ Link, the network
+## Other ways to run it
 
-## Quick start
+By hand, the two halves of `start.py` are `scripts/run.sh 3600` (the emulator, in WSL on Windows; the number is seconds,
+0 for no limit) and `python app/virtual_djs.py` (the deck, on the computer you sit at).
 
-It runs on Linux, or on Windows through WSL2 (Windows Subsystem for Linux), with Ubuntu 24.04 installed in it. The
-emulator itself runs in Linux; on Windows, the first two commands below go in the Ubuntu (WSL2) terminal, and the deck
-(`start.py`) is started from Windows. macOS is not supported: the emulator needs Linux's `qemu-arm` user mode and Linux's
-chroot and namespaces, which a Mac would have to get from a Linux virtual machine (a patch that does that is welcome).
-`xvfb` is optional: without it the app's window opens on the X display (WSLg's, on Windows).
-
-```sh
-sudo apt install qemu-user-static binfmt-support squashfs-tools \
-    p7zip-full gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl xvfb
-scripts/setup.sh /path/to/DJS1000.UPD /path/to/aes256.key    # once: builds ~/djs/root
-```
-
-The update file is encrypted: _About the key_ above says what opens it.
-
-The app runs in a chroot inside a user namespace of its own (`unshare -rm`), which needs no root. Where the
-system does not allow user namespaces (some hardened kernels and containers), the launcher falls back to `proot`,
-which is about three times slower to start the app; `DJS_PROOT=1` forces it. `proot` is only needed for that.
-
-Then, on the host (Windows itself, or the Linux machine), once:
-
-```sh
-python -m pip install -r requirements.txt    # pygame-ce and Pillow, for the deck
-```
-
-and to run it:
-
-```sh
-python start.py          # or start.cmd / ./start.sh
-```
-
-That starts the emulator (in WSL on Windows), opens the virtual deck when it
-answers, and stops the emulator when the deck is closed. `python start.py
---help` lists the options; anything it does not know goes to the deck
-(`--audio NAME`, `--headphones NAME`, `--no-input` ...). The app starts on
-its PROJECT menu about half a minute later; P closes it.
-
-By hand, the two halves are `scripts/run.sh 3600` (seconds; 0 for no limit)
-in WSL and `python app/virtual_djs.py` on the host.
-
-The app's own window is not shown: with `xvfb` installed the app draws on a
-display nobody sees, and the deck shows its screen. `python start.py
---window` (or `DJS_WINDOW=1 scripts/run.sh ...`) shows it, and it takes the
-keyboard without the deck:
+The app's own window is not shown: with `xvfb` installed the app draws on a display nobody sees, and the deck shows its
+screen. `python start.py --window` (or `DJS_WINDOW=1 scripts/run.sh ...`) shows the app's window as well, and it takes
+the keyboard without the deck:
 
 | key | control |
 |---|---|
@@ -131,6 +142,14 @@ keyboard without the deck:
 | L, X, S, `-` | LIVE SAMPLING, FX, SYNC, TEMPO RANGE |
 | mouse | touchscreen |
 
+## How it works
+
+The DJS-1000 is an embedded Linux machine (Freescale i.MX6). Its sampler is one program, `EP113_Main_R`, a JUCE
+application that draws through X11. This project runs that program unmodified under `qemu-arm` user mode, inside the
+unit's own root filesystem, with a small preloaded library standing in for the board's devices: the panel
+microcontroller, the touch strip, GPIO, the backlight, the sound card. The virtual deck talks to that library. What has
+been worked out is in [docs/](docs).
+
 ## Layout
 
 | | |
@@ -141,7 +160,7 @@ keyboard without the deck:
 | `scripts/setup.sh`, `scripts/run.sh` | update file → root filesystem; run the app |
 | `scripts/guest/` | what runs inside the root filesystem in place of the unit's start-up |
 | `tools/` | `decrypt_upd.py`, `shot.py` (screenshot), `probe.py` (find what an input does), `xref.py` (where a string is used), `make_test_kit.py` (a few synthetic drum samples on the USB folder), `session.py` and `regress.py` (a scripted, recorded session to compare firmware changes against), `deck_selftest.py` |
-| `docs/` | what has been worked out: [the update file](docs/update-format.md), [hardware and software](docs/hardware.md), [the emulation](docs/emulation.md), [the panel protocol](docs/panel-protocol.md), [the virtual deck](docs/virtual-deck.md), [power and standby](docs/power-standby.md), [tools](docs/tools.md) |
+| `docs/` | what has been worked out: [the update file](docs/update-format.md), [hardware and software](docs/hardware.md), [the emulation](docs/emulation.md), [the panel protocol](docs/panel-protocol.md), [the virtual deck](docs/virtual-deck.md), [power and standby](docs/power-standby.md), [tools](docs/tools.md), [releasing](docs/releasing.md) |
 
 ## Credits
 
