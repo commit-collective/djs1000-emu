@@ -317,8 +317,8 @@ static unsigned short crc_x25(const unsigned char *p, unsigned n)
 
 /*
  * The panel's input state, as the frame the panel MCU sends
- * (didRecievePanelComData an address, buttons the app's routine, encoders
- * the app's routine):
+ * (the app's handlers of the panel's data, of its buttons and of its
+ * encoders):
  *
  *   0x00        identifier 0x01
  *   0x01-0x06   buttons, one bit each (46 button ids), plus
@@ -975,7 +975,7 @@ static void *deck_server(void *arg)
  *                          (byte 5 bits 6-7, byte 6 bits 4-5)
  * All found with tools/probe.py. Byte 5 bit 4 (button id 0) is tied to
  * power/standby: a press and release puts the app in standby ("transition
- * Standby!", tx byte 0x6C bit 1, the app's routine). No key is bound to it.
+ * Standby!", tx byte 0x6C bit 1). No key is bound to it.
  * (JUCE itself takes the arrows and Page Up/Down for its lists.)
  */
 int XNextEvent(void *display, void *event)
@@ -1703,13 +1703,13 @@ int setsockopt(int fd, int level, int name, const void *val, unsigned len)
  * (0: headphones and input, 1: master). It goes to the ALSA PCM named by
  * DJSDEV_PCM instead, "null" (discard, and silence on the inputs) by default.
  *
- * The app's ALSA code (open at) sizes its buffers from the channel
+ * The app's ALSA code (its open routine) sizes its buffers from the channel
  * ranges the devices report. It asks for 4 outputs in all and gives each of
  * the two output devices as many as it accepts, so the board's must take
  * exactly 2 each (the AK4452 is a stereo DAC). With the 1-32 that "null"
  * reports the first device takes all 4, the second is given channels past
  * the end of the output buffer, and the audio thread crashes copying them
- *; and if the input cannot be opened the
+ * (in its audio thread); and if the input cannot be opened the
  * whole device fails to open, nothing gets a sample rate, and the startup
  * project load never finishes. So the ranges are narrowed to the board's. */
 #define STAND_PCMS 16
@@ -1756,7 +1756,7 @@ int snd_pcm_open(void **pcm, const char *name, int stream, int mode)
 
 /*
  * Playback. "null" takes what it is given at once, so the app's audio thread
- * (wait, write both outputs, read the input, run the callback)
+ * (its audio thread: wait, write both outputs, read the input, run the callback)
  * would spin as fast as the CPU allows: time in the app would run fast and a
  * core would be burnt. The board's DAC takes 44100 frames a second, so the
  * write to the master output waits for that. What is written there is also

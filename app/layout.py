@@ -290,7 +290,7 @@ LAMPS = {
 
 def lamp_level(frame, lamp):
     """How a two-level lamp is lit: 0 off, 1 dim, 2 bright. The frame holds
-    0 for off, 3 for dim and 1 for bright (the table at)."""
+    0 for off, 3 for dim and 1 for bright (the app's table of them)."""
     byte, shift = LAMPS[lamp]
     return (0, 2, 2, 1)[(frame[byte] >> shift) & 3]
 
