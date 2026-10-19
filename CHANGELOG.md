@@ -4,7 +4,9 @@ Newest first. A release is a tagged commit.
 
 ## Not yet released
 
-First release, `v0.1.0`.
+## v0.1.0
+
+First release.
 
 - The DJS-1000's own app (firmware 1.22) runs unmodified under `qemu-arm` user mode, in the unit's root filesystem,
   with stand-ins for its devices: the panel, the touch strip, the backlight, the sound card.
@@ -16,6 +18,8 @@ First release, `v0.1.0`.
   fallback and is about three times slower to start the app), and each emulator's processes are told apart by their
   mount namespace.
 - `tools/regress.py` records a fixed session and compares it with a reference; `tools/session.py` scripts the app.
+- The deck lists the mods of the patch on the drive, grouped as the mods' website groups them, with a switch for each; the
+  mouse on a row shows the mod's text.
 - Settings of the mods are read from `djs1000-mods.txt` on the drive.
 
-Not yet: MIDI, Pro DJ Link, the network. macOS is not supported.
+Tried on Windows 11 with WSL2 and Ubuntu 24.04. Not yet: MIDI, Pro DJ Link, the network. macOS is not supported.
