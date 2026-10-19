@@ -14,11 +14,11 @@ First release.
   selector, tempo slider, touch strip), with the master and headphone outputs and a recording device as the input.
 - A USB drive is a host folder: samples load from it, and projects are saved, opened, deleted and rendered there.
 - An `autoexec.bin` on that folder runs as it does on a stick, which is how the mods are tried before a real unit.
-- Several emulators can run side by side. The guest runs in a chroot inside a user namespace (no root; `proot` is the
-  fallback and is about three times slower to start the app), and each emulator's processes are told apart by their
+- Several emulators can run side by side. The guest runs in a chroot inside a user namespace (it needs no root, and `proot` is the
+  fallback, about three times slower to start the app), and each emulator's processes are told apart by their
   mount namespace.
-- `tools/regress.py` records a fixed session and compares it with a reference; `tools/session.py` scripts the app.
-- The deck lists the mods of the patch on the drive, grouped as the mods' website groups them, with a switch for each; the
+- `tools/regress.py` records a fixed session and compares it with a reference. `tools/session.py` scripts the app.
+- The deck lists the mods of the patch on the drive, grouped as the mods' website groups them, with a switch for each. The
   mouse on a row shows the mod's text.
 - Settings of the mods are read from `djs1000-mods.txt` on the drive.
 

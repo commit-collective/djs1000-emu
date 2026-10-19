@@ -8,7 +8,7 @@ The Pioneer DJ DJS-1000's own application, running on your computer.
 <img src="docs/img/hero.png" alt="The virtual deck: the DJS-1000's face with five samples loaded, their pads lit and a pattern on the step keys, beside the app's screen at full size and the list of installed mods with a switch on each" width="1000">
 </p>
 
-Follow development: [commitcollective.cc](https://commitcollective.cc), [Instagram](https://www.instagram.com/commit.collective), [YouTube](https://www.youtube.com/@CommitCollective); on GitHub, Watch, then Releases.
+Follow development: [commitcollective.cc](https://commitcollective.cc), [Instagram](https://www.instagram.com/commit.collective), [YouTube](https://www.youtube.com/@CommitCollective). On GitHub, Watch, then Releases.
 
 ## What it is
 
@@ -28,12 +28,12 @@ it. How it does this is under [How it works](#how-it-works).
 > - **It does not ship Pioneer DJ's firmware.** This repository holds no
 >   firmware, nothing unpacked from it, no manuals and no key. You supply
 >   your own copy of the public update file (`DJS1000.UPD`, v1.22) and of
->   the key that opens it; `scripts/setup.sh` unpacks the update on your
+>   the key that opens it. `scripts/setup.sh` unpacks the update on your
 >   machine, outside the repository.
 > - Not endorsed by, affiliated with, or sponsored by AlphaTheta Corporation
 >   or Pioneer DJ. DJS-1000, Pioneer DJ, Pro DJ Link and rekordbox are
 >   trademarks of their respective owners. The deck's face is drawn by this
->   project, without the maker's logo; the picture above shows the
+>   project, without the maker's logo. The picture above shows the
 >   firmware's own interface inside it, for illustration.
 > - **Not a replacement for a DJS-1000.** It has no pressure-sensitive pads,
 >   no real audio timing and no hardware.
@@ -95,11 +95,11 @@ Linux virtual machine (a patch that does that is welcome).
 
 That starts the emulator (in WSL on Windows), opens the virtual deck when it answers, and stops the emulator when the
 deck is closed. The app is ready on its PROJECT menu about half a minute later. `python start.py --help` lists the
-options; anything it does not know goes to the deck (`--audio NAME`, `--headphones NAME`, `--no-input` ...).
+options. Anything it does not know goes to the deck (`--audio NAME`, `--headphones NAME`, `--no-input` ...).
 
 The app runs in a chroot inside a user namespace of its own (`unshare -rm`), which needs no root. Where the
 system does not allow user namespaces (some hardened kernels and containers), the launcher falls back to `proot`
-(install it with `sudo apt install proot`), which is about three times slower to start the app; `DJS_PROOT=1` forces it.
+(install it with `sudo apt install proot`), which is about three times slower to start the app. `DJS_PROOT=1` forces it.
 
 ## What works
 
@@ -124,8 +124,8 @@ system does not allow user namespaces (some hardened kernels and containers), th
 
 ## Other ways to run it
 
-By hand, the two halves of `start.py` are `scripts/run.sh 3600` (the emulator, in WSL on Windows; the number is seconds,
-0 for no limit) and `python app/virtual_djs.py` (the deck, on the computer you sit at).
+By hand, the two halves of `start.py` are `scripts/run.sh 3600` (the emulator, in WSL on Windows, and the number is the
+seconds, 0 for no limit) and `python app/virtual_djs.py` (the deck, on the computer you sit at).
 
 The app's own window is not shown: with `xvfb` installed the app draws on a display nobody sees, and the deck shows its
 screen. `python start.py --window` (or `DJS_WINDOW=1 scripts/run.sh ...`) shows the app's window as well, and it takes
@@ -157,7 +157,7 @@ been worked out is in [docs/](docs).
 | `shim/djsdev.c` | the stand-ins for the board's devices, and the keyboard, screenshot and command hooks |
 | `start.py` (`start.cmd`, `start.sh`) | starts the emulator and the deck together |
 | `app/` | the virtual deck |
-| `scripts/setup.sh`, `scripts/run.sh` | update file → root filesystem; run the app |
+| `scripts/setup.sh`, `scripts/run.sh` | builds the root filesystem from the update file, and runs the app |
 | `scripts/guest/` | what runs inside the root filesystem in place of the unit's start-up |
 | `tools/` | `decrypt_upd.py`, `shot.py` (screenshot), `probe.py` (find what an input does), `xref.py` (where a string is used), `make_test_kit.py` (a few synthetic drum samples on the USB folder), `session.py` and `regress.py` (a scripted, recorded session to compare firmware changes against), `deck_selftest.py` |
 | `docs/` | what has been worked out: [the update file](docs/update-format.md), [hardware and software](docs/hardware.md), [the emulation](docs/emulation.md), [the panel protocol](docs/panel-protocol.md), [the virtual deck](docs/virtual-deck.md), [power and standby](docs/power-standby.md), [tools](docs/tools.md), [releasing](docs/releasing.md) |
