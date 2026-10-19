@@ -2,7 +2,7 @@
 
 [![release](https://img.shields.io/github/v/release/commit-collective/djs1000-emu)](https://github.com/commit-collective/djs1000-emu/releases)
 
-The Pioneer DJ DJS-1000's own application, running on a PC.
+The Pioneer DJ DJS-1000's own application, running on your computer.
 
 <p align="center">
 <img src="docs/img/hero.png" alt="The virtual deck: the DJS-1000's face with five samples loaded, their pads lit and a pattern on the step keys, beside the app's screen at full size and the list of installed mods with a switch on each" width="1000">
