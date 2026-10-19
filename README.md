@@ -76,10 +76,11 @@ Not yet:
 
 ## Quick start
 
-On Windows, in WSL2 (Ubuntu 24.04); on Linux. macOS is not supported: the emulator needs Linux's
-`qemu-arm` user mode and Linux's chroot and namespaces, which a Mac would have to get from a Linux virtual machine
-(a patch that does that is welcome). `xvfb` is optional: without it the app's window opens on the X display (WSLg's on
-Windows).
+It runs on Linux, or on Windows through WSL2 (Windows Subsystem for Linux), with Ubuntu 24.04 installed in it. The
+emulator itself runs in Linux; on Windows, the first two commands below go in the Ubuntu (WSL2) terminal, and the deck
+(`start.py`) is started from Windows. macOS is not supported: the emulator needs Linux's `qemu-arm` user mode and Linux's
+chroot and namespaces, which a Mac would have to get from a Linux virtual machine (a patch that does that is welcome).
+`xvfb` is optional: without it the app's window opens on the X display (WSLg's, on Windows).
 
 ```sh
 sudo apt install qemu-user-static binfmt-support squashfs-tools \
