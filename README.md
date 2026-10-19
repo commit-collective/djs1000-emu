@@ -4,6 +4,10 @@
 
 The Pioneer DJ DJS-1000's own application, running on a PC.
 
+<p align="center">
+<img src="docs/img/hero.png" alt="The virtual deck: the DJS-1000's face with five samples loaded, their pads lit and a pattern on the step keys, beside the app's screen at full size and the list of installed mods with a switch on each" width="1000">
+</p>
+
 Follow development: [commitcollective.cc](https://commitcollective.cc), [Instagram](https://www.instagram.com/commit.collective), [YouTube](https://www.youtube.com/@CommitCollective); on GitHub, Watch, then Releases.
 
 The DJS-1000 is an embedded Linux machine (Freescale i.MX6). Its sampler is
@@ -14,10 +18,6 @@ the board's devices: the panel microcontroller, the touch strip, GPIO, the
 backlight, the sound card. A virtual deck draws the machine around it: its
 screen, its lamps as the app lights them, and its controls under the mouse,
 with sound in and out.
-
-<p align="center">
-<img src="docs/img/hero.png" alt="The virtual deck: the DJS-1000's face with five samples loaded, their pads lit and a pattern on the step keys, beside the app's screen at full size and the list of installed mods with a switch on each" width="1000">
-</p>
 
 > [!CAUTION]
 >
