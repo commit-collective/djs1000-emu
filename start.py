@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Starts the DJS-1000: the emulator, then the virtual deck; closing the deck
+"""Starts the DJS-1000: the emulator, then the virtual deck. Closing the deck
 stops the emulator.
 
     python start.py [options] [deck options]      (start.cmd / start.sh do the same)
@@ -19,7 +19,7 @@ Anything else goes to the deck (app/virtual_djs.py): --audio NAME,
 --headphones NAME, --input NAME, --no-input, --listen phones, --list-audio ...
 
 On Windows the emulator runs in WSL (scripts/run.sh, set up once with
-scripts/setup.sh) and the deck here; on Linux both run here. An emulator that
+scripts/setup.sh) and the deck here. On Linux both run here. An emulator that
 is already running is used as it is, and then left running. Its output goes
 to $DJS_HOME/run/emulator.log (default ~/djs/run, in WSL on Windows).
 """
@@ -58,7 +58,7 @@ class Emulator:
         self.tag = "s" + slot if slot != "" else ""
         if os.environ.get("DJS_PORT"):
             self.port = int(os.environ["DJS_PORT"])
-        # What runs the guest (proot, or a chroot, see scripts/run.sh) shows the program in its command line; a slot's
+        # What runs the guest (proot, or a chroot, see scripts/run.sh) shows the program in its command line. A slot's
         # processes are told from the others' by DJSDEV_TAG in their environment (every process of the guest has it).
         self.prelude = ('export DJS_HOME="$HOME/djs-%s" DJSDEV_TAG=%s\n' % (self.tag, self.tag)) if self.tag else ""
         self.prelude += PIDS
@@ -72,7 +72,7 @@ class Emulator:
         self._repo = None
 
     def sh(self, script):
-        """Runs a bash script where the emulator lives; (exit code, output)."""
+        """Runs a bash script where the emulator lives. (exit code, output)."""
         if WINDOWS:
             cmd = ["wsl.exe"] + (["-d", self.distro] if self.distro else []) + ["--", "bash", "-l", "-s"]
         else:
@@ -122,7 +122,7 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
     def deckbench(self):
         """Starts deckbench (Pro DJ Link decks: its repo is $DECKBENCH, else
         ../deckbench beside this one) in the emulator's network, if it is not
-        running or is older than its source, and gives the address of its page;
+        running or is older than its source, and gives the address of its page.
         None if there is no deckbench. The decks are off until the page
         switches them on."""
         here = os.environ.get("DECKBENCH") or os.path.join(os.path.dirname(REPO), "deckbench")
@@ -186,9 +186,9 @@ tail -n 15 "$RUN/emulator.log"; exit 1
             sys.exit("the emulator did not start:\n" + out)
 
     def stop(self):
-        # A slot ends its own processes only (they carry its tag); the bench is the network tests', started by the
+        # A slot ends its own processes only (they carry its tag). The bench is the network tests', started by the
         # one that needs it.
-        # A slot ends what carries its tag (everything of its guest, and what runs it); without a slot, the app and
+        # A slot ends what carries its tag (everything of its guest, and what runs it). Without a slot, the app and
         # the guest's processes as before (the bench too).
         self.sh("""
 if [ -n "${DJSDEV_TAG:-}" ]; then

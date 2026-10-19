@@ -8,7 +8,7 @@
 # stands with its path (/root/pdj/EP113_Main_R): a program started by its bare
 # name is not found.
 #
-#   pidof NAME...            prints the process ids; fails if there are none
+#   pidof NAME...            prints the process ids. Fails if there are none
 #   killall [-SIGNAL] NAME...
 me=$(basename "$0")
 sig=

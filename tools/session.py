@@ -157,7 +157,7 @@ class Session:
 
     def record(self, seconds, action=None, which=0):
         """The sound of output `which` for `seconds` from now, as a list of
-        floats (left, right, left ...); `action` is run once it has begun."""
+        floats (left, right, left ...). `action` is run once it has begun."""
         self.pump(0.05)
         with self._lock:
             self._sound[which] = []

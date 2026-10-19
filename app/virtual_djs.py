@@ -6,14 +6,14 @@
                               [--audio NAME | --no-audio] [--headphones NAME]
                               [--input NAME | --no-input] [--list-audio]
 
-Start the app first (scripts/run.sh); the window shows it as soon as it is
+Start the app first (scripts/run.sh). The window shows it as soon as it is
 there, and again after a restart. The face's screen is the app's own, its
 lamps are the ones the app lights, and its controls go to the app as the
 panel's would:
 
-  keys, pads       hold the mouse button; a pad plays harder the lower you
+  keys, pads       hold the mouse button. A pad plays harder the lower you
                    press it
-  knobs, selector  mouse wheel, or drag up and down; a click pushes the
+  knobs, selector  mouse wheel, or drag up and down. A click pushes the
                    selector
   screen           the mouse is a finger, on the face and on the large copy
   keyboard         the keys printed in the status line under the mouse
@@ -26,7 +26,7 @@ default recording device, or --input's. --list-audio prints the devices.
 
 Beside the face is the app's screen at full size, which is the easier one
 to touch, with a reminder of the keys under it. F10 hides that panel
-(--compact starts without it); F12 swaps the reminder for every two-level
+(--compact starts without it). F12 swaps the reminder for every two-level
 lamp by id, as the app sets it (docs/panel-protocol.md).
 
 Needs pygame-ce and Pillow (requirements.txt).
@@ -435,7 +435,7 @@ class Deck:
     def let_go(self, line):
         """A key or pad released: not before it has been held MIN_HOLD ms. The
         app takes a pad or key as pressed after a few panel frames, 2 ms each
-        on the unit; here its panel cycle runs at about 10 ms, slower while it
+        on the unit. Here its panel cycle runs at about 10 ms, slower while it
         plays, and a quick click was over before it counted."""
         self.later.append((self.down_at + MIN_HOLD, line))
         self.flush()
@@ -734,7 +734,7 @@ class Deck:
 
     def draw_mods_body(self, x, y, width, clip):
         """The mods, grouped as the website groups them: a switch, the title and the key of each. The mouse on a row shows
-        the mod's text under the list; a switch (and the title beside it) can be clicked where it is drawn."""
+        the mod's text under the list. A switch (and the title beside it) can be clicked where it is drawn."""
         win = self.win
         mouse = pygame.mouse.get_pos()
         for kind, what, height in self.mod_rows():

@@ -11,7 +11,7 @@ The key is not part of this project. It is the unit's own, the text file
 /usr/local/pdj/aes256.key in its root filesystem (the passphrase the unit
 gives losetup): supply a copy from a unit you own.
 
-Needs only openssl on PATH (one AES-ECB pass; the CBC chaining is done here).
+Needs only openssl on PATH (one AES-ECB pass, the CBC chaining is done here).
 
     decrypt_upd.py DJS1000.UPD djs.iso [aes256.key]
     decrypt_upd.py --raw autoexec.bin out.img [aes256.key]

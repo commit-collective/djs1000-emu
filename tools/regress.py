@@ -17,7 +17,7 @@ session.json listing them. Nothing of it is committed: the screens are the
 firmware's.
 
 A comparison passes a screen when under 0.02 % of its pixels differ (two
-runs of one firmware come out identical; a changed number on the screen is
+runs of one firmware come out identical, a changed number on the screen is
 about 0.1 %), and a
 sound when, lined up on their first loud sample, the two differ by less than
 1 % RMS and end within 20 ms of each other. An emulator that is already
@@ -136,7 +136,7 @@ def scenario(s, r, emu):
             s.press(STEP[n])
     r.screen("05-home-steps")
 
-    def two_bars():                      # 4 s at 120 BPM; the last hat ends at 3.12 s
+    def two_bars():                      # 4 s at 120 BPM. The last hat ends at 3.12 s
         s.tap(PLAY)                      # (not press(): the screen moves while it plays)
         s.pump(3.5)
         s.tap(STOP)
@@ -191,7 +191,7 @@ python3 '%s/tools/make_test_kit.py' "${DJS_HOME:-$HOME/djs}/regress/usb/PIONEER 
     if code:
         sys.exit("could not prepare the fresh unit:\n" + text)
     if patch:
-        # The path is the host's; where the emulator lives it may read otherwise.
+        # The path is the host's. Where the emulator lives it may read otherwise.
         code, text = emu.sh('''
 P='%s'; command -v wslpath > /dev/null && P=$(wslpath -a "$P")
 cp "$P" "${DJS_HOME:-$HOME/djs}/regress/usb/autoexec.bin"
@@ -267,7 +267,7 @@ def compare_screen(a, b):
 
 
 def compare(a, b):
-    """Prints the comparison of two recorded sessions; True when all passed."""
+    """Prints the comparison of two recorded sessions. True when all passed."""
     ja = json.load(open(os.path.join(a, "session.json")))["items"]
     jb = {i["name"]: i for i in json.load(open(os.path.join(b, "session.json")))["items"]}
     failed = 0

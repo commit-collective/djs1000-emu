@@ -3,7 +3,7 @@
 """Find which panel inputs the running DJS-1000 app reacts to.
 
 Sends each command to the djsdev panel pipe, takes a screenshot after it,
-and reports the commands that changed the screen; those screenshots are
+and reports the commands that changed the screen. Those screenshots are
 saved as PNGs in the given folder.
 
     probe.py <out-folder> [command ...]

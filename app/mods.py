@@ -2,7 +2,7 @@
 """The mods a patch carries, and which of them are on.
 
 A patch that carries mods (the djs1000-mods project) holds the list of them, modlist.txt (JSON: a name, a line on
-what it does, a title, a group, the page text, what it needs and a status for each), next to its autoexec.sh; the emulator opens the patch at each start and the
+what it does, a title, a group, the page text, what it needs and a status for each), next to its autoexec.sh. The emulator opens the patch at each start and the
 list is there, in the run folder. That is the one list: this does not know any mod by name. Which of them are on
 is djs1000-mods.txt on the USB drive, a line a mod:
 
@@ -39,7 +39,7 @@ class Mods:
             time.sleep(1.0)
 
     def _listed(self):
-        """The mods of the patch, from its list; [] if there is none."""
+        """The mods of the patch, from its list. [] if there is none."""
         try:
             with open(self.modlist, encoding="utf-8", errors="replace") as f:
                 return json.load(f).get("mods", [])
@@ -70,7 +70,7 @@ class Mods:
             items.append({
                 "name": mod["name"],
                 "on": state.get(mod["name"], not wip),
-                # the website's own words (title, page, group); a patch from before them has only the short clause
+                # the website's own words (title, page, group). A patch from before them has only the short clause
                 "title": mod.get("title") or mod["name"],
                 "group": mod.get("group", ""),
                 "page": mod.get("page") or mod.get("about", ""),

@@ -10,9 +10,9 @@
 #
 #   scripts/run.sh [seconds] [extra qemu-arm args, e.g. "-g 1234" for gdb]
 #
-# seconds: how long to run; 0 for no limit.
+# seconds: how long to run. 0 for no limit.
 # The shim is rebuilt from shim/djsdev.c on every run. The app's output goes
-# to stdout/stderr; the panel command pipe is $DJS_HOME/root/tmp/djspanel.
+# to stdout/stderr. The panel command pipe is $DJS_HOME/root/tmp/djspanel.
 set -u
 REPO="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
 DJS="${DJS_HOME:-$HOME/djs}"
@@ -23,7 +23,7 @@ shift || true
 # and ends only those.
 TAG="${DJSDEV_TAG:-}"
 # The ids of the processes of this emulator whose command line matches the pattern (with a tag: those that have it in
-# their environment; the guest is run by proot or by a chroot, and the program is in the command line in both).
+# their environment. The guest is run by proot or by a chroot, and the program is in the command line in both).
 pids_of() {
     for p in $(pgrep -f "$1"); do
         [ "$p" = "$$" ] && continue
@@ -44,8 +44,8 @@ mkdir -p "$ROOT/root/pdj/browse" "$ROOT/root/pdj/project" "$ROOT/mnt/usb" "$ROOT
 # The pads' factory calibration, which lives on the unit's data partition:
 # for each pad, the sensor reading at which a hit begins (217-454). Without
 # it the app takes every pad as held down for ever, and blinks them all red.
-# $DJS_DATA stands in for that partition (default: root/data in the rootfs);
-# a fresh folder is a unit with its settings as they left the factory.
+# $DJS_DATA stands in for that partition (default: root/data in the rootfs).
+# A fresh folder is a unit with its settings as they left the factory.
 DATA="${DJS_DATA:-$ROOT/root/data}"
 mkdir -p "$DATA"
 CAL="$DATA/PadCalibration.xml"
@@ -74,7 +74,7 @@ arm-linux-gnueabihf-gcc -O2 -fPIC -shared -nostdlib -mfloat-abi=softfp -marm \
 cd "$DJS"
 
 # The app draws through X. With Xvfb installed it is given a display of its
-# own that nobody sees (the virtual deck shows its screen); DJS_WINDOW=1, or
+# own that nobody sees (the virtual deck shows its screen). DJS_WINDOW=1, or
 # no Xvfb, puts its window on $DISPLAY instead.
 XVFB_PID=
 XDISPLAY=
@@ -106,7 +106,7 @@ WATCH_PID=
 trap 'for p in $XVFB_PID $WATCH_PID; do kill "$p" 2> /dev/null; done' EXIT
 
 # A stick's autoexec.bin. The unit opens it with its key through a loop
-# device and mounts what it holds on /mnt/iso (decrypt_autoexec.sh); that
+# device and mounts what it holds on /mnt/iso (decrypt_autoexec.sh). That
 # needs root, so it is opened here, once, and init.sh runs its autoexec.sh as
 # the unit would. It must hold an ISO 9660 file system, and a changed
 # autoexec.bin is seen at the next start.
@@ -116,7 +116,7 @@ mkdir -p "$AUTO" "$ROOT/mnt/iso"
 if [ -f "$USB/autoexec.bin" ]; then
     if python3 "$REPO/tools/decrypt_upd.py" --raw "$USB/autoexec.bin" "$DJS/run/autoexec.iso" > /dev/null &&
         7z x -y -o"$AUTO" "$DJS/run/autoexec.iso" > /dev/null; then
-        # As Linux shows a plain ISO 9660 disc: lower-case names, no ";1",
+        # As Linux shows a plain ISO 9660 disc: lower-case names, no ".1",
         # every file executable.
         for f in "$AUTO"/*; do
             n=$(basename "$f" | tr 'A-Z' 'a-z')
@@ -177,7 +177,7 @@ QENV="$QENV -E LD_LIBRARY_PATH=/usr/lib:/lib -E LD_PRELOAD=/opt/djsemu/libdjsdev
 if [ -z "${DJS_PROOT:-}" ] && unshare -rm true 2> /dev/null; then
     # Without proot: a chroot in a user namespace of our own (no root needed), unless DJS_PROOT is set or user
     # namespaces are not allowed. proot stops the guest at every system call and the app makes very many: the app is
-    # ready in 17 s here, against 45 s. The same places are bound; the
+    # ready in 17 s here, against 45 s. The same places are bound. The
     # processes of the guest under qemu are the kernel's (binfmt_misc), and carry the tag in their environment.
     export ROOT USB DATA AUTO QENV QARGS DJS DJSDEV_TAG="${TAG:-}"
     mkdir -p "$ROOT/tmp/.X11-unix" "$ROOT/dev" "$ROOT/proc" "$ROOT/sys" "$ROOT/media/usb1/sda1" "$ROOT/root/data" "$ROOT/mnt/iso"

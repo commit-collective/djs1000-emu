@@ -6,7 +6,7 @@
 
 The folder defaults to "PIONEER DJ SAMPLER/Samples/Test Kit" on the
 emulator's USB drive ($DJS_USB, or $DJS_HOME/usb, or ~/djs/usb), where the
-app's BROWSE finds it under Samples [USB]. Standard library only; the
+app's BROWSE finds it under Samples [USB]. Standard library only. The
 samples are 44.1 kHz, 16-bit, stereo, and always come out the same.
 """
 import math

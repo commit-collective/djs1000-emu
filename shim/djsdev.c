@@ -11,8 +11,8 @@
  * The SPI links to the panel MCU (subucom_spi) and the codec (cdc_spi) follow
  * Pioneer's own driver, arch/arm/mach-mx6/subucom_spi.c in the GPL sources:
  * the app sets the frame to send with SUBUCOM_IOC_MESSAGE, starts a timer with
- * WR_TIMER_STATUS, and the driver exchanges a frame every TIMER_INTERVAL ms;
- * after each exchange the reply is kept, the device polls readable, and read()
+ * WR_TIMER_STATUS, and the driver exchanges a frame every TIMER_INTERVAL ms.
+ * After each exchange the reply is kept, the device polls readable, and read()
  * returns the latest reply (rx_bytes long). Here a thread per device does the
  * ticking, and spi_reply() makes up the reply. cdc_spi2.0 is the same driver
  * with 4-byte replies: the touch strip. New transmit frames are logged,
@@ -78,7 +78,7 @@ extern int fclose(void *stream);
 extern int rename(const char *from, const char *to);
 extern size_t fread(void *p, size_t size, size_t n, void *stream);
 extern int fseek(void *stream, long off, int whence);
-/* From libX11, which the app has loaded; never called in its child processes. */
+/* From libX11, which the app has loaded. Never called in its child processes. */
 extern int XSendEvent(void *dpy, unsigned long win, int propagate, long mask, void *event);
 extern int XFlush(void *dpy);
 extern unsigned long XInternAtom(void *dpy, const char *name, int only_if_exists);
@@ -110,7 +110,7 @@ static const struct {
 };
 #define GPIODRV 1
 
-/* SUBUCOM_IOC_* (subucom_spi.h): type 'p', nr below; _IOR reads, _IOW writes. */
+/* SUBUCOM_IOC_* (subucom_spi.h): type 'p', nr below. _IOR reads, _IOW writes. */
 #define SPI_FRAME 128
 enum { NR_MESSAGE, NR_TIMER_STATUS, NR_TIMER_INTERVAL, NR_BITS_PER_WORD, NR_RX_BYTES,
        NR_UPDATE_DUMMY, NR_GPIO_LEVEL, NR_GPIO_NUM, NR_RD_ENDIAN, NR_WR_ENDIAN };
@@ -140,10 +140,10 @@ static int gpio_logged;
  * /proc/udev_usbctn1 (something connected to / disconnected from the USB
  * port). In Pioneer's kernel (fs/proc/udev_usb.c, udev_usbctn.c) each is one
  * queue for the whole system: every write() is a message, kept until a read()
- * takes it, whoever wrote it and however late the reader opens; a message
+ * takes it, whoever wrote it and however late the reader opens. A message
  * beginning with '0' empties the queue. udev writes to them from a shell
  * (12-usb-memory-auto-mount.rules: "mount <path>", after the stick's
- * autoexec; 75-usb-caution.rules: "connect"), the app reads them
+ * autoexec, 75-usb-caution.rules: "connect"), the app reads them
  * (UsbMountManager), and writes to the first itself ("do_umount
  * ..." for USB STOP). A new app started while a stick is in is told nothing
  * unless someone writes to the queue again.
@@ -154,7 +154,7 @@ static int gpio_logged;
  * queue only to write (udev's shell: busybox's echo writes from inside libc,
  * past write() here) gets that file itself, opened to append, a newline
  * already written. The app reads one end of a socket pair, so that it can
- * poll it; a thread in the app hands it the queue's new messages while it
+ * poll it. A thread in the app hands it the queue's new messages while it
  * has the queue open. run.sh empties the queues at each start, and init.sh
  * writes what udev would, for a stick in at power-on or plugged in later.
  */
@@ -328,7 +328,7 @@ static unsigned short crc_x25(const unsigned char *p, unsigned n)
  *   0x16-0x35   pads 0-15, first 16-bit value: how hard, 0-1023. The app
  *               scales it by the pad's calibration (/root/data/
  *               PadCalibration.xml, 217-454: the reading where a hit
- *               begins); full velocity is near 840 with the one run.sh makes
+ *               begins). Full velocity is near 840 with the one run.sh makes
  *   0x36-0x55   pads 0-15, second 16-bit value: above 59 while it is held
  *   0x56, 0x58  tempo slider: the centre's reference, and the position
  *               (0 the - end, 1023 the + end)
@@ -404,7 +404,7 @@ static volatile int dirty_lock;      /* guards dirty_y0/y1 (a spinlock) */
 static int dirty_y0 = SHOT_H, dirty_y1;   /* rows drawn since the deck was last sent them */
 static void *x_dpy;          /* the app's display and window, for x_click() */
 static unsigned long x_win;
-static int power_ms;         /* DJSDEV_POWER_PULSE: ms since the first draw; -1 once released */
+static int power_ms;         /* DJSDEV_POWER_PULSE: ms since the first draw. -1 once released */
 
 int XPutImage(void *dpy, unsigned long d, void *gc, void *image, int sx, int sy, int dx, int dy,
               unsigned w, unsigned h)
@@ -700,8 +700,8 @@ static void *panel_thread(void *arg)
  * "in <frames>" and then frames*4 bytes, stereo 16-bit at 44.1 kHz.
  *
  * A new client is sent the whole screen and the current frame. Up to DECKS
- * clients are served at once (the deck, and a script watching beside it);
- * each is sent everything, and commands are taken from all.
+ * clients are served at once (the deck, and a script watching beside it).
+ * Each is sent everything, and commands are taken from all.
  */
 #define DECKS 4                         /* clients at a time */
 static volatile int deck_fd[DECKS] = { -1, -1, -1, -1 };
@@ -711,7 +711,7 @@ static volatile int deck_fresh[DECKS];  /* just connected: owed the whole screen
  * float frames in rings the audio thread fills (audio_put) and the deck
  * link's sender empties. And the input: stereo 16-bit frames the deck sends,
  * which the app's read takes (snd_pcm_readi). */
-#define RING_FRAMES 16384               /* a power of two; 370 ms */
+#define RING_FRAMES 16384               /* a power of two. 370 ms */
 static float ring[2][RING_FRAMES * 2];
 static volatile unsigned ring_w[2], ring_r[2];
 static short in_ring[RING_FRAMES * 2];
@@ -734,7 +734,7 @@ static int deck_send(int fd, const void *buf, unsigned n)
     return 0;
 }
 
-/* One message to client i; a client that cannot be sent to is dropped (its
+/* One message to client i. A client that cannot be sent to is dropped (its
  * reader, woken by the shutdown, closes it). */
 static void deck_msg(int i, const unsigned char *hdr, const void *body, unsigned n)
 {
@@ -961,7 +961,7 @@ static void *deck_server(void *arg)
     return 0;
 }
 
-/* Keys in the app's own window become panel input; the event still goes to
+/* Keys in the app's own window become panel input. The event still goes to
  * the app. X keycodes as WSLg sends them (evdev code + 8):
  *   Enter / keypad Enter   main encoder push (held while the key is down)
  *   , and .                main encoder one step back / forward
@@ -1090,9 +1090,9 @@ static void *spi_thread(void *arg)
         /* Power/standby key (byte 5 bit 4), only with DJSDEV_POWER_PULSE=1:
          * held from the start and released five seconds after the app first
          * draws, which puts the app in standby (it then keeps asking the
-         * panel for it, tx byte 0x6C bit 1; nothing answers that here). This
+         * panel for it, tx byte 0x6C bit 1, nothing answers that here). This
          * was the way to wake the panel while the audio device failed to
-         * open; it is kept for looking at standby itself. */
+         * open. It is kept for looking at standby itself. */
         if (s->rx_bytes == SPI_FRAME && power_ms >= 0 && getenv("DJSDEV_POWER_PULSE")) {
             if (!x_dpy) {
                 panel_bit(5, 4, 1);
@@ -1163,7 +1163,7 @@ static int open_common(const char *sym, const char *path, int flags, int mode)
         }
     }
     fprintf(stderr, "[djsdev] %s(%s, 0x%x) = %d\n", sym, path, flags, sv[0]);
-    /* A reader of a message queue (the app; udev's shell only writes). */
+    /* A reader of a message queue (the app, udev's shell only writes). */
     if (FAKE_DEVS[i].kind == DEV_MSG && (flags & 3) != 1 && sv[0] >= 0 && sv[0] < MAX_FD) {
         int q = queue_of(FAKE_DEVS[i].path);
 
@@ -1213,7 +1213,7 @@ static int spi_ioctl(Spi *s, unsigned long req, void *arg)
     switch (nr) {
     case NR_MESSAGE: {
         /* struct subucom_ioc_transfer { u8 multi_id, _reserved, part_id,
-         * part_num; u32 bytes; u64 tx_buf; } -- only the first one is kept. */
+         * part_num. u32 bytes. u64 tx_buf. } -- only the first one is kept. */
         const unsigned char *t = arg;
         unsigned bytes = *(const unsigned *)(t + 4);
         const unsigned char *buf = (const unsigned char *)*(const unsigned *)(t + 8);
@@ -1304,7 +1304,7 @@ int ioctl(int fd, unsigned long req, ...)
     /* WirelessLanMonitor::checkEtherLanConnection asks the Ethernet
      * driver, on "eth0", with the device-private requests 0x89fc, 0x89fd and
      * 0x89fe (the last answers through the ifreq's data pointer: non-zero
-     * when the cable is in; NetworkManager sets up with 0x89ff). The host kernel cannot take those (the app
+     * when the cable is in, NetworkManager sets up with 0x89ff). The host kernel cannot take those (the app
      * sees ENOTTY and thinks there is no cable, and the Pro DJ Link stack
      * stays down): the cable is in. */
     if (!dev && (req == 0x89fc || req == 0x89fd || req == 0x89fe || req == 0x89ff) && arg &&
@@ -1380,14 +1380,14 @@ ssize_t write(int fd, const void *buf, size_t n)
 }
 
 /* UDPRecvManager opens socket(AF_PACKET, SOCK_RAW, ETH_P_IP),
- * which needs CAP_NET_RAW; when it fails the app carries on with -1 and
+ * which needs CAP_NET_RAW. When it fails the app carries on with -1 and
  * crashes. Give it a socket instead, and accept bind/setsockopt/
  * ioctl on it. What arrives on it is Pro DJ Link, as the app sees it on a
  * unit: the broadcasts on UDP 50000 (a deck announcing itself), 50001
  * (beats) and 50002 (a deck's status), which this listens to on the host
  * side with ordinary sockets (sharing the ports) and hands to every such
  * socket as the Ethernet frame a raw packet socket would have given it
- * (without its header for a datagram socket; zero MAC, the sender's IP and port, the datagram as it came). So decks on
+ * (without its header for a datagram socket, zero MAC, the sender's IP and port, the datagram as it came). So decks on
  * the host's network, or on its loopback (a program sending fake ones: the
  * djs1000-mods project's tests/fakedecks.py), are seen by the app, and by
  * anything else in it that reads the network. Only receiving: the app does
@@ -1709,7 +1709,7 @@ int setsockopt(int fd, int level, int name, const void *val, unsigned len)
  * exactly 2 each (the AK4452 is a stereo DAC). With the 1-32 that "null"
  * reports the first device takes all 4, the second is given channels past
  * the end of the output buffer, and the audio thread crashes copying them
- * (in its audio thread); and if the input cannot be opened the
+ * (in its audio thread). And if the input cannot be opened the
  * whole device fails to open, nothing gets a sample rate, and the startup
  * project load never finishes. So the ranges are narrowed to the board's. */
 #define STAND_PCMS 16
@@ -1811,7 +1811,7 @@ static void audio_put(int ch, const float *l, const float *r, unsigned step, uns
     }
     ring_w[0] = w;
 
-    /* Real time: sleep until this block is due; start over after a stall. */
+    /* Real time: sleep until this block is due. Start over after a stall. */
     if (pace_us < now - 100000) {
         pace_us = now;
     }
@@ -1841,7 +1841,7 @@ static void audio_put(int ch, const float *l, const float *r, unsigned step, uns
  * The sample format. The app tries nine formats in turn and takes
  * the first the device accepts: "null" accepts 32-bit float, the first, but
  * the unit's AK4452 settles on S24_LE (24 bits in the low three bytes of a
- * 32-bit word; /proc/asound on a unit, 2026-10-02). The board's devices here
+ * 32-bit word, /proc/asound on a unit, 2026-10-02). The board's devices here
  * accept only that, so that the app writes what it writes on the unit, and
  * what passes through a preloaded library (a mod) is in the unit's format.
  */
@@ -1890,7 +1890,7 @@ long snd_pcm_writei(void *pcm, const void *buf, unsigned long frames)
 
 /* The input. The app reads interleaved frames and takes each sample as 24
  * bits in a 32-bit word, whatever format was agreed. What the deck
- * has sent is handed over; silence when there is not enough, and the oldest
+ * has sent is handed over. Silence when there is not enough, and the oldest
  * is dropped when the deck's clock runs ahead of the app's. */
 long snd_pcm_readi(void *pcm, void *buf, unsigned long frames)
 {
@@ -1990,7 +1990,7 @@ int snd_pcm_hw_params_get_channels_max(const void *params, unsigned *val)
     return 0;
 }
 
-/* Unmounting needs privileges the app does not have here; the drive is a
+/* Unmounting needs privileges the app does not have here. The drive is a
  * folder anyway. */
 int umount2(const char *path, int flags)
 {

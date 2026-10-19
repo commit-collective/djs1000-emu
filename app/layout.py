@@ -2,7 +2,7 @@
 """Where everything sits on the DJS-1000's face, and what each control is.
 
 Pure data. The face is laid out in UNITS of a 1500 x 1950 grid, the top panel
-seen from straight above. Everything is drawn from scratch by art.py; no photo
+seen from straight above. Everything is drawn from scratch by art.py. No photo
 or artwork is used, and the manufacturer's logo and model name are left off.
 
 A control's `bit` is its place in the frame the panel sends the app
@@ -82,7 +82,7 @@ class Key:
 @dataclass
 class Knob:
     """A rotary control. enc is its encoder number in the panel's frame
-    (0 the rotary selector, 1-6 the knobs under the screen); None for the
+    (0 the rotary selector, 1-6 the knobs under the screen). None for the
     analogue ones, whose values in the frame are not identified yet."""
     name: str
     circle: tuple
@@ -207,7 +207,7 @@ KNOBS = [
     Knob("selector", (1215, 298, 62), enc=0, push=(1, 1), keycap=", . Enter", look="selector"),
     # INPUT LEVEL is not in the panel's frame (an analogue gain before the
     # converter, it seems): the deck applies it to the sound it sends. The
-    # headphones' level is a knob on the unit's front; it is drawn here.
+    # headphones' level is a knob on the unit's front. It is drawn here.
     Knob("input_level", (1400, 204, 28), look="pot", at=POT_STEPS, gain=True),
     Knob("phones_level", (1400, 368, 28), word=0x5C, look="pot", at=20),
     Knob("fx_level", (97, 664, 42), word=0x5A, look="pot", at=15),

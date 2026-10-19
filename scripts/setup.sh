@@ -12,11 +12,11 @@
 #
 # The key file is the unit's own /usr/local/pdj/aes256.key, from a unit you
 # own: it is not part of this project. A copy is kept as $DJS_HOME/aes256.key
-# (readable by you alone), where the tools look for it; with one already
+# (readable by you alone), where the tools look for it. With one already
 # there the second argument can be left out.
 #
 # Needs (Ubuntu 24.04): qemu-user-static binfmt-support squashfs-tools
-# p7zip-full gcc-arm-linux-gnueabihf openssl python3; and xvfb, to run the
+# p7zip-full gcc-arm-linux-gnueabihf openssl python3. And xvfb, to run the
 # app without its own window (scripts/run.sh does without it if it is not
 # there).
 set -eu
@@ -45,7 +45,7 @@ fi
 rm -rf iso root unpack
 7z x -y -oiso update.iso >/dev/null
 
-# rootfs2-4 are the system, rootfs1 the unit tests; "Cannot mknod" for the
+# rootfs2-4 are the system, rootfs1 the unit tests. "Cannot mknod" for the
 # device nodes is expected without root.
 mkdir -p unpack root
 for i in 1 2 3 4; do

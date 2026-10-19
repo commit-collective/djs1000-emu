@@ -3,7 +3,7 @@
 outputs, a Recorder feeds its input.
 
 The shim sends the sound as the app writes it (stereo float32, 44.1 kHz) over
-the deck's link; feed() takes it from the link's thread and SDL's audio
+the deck's link. feed() takes it from the link's thread and SDL's audio
 thread asks for it through _fill(). The two clocks are not the same one, and
 the app, being emulated, can fall behind: so playing starts only once a
 little sound is waiting, starts over after running dry, and the oldest sound

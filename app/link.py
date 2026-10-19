@@ -5,7 +5,7 @@
 Out: the shim's command lines (bit, enc, pad, touch ...). In, each with an
 8-byte header: 'S' rows of the screen that changed, 'L' the 128-byte frame
 the app sends its panel, which holds the lamps, 'A' an output's sound.
-Toolkit-free; the window polls take() for what has arrived, and the sound
+Toolkit-free. The window polls take() for what has arrived, and the sound
 goes straight to the `audio` callable as (output, data), output 0 the master
 and 1 the headphones, from this module's thread. send_input() sends the
 input's sound the other way.
@@ -32,7 +32,7 @@ class Link:
     audio_pos = [0, 0]          # of the last sound message, per output
 
     def send(self, line):
-        """One command line; dropped while the app is not there."""
+        """One command line. Dropped while the app is not there."""
         sock = self._sock
         if sock is None:
             return

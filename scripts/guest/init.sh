@@ -12,15 +12,15 @@
 # is how the app learns of the stick. Taking it out writes "umount <path>" and
 # "disconnect". The shim keeps those queues as the kernel does.
 #
-#   init.sh             power-on: the stick as udev finds it, then the app;
-#                       stays until run.sh ends it
+#   init.sh             power-on: the stick as udev finds it, then the app.
+#                       Stays until run.sh ends it
 #   init.sh plug        a stick has just been plugged in ("usb 1")
 #   init.sh unplug      and taken out ("usb 0")
 #
 # DJSDEV_DIRECT=1 (a test's shortcut, DJS_FAST_BOOT=1 on the host): when the stick
 # holds an autoexec, the app is not started here first and stopped again by the
 # patch: the patch starts it once, with the mods. That saves a whole boot of the
-# app; the restart itself is what the tests without the shortcut see.
+# app. The restart itself is what the tests without the shortcut see.
 #
 # run.sh has already opened autoexec.bin (the loop device it takes needs
 # root) and put what it holds on /mnt/iso, where the unit mounts it.
@@ -37,7 +37,7 @@ autoexec() {
 }
 
 # On the unit, decrypt_autoexec.sh unmounts /mnt/iso and lets go of the
-# stick's autoexec.bin as soon as autoexec.sh returns; while a process is
+# stick's autoexec.bin as soon as autoexec.sh returns. While a process is
 # still in there it cannot, and the stick stays busy (USB STOP then hangs).
 # Here nothing is unmounted, so say so instead.
 still_in_iso() {
@@ -71,7 +71,7 @@ unplug)
 esac
 
 # A stick that is in at power-on is mounted, and its autoexec run, before
-# apl_start gets to the app; the queues keep what udev wrote for it.
+# apl_start gets to the app. The queues keep what udev wrote for it.
 [ "$DJSDEV_USB" = 0 ] || plug
 cd /root/pdj
 if [ "$DJSDEV_DIRECT" = 1 ] && [ "$DJSDEV_USB" != 0 ] && [ -f /mnt/iso/autoexec.sh ]; then
@@ -81,7 +81,7 @@ else
     $APP &
 fi
 
-# The stick's autoexec leaves the restart of the app (with the mods) to a copy of itself, detached; on this
+# The stick's autoexec leaves the restart of the app (with the mods) to a copy of itself, detached. On this
 # emulator that copy has now and then died without a word, and the app ran without the mods. So: if the mods
 # were put in /tmp but the app does not have them some time later, the autoexec is run again, which does the
 # restart as it does for a stick plugged in later (twice at most).
