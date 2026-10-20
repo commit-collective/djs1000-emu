@@ -136,6 +136,15 @@ Esc or Backspace BACK, P PROJECT, L SAMPLING, X FX, S SYNC, `-` TEMPO range,
 way), Tab MASTER / PHONES. The selector: Up and Down (or `,` `.`) turn it,
 Page Up and Page Down by five, Enter or Right push it, Left is BACK.
 
+## Recording
+
+`python app/virtual_djs.py --record demo.mp4` records the window as video (25 frames a second by default, `--fps`) and the master
+output as `demo.mp4.f32` (raw stereo float32) until a file `demo.mp4.stop` exists. A frame is repeated when the drawing was late, so
+the video keeps the real time. The window is the full layout whatever the size of the desktop, so it can run with
+`SDL_VIDEODRIVER=dummy`, and the controls' reminder is folded to leave the room to the list of mods. While it records, the deck also
+runs the lines that a script appends to `demo.mp4.cmd` (`hover MOD`, `toggle MOD`) and writes the time it began to
+`demo.mp4.start`. `tools/demo.py` uses all of this to make a demonstration video (see [tools.md](tools.md)).
+
 The deck sends a pad's two readings as the same value, 460–860 by where
 the pad is pressed (lower is harder), and 0 on release. See "Pads" in
 [panel-protocol.md](panel-protocol.md). The six knobs under the screen are

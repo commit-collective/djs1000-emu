@@ -49,6 +49,7 @@ import audio  # noqa: E402
 import layout as L  # noqa: E402
 from link import Link  # noqa: E402
 from mods import Mods  # noqa: E402
+from capture import Capture  # noqa: E402
 
 TITLE = "Virtual DJS-1000"
 BG = (5, 5, 5)
@@ -875,6 +876,11 @@ def main():
                     help="the list of mods the patch carries (modlist.txt in the folder the emulator opened it in)")
     ap.add_argument("--hover", metavar="MOD",
                     help="start with this mod's text shown under the list of mods (for a picture)")
+    ap.add_argument("--record", metavar="MP4",
+                    help="record the window as video and the master output as FILE.f32, until FILE.stop exists "
+                         "(see app/capture.py, which tools/demo.py uses)")
+    ap.add_argument("--fps", type=int, default=25, help="frames a second of --record")
+    ap.add_argument("--width", type=int, default=0, help="window width in pixels")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
     args = ap.parse_args()
@@ -890,7 +896,11 @@ def main():
 
     listen = [1 if args.listen == "phones" else 0]
 
+    capture = []
+
     def play(which, data):
+        if capture and which == 0:
+            capture[0].sound(data)
         if master and which == listen[0]:
             master.feed(data)
         if phones and which == 1:
@@ -899,6 +909,9 @@ def main():
     h = args.height or min(desk_h - 110, 1060)
     face_w = int(L.W * (h - STATUS_H) / L.H)
     w = face_w if args.compact else min(desk_w - 40, face_w + L.LCD_W + 2 * DOCK_PAD)
+    if args.record and not args.compact:
+        w = face_w + L.LCD_W + 2 * DOCK_PAD       # a recording does not depend on the size of the desktop
+    w = args.width or w
     link = Link(args.host, args.port, audio=play)
     recorder = None
     if not args.no_input:
@@ -907,6 +920,9 @@ def main():
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
     deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb, args.modlist))
+    if args.record:
+        capture.append(Capture(args.record, (w, h), args.fps))
+        deck.fold["help"] = True              # the list of mods gets the room the controls' reminder takes
     deck.mod_hover = args.hover
     deck.hover_pinned = bool(args.hover)
     if args.compact:
@@ -945,11 +961,23 @@ def main():
                 deck.key(e, e.type == pygame.KEYDOWN)
         deck.pump()
         deck.draw()
+        if capture:
+            for command in capture[0].commands():
+                if command[0] == "hover" and len(command) > 1:
+                    deck.mod_hover = command[1].strip()
+                    deck.hover_pinned = True
+                elif command[0] == "toggle" and len(command) > 1:
+                    deck.mods.toggle(command[1].strip())
+            capture[0].frame(deck.win)
+            if capture[0].stopped():
+                running = False
         if args.snapshot and pygame.time.get_ticks() - started > 4000:
             pygame.image.save(deck.win, args.snapshot)
             running = False
         clock.tick(FPS)
     link.close()
+    if capture:
+        capture[0].close()
     for dev in (master, phones, recorder):
         if dev:
             dev.close()

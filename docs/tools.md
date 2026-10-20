@@ -24,6 +24,11 @@
 - `tools/session.py`: what `regress.py` is written with: connect to the
   running app, press, turn, touch, hit pads, wait for the screen to hold
   still, take the screen and record the sound. Works beside an open deck.
+- `tools/demo.py`: makes the demonstration video. It starts an emulator of its own on a fresh unit with the test kit, the
+  deck with `--record`, and plays scenes through the scripted session (pads, the touch strip and an effect, a pattern, the mods
+  with `--patch autoexec.bin`, and Pro DJ Link with a deckbench deck if it is beside this repository). ffmpeg burns the captions
+  in, which are lines of the scenes in the script, and joins the sound. `--gif` makes a GIF as well. The output goes in `demo/`,
+  which git ignores: the video shows the firmware's screen.
 - `tools/deck_selftest.py`: presses, drags and releases the mouse on every
   control of the virtual deck with no app running. Run it after changing
   `app/`.
