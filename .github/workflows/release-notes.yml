@@ -1,0 +1,26 @@
+# Writes the notes of a release again, from CHANGELOG.md as it is on main. Run it by hand (Actions, Run workflow) after a
+# correction to the changelog, so that the release page says the same.
+name: release notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag whose release notes are written again"
+        required: true
+        default: "v0.1.0"
+
+jobs:
+  notes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write the release notes again
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          python3 tools/release_notes.py "$TAG" > notes.md
+          gh release edit "$TAG" --notes-file notes.md

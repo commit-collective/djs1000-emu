@@ -18,14 +18,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          python3 - "$TAG" > notes.md <<'PY'
-          import re, sys
-          text = open("CHANGELOG.md", encoding="utf-8").read().replace("\r\n", "\n")
-          found = re.search(r"^## %s\b[^\n]*\n(.*?)(?=^## |\Z)" % re.escape(sys.argv[1]), text, re.M | re.S)
-          if not found or not found.group(1).strip():
-              sys.exit("CHANGELOG.md has no entry for " + sys.argv[1])
-          print(found.group(1).strip())
-          PY
+          python3 tools/release_notes.py "$TAG" > notes.md
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release edit "$TAG" --notes-file notes.md
           else

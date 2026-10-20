@@ -26,7 +26,9 @@ git tag vX.Y.Z
 git push && git push --tags      # a plain push does not send tags
 ```
 
-The workflow creates the release. Then the website's emulator page (`commitcollective.cc/djs1000/emulator/`) shows it
+The workflow creates the release. GitHub shows the line breaks of a release's notes, so `tools/release_notes.py` joins the lines of
+each paragraph and list item. After a correction to the changelog, Actions, release notes, Run workflow writes the notes of a tag
+again. Then the website's emulator page (`commitcollective.cc/djs1000/emulator/`) shows it
 as the latest release by itself.
 
 ## Afterwards
