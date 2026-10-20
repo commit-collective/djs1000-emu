@@ -123,14 +123,18 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
         """Starts deckbench (Pro DJ Link decks: its repo is $DECKBENCH, else
         ../deckbench beside this one) in the emulator's network, if it is not
         running or is older than its source, and gives the address of its page.
-        None if there is no deckbench. The decks are off until the page
-        switches them on."""
+        None if there is no deckbench, and `bench_why` then says why. The decks
+        are off until the page switches them on."""
         here = os.environ.get("DECKBENCH") or os.path.join(os.path.dirname(REPO), "deckbench")
+        self.bench_why = ""
         if not os.path.isfile(os.path.join(here, "deckbench", "cli.py")):
+            self.bench_why = ("deckbench was not found at %s. Clone it beside this repository or set DECKBENCH to its "
+                              "folder, and the unit will see simulated Pro DJ Link decks." % here)
             return None
         if WINDOWS:
             code, out = self.sh("wslpath -a '%s'" % here.replace("\\", "/"))
             if code or not out.startswith("/"):
+                self.bench_why = "WSL could not find deckbench's folder (%s)." % (out or code)
                 return None
             there = out.splitlines()[-1]
         else:
@@ -151,7 +155,10 @@ if ! pgrep -f '[d]eckbench --numbers' > /dev/null; then
 fi
 pgrep -f '[d]eckbench --numbers' > /dev/null && echo http://localhost:8750/
 """ % there)
-        return out.splitlines()[-1] if not code and out.startswith("http") else None
+        if code or not out.startswith("http"):
+            self.bench_why = "deckbench did not start (see deckbench.log in the emulator's run folder)."
+            return None
+        return out.splitlines()[-1]
 
     def running(self):
         return self.sh(self.running_cmd)[0] == 0
@@ -346,6 +353,8 @@ def main():
         usb, bench, modlist = emu.usb(), emu.deckbench(), emu.modlist()
         if bench:
             say("Pro DJ Link decks (deckbench): %s" % bench)
+        else:
+            say("No Pro DJ Link decks: %s" % emu.bench_why)
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
                                 "--port", str(emu.port)] + (["--usb", usb] if usb else [])
                                 + (["--modlist", modlist] if modlist else []) + args)

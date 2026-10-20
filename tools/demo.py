@@ -224,6 +224,8 @@ def main():
         if not emu.wait():
             sys.exit("the emulator did not answer:\n" + emu.log_tail())
         bench = emu.deckbench() if "prolink" in args.scenes else None
+        if "prolink" in args.scenes and not bench:
+            print("No Pro DJ Link decks: %s" % emu.bench_why)
         s = Session()
         if not s.wait_screen(quiet=1.5, timeout=120):
             sys.exit("the app never drew its first screen")
