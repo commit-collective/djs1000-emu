@@ -81,6 +81,10 @@ Sound, all at 44.1 kHz stereo:
   from the system's default recording device, or `--input NAME`,
   `--no-input` feeds silence. With a microphone and speakers, monitoring the
   input in the app will feed back
+- `--input-tcp HOST:PORT` feeds the input from a TCP stream of raw stereo 16-bit 44.1 kHz samples
+  instead of a device: deckbench's `--audio-port`, a drum loop in time with each playing simulated deck
+  (it connects again if the stream goes away, and INPUT LEVEL works). A take in LIVE SAMPLING then records something that
+  is on the deck's beat, with no sound card or microphone
 - `--list-audio` prints the playback and recording devices
 
 ## How it is made

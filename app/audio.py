@@ -11,7 +11,9 @@ is dropped if too much piles up.
 """
 
 import array
+import socket
 import threading
+import time
 
 from pygame._sdl2 import audio as sdl_audio
 
@@ -68,6 +70,51 @@ class Recorder:
         for its callback, the callback waits for the interpreter, and this
         thread holds it. The device goes when the program does
         (virtual_djs.py leaves with os._exit)."""
+        self.closed = True
+
+
+class StreamRecorder:
+    """The same as a Recorder, with its sound from a TCP stream of raw stereo 16-bit samples at 44.1 kHz instead of a
+    recording device: deckbench's `--audio-port`, which is a drum loop in time with its decks. It connects again when the
+    stream goes away, and the deck's INPUT LEVEL works as it does for a device."""
+
+    def __init__(self, sink, host, port):
+        self.name = "tcp %s:%d" % (host, port)
+        self.gain = 1.0
+        self.closed = False
+        self._sink = sink
+        self._address = (host, port)
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        while not self.closed:
+            try:
+                with socket.create_connection(self._address, timeout=3) as sock:
+                    sock.settimeout(5)
+                    pending = b""
+                    while not self.closed:
+                        data = sock.recv(8820)
+                        if not data:
+                            break
+                        pending += data
+                        usable = len(pending) - len(pending) % 4
+                        if usable:
+                            self._take(pending[:usable])
+                            pending = pending[usable:]
+            except OSError:
+                pass
+            time.sleep(1.0)
+
+    def _take(self, data):
+        gain = self.gain
+        if gain <= 0:
+            data = bytes(len(data))
+        elif gain < 1:
+            samples = array.array("h", data)
+            data = array.array("h", [int(v * gain) for v in samples]).tobytes()
+        self._sink(data)
+
+    def close(self):
         self.closed = True
 
 

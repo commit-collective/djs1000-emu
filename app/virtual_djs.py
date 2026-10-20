@@ -866,6 +866,9 @@ def main():
                     help="play the headphone output on the device whose name has NAME in it")
     ap.add_argument("--input", metavar="NAME",
                     help="feed the app's input from the recording device whose name has NAME in it")
+    ap.add_argument("--input-tcp", metavar="HOST:PORT",
+                    help="feed the app's input from a TCP stream of raw stereo 16-bit 44.1 kHz samples instead of a "
+                         "recording device: deckbench's --audio-port, a drum loop in time with its decks")
     ap.add_argument("--no-input", action="store_true", help="feed the app's input silence")
     ap.add_argument("--list-audio", action="store_true", help="print the sound devices and quit")
     ap.add_argument("--compact", action="store_true",
@@ -914,7 +917,10 @@ def main():
     w = args.width or w
     link = Link(args.host, args.port, audio=play)
     recorder = None
-    if not args.no_input:
+    if args.input_tcp:
+        host, _, port = args.input_tcp.rpartition(":")
+        recorder = audio.StreamRecorder(link.send_input, host or "127.0.0.1", int(port))
+    elif not args.no_input:
         try:
             recorder = audio.Recorder(link.send_input, audio.pick(args.input, True))
         except Exception as e:           # no recording device, or it is refused
