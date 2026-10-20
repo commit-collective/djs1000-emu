@@ -1,0 +1,6 @@
+# One form for the emulator and one for the mods: both are reported here, as the mods' own repository is private.
+blank_issues_enabled: false
+contact_links:
+  - name: Something else
+    url: https://commitcollective.cc/
+    about: Questions, ideas and anything that is not a bug. The contact address is at the foot of the site.

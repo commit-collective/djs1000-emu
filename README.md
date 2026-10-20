@@ -166,6 +166,13 @@ been worked out is in [docs/](docs).
 | `tools/` | `decrypt_upd.py`, `shot.py` (screenshot), `probe.py` (find what an input does), `xref.py` (where a string is used), `make_test_kit.py` (a few synthetic drum samples on the USB folder), `session.py` and `regress.py` (a scripted, recorded session to compare firmware changes against), `deck_selftest.py` |
 | `docs/` | what has been worked out: [the update file](docs/update-format.md), [hardware and software](docs/hardware.md), [the emulation](docs/emulation.md), [the panel protocol](docs/panel-protocol.md), [the virtual deck](docs/virtual-deck.md), [power and standby](docs/power-standby.md), [tools](docs/tools.md), [releasing](docs/releasing.md) |
 
+## Reporting a problem
+
+Bugs of the emulator and of the DJS-1000 mods are both reported in
+[this repository's issues](https://github.com/commit-collective/djs1000-emu/issues/new/choose), with a form for each:
+[an emulator bug](https://github.com/commit-collective/djs1000-emu/issues/new?template=emulator.yml) or [a mods bug](https://github.com/commit-collective/djs1000-emu/issues/new?template=mods.yml). Say what you did, what you saw, the version and where it
+runs, and add the log if you can. Please attach nothing from Pioneer DJ: no firmware, no update file, no key.
+
 ## Credits
 
 This builds on earlier reverse-engineering notes on the update file and the

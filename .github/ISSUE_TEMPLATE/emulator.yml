@@ -1,0 +1,57 @@
+name: Emulator bug
+description: Something in the emulator or its virtual deck does not work as it should.
+labels: ["bug", "emulator"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting it. **Do not attach anything from Pioneer DJ**: no firmware, no update file, no key, no files from the unit's
+        system. A screenshot of the app's screen is fine.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. python start.py
+        2. ...
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Emulator version
+      description: The release (v0.1.0) or the commit.
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Where it runs
+      options:
+        - Windows with WSL2 (Ubuntu 24.04)
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The end of `~/djs/run/console.log` (in WSL on Windows), and what `python start.py` printed.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: clean
+    attributes:
+      label: Nothing of Pioneer DJ's
+      options:
+        - label: I have not attached any firmware, key or file from the unit.
+          required: true

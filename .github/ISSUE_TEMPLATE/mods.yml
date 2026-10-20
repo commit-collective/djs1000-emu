@@ -1,0 +1,83 @@
+name: Mods bug
+description: A DJS-1000 mod does not work as it should, on a unit or in the emulator.
+labels: ["bug", "mods"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting it. The mods are reported here, in the emulator's repository.
+        **Do not attach anything from Pioneer DJ**: no firmware, no update file, no key, no files from the unit's system.
+  - type: dropdown
+    id: mod
+    attributes:
+      label: Which mod
+      description: Pick the one it is about. Name the others in the description.
+      options:
+        - input-select
+        - quick-sample
+        - rec-length
+        - rec-quantize
+        - loop-bounce
+        - sample-names
+        - fx-chain
+        - reverb-v2
+        - track-reverb
+        - tempo-ducker
+        - cue-tracks
+        - the patch as a whole (it does not load, the unit restarts)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you saw or heard instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mods version
+      description: The release shown on the installer page (v0.1.0).
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it happens
+      options:
+        - On a DJS-1000
+        - In the emulator
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: The unit's firmware version
+      description: On the UTILITY screen. The mods only work on 1.22.
+    validations:
+      required: false
+  - type: textarea
+    id: settings
+    attributes:
+      label: Your settings file
+      description: The lines of `djs1000-mods.txt` on the stick.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: log
+    attributes:
+      label: The mods' log
+      description: The end of `djs1000-mods-app.log` on the stick, if there is one.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: clean
+    attributes:
+      label: Nothing of Pioneer DJ's
+      options:
+        - label: I have not attached any firmware, key or file from the unit.
+          required: true
