@@ -116,11 +116,15 @@ system does not allow user namespaces (some hardened kernels and containers), th
 - `autoexec.bin` on the USB folder is run as the unit runs one from a stick,
   which is how modifications are tried here before a real unit
   ([docs/emulation.md](docs/emulation.md))
+- Pro DJ Link: the unit announces itself as player 1 and sees the decks on its network, so SYNC and MASTER work and so do
+  the mods that read the decks. The decks are simulated ones from deckbench, a separate project that `start.py` runs
+  ([docs/virtual-deck.md](docs/virtual-deck.md))
 - screenshots and scripted input, for exploring it without watching, and a
   recorded regression session (`tools/regress.py`) that comes out identical
   from one run to the next
 
-**Not yet:** MIDI, Pro DJ Link and the network. macOS.
+**Not yet:** MIDI. Real decks on a physical network are not seen under WSL2's default networking (it needs mirrored
+networking or a bridge). macOS.
 
 ## Other ways to run it
 

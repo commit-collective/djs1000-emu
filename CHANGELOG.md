@@ -20,6 +20,8 @@ First release.
 - `tools/regress.py` records a fixed session and compares it with a reference. `tools/session.py` scripts the app.
 - The deck lists the mods of the patch on the drive, grouped as the mods' website groups them, with a switch for each. The
   mouse on a row shows the mod's text.
+- Pro DJ Link works with simulated decks. The unit announces itself as player 1 and sees the decks, so SYNC and MASTER work
+  and so do the mods that read the decks. The decks are deckbench's, a separate project that `start.py` runs.
 - Settings of the mods are read from `djs1000-mods.txt` on the drive.
 
-Tried on Windows 11 with WSL2 and Ubuntu 24.04. Not yet: MIDI, Pro DJ Link, the network. macOS is not supported.
+Tried on Windows 11 with WSL2 and Ubuntu 24.04. Not yet: MIDI, and real decks on a physical network (WSL2's default networking does not see them). macOS is not supported.
