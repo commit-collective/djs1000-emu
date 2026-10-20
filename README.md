@@ -1,6 +1,6 @@
 # djs1000-emu
 
-[![release](https://img.shields.io/github/v/release/commit-collective/djs1000-emu)](https://github.com/commit-collective/djs1000-emu/releases)
+[![release](https://img.shields.io/github/v/release/commit-collective/djs1000-emu?display_name=tag)](https://github.com/commit-collective/djs1000-emu/releases)
 
 The Pioneer DJ DJS-1000's own application, running on your computer.
 
