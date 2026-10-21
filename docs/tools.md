@@ -29,6 +29,9 @@
   with `--patch autoexec.bin`, and Pro DJ Link with a deckbench deck if it is beside this repository). ffmpeg burns the captions
   in, which are lines of the scenes in the script, and joins the sound. `--gif` makes a GIF as well. The output goes in `demo/`,
   which git ignores: the video shows the firmware's screen.
+- `tools/reel.py`: the same idea for short vertical videos (1080x1920): an episode in `tools/reels` says the scenes, their
+  captions and what is played in them, and the tool writes the picture with and without text, an SRT, a cover and the post's
+  text. See [reels.md](reels.md).
 - `tools/deck_selftest.py`: presses, drags and releases the mouse on every
   control of the virtual deck with no app running. Run it after changing
   `app/`.

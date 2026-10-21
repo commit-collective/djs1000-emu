@@ -119,6 +119,8 @@ class Deck:
         self.show_dock = True            # the large screen beside the face (F10)
         self.show_lamps = False          # under it, the lamps by id instead of the keys (F12)
         self.have_screen = False         # the app has drawn something
+        self.mod_page = False            # the face's small screen shows the list of mods, drawn as a page of the unit (a recording's `page mods`)
+        self._page_fonts = None
         self.up_at = None                # when the link came up, for the start-up bar
         self.big = pygame.font.SysFont("arial", 22, bold=True)
         self.listen = listen if listen is not None else [0]   # the output the main device plays
@@ -538,7 +540,9 @@ class Deck:
         win = self.win
         win.fill(BG)
         win.blit(self.face, (0, 0))
-        if self.have_screen:
+        if self.mod_page:
+            win.blit(pygame.transform.smoothscale(self.render_mod_page(), self.lcd_rect.size), self.lcd_rect)
+        elif self.have_screen:
             win.blit(pygame.transform.smoothscale(self.screen, self.lcd_rect.size), self.lcd_rect)
         else:
             self.draw_boot(self.lcd_rect)
@@ -769,6 +773,56 @@ class Deck:
                         self.mod_rects.append((hit, mod["name"]))
             y += height
 
+    def render_mod_page(self):
+        """The list of mods as a page of the unit's own screen (800x480, the look of its lists: a title bar, rows, the one pointed at
+        lit), for a recording that shows the mods on the unit's screen. It is what the mods' side panel says, in the unit's style."""
+        if self._page_fonts is None:
+            self._page_fonts = {name: pygame.font.SysFont("arial", size, bold=bold) for name, size, bold in
+                                (("title", 24, False), ("row", 22, False), ("key", 16, False), ("group", 14, True), ("text", 17, False))}
+        f = self._page_fonts
+        page = pygame.Surface((L.LCD_W, L.LCD_H))
+        page.fill((0, 0, 0))
+        pygame.draw.rect(page, (10, 26, 56), (0, 0, L.LCD_W, 34))
+        page.blit(f["title"].render("MODS", True, (235, 238, 245)), (16, 4))
+        on = sum(1 for m in self.mods.items if m["on"])
+        count = f["key"].render("%d of %d on" % (on, len(self.mods.items)), True, (150, 160, 180))
+        page.blit(count, (L.LCD_W - count.get_width() - 16, 9))
+        box = pygame.Rect(8, L.LCD_H - 76, L.LCD_W - 16, 68)
+        top = 40
+        groups = len({m["group"] for m in self.mods.items if m["group"]})
+        need = 22 * groups + 25 * len(self.mods.items)
+        fit = min(1.0, (box.top - 6 - top) / float(max(1, need)))             # a longer list is packed closer
+        y, group = float(top), None
+        for mod in self.mods.items:
+            if mod["group"] and mod["group"] != group:
+                group = mod["group"]
+                page.blit(f["group"].render(group.upper(), True, (130, 134, 146)), (16, y + 4))
+                y += 22 * fit
+            lit = self.mod_hover == mod["name"]
+            ry = int(y)
+            row = pygame.Rect(8, ry, L.LCD_W - 16, int(24 * fit) or 1)
+            pygame.draw.rect(page, (224, 225, 232) if lit else (24, 24, 24), row)
+            pill = pygame.Rect(16, ry + 2, 46, max(10, int(20 * fit)))
+            pygame.draw.rect(page, (150, 220, 120) if mod["on"] else (60, 60, 66), pill, border_radius=4)
+            label = f["key"].render("ON" if mod["on"] else "OFF", True, (10, 10, 10) if mod["on"] else (170, 172, 178))
+            page.blit(label, label.get_rect(center=pill.center))
+            title = f["row"].render(mod["title"], True, (10, 10, 10) if lit else (235, 238, 245))
+            page.blit(title, (76, ry + 24 * fit / 2 - title.get_height() / 2))
+            key = f["key"].render(mod["name"], True, (90, 92, 100) if lit else (130, 134, 146))
+            page.blit(key, (76 + title.get_width() + 12, ry + 24 * fit / 2 - key.get_height() / 2 + 1))
+            y += 25 * fit
+        pygame.draw.rect(page, (18, 18, 20), box)
+        mod = next((m for m in self.mods.items if m["name"] == self.mod_hover), None)
+        if mod:
+            side, self.font = self.font, f["text"]               # wrap() measures with the font the lines are drawn in
+            try:
+                lines = self.wrap(mod["page"], box.width - 24, 3)
+            finally:
+                self.font = side
+            for i, line in enumerate(lines):
+                page.blit(f["text"].render(line, True, (205, 208, 214)), (box.left + 12, box.top + 6 + 20 * i))
+        return page
+
     def draw_mod_detail(self, x, y, width):
         """The text of the mod the mouse was last on: the website's own words, then what it needs."""
         win = self.win
@@ -974,6 +1028,8 @@ def main():
                     deck.hover_pinned = True
                 elif command[0] == "toggle" and len(command) > 1:
                     deck.mods.toggle(command[1].strip())
+                elif command[0] == "page" and len(command) > 1:
+                    deck.mod_page = command[1].strip() == "mods"
             capture[0].frame(deck.win)
             if capture[0].stopped():
                 running = False

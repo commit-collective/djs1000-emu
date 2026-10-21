@@ -9,7 +9,8 @@ A script that drives the app while this records talks to the deck through files 
 
     FILE.start   written when the first frame is taken: the time (time.time()) it began
     FILE.stop    when this file exists, the deck ends the recording and closes
-    FILE.cmd     lines appended to it are run as they come: `hover MOD` (the mod's text under the list), `toggle MOD`
+    FILE.cmd     lines appended to it are run as they come: `hover MOD` (the mod's text under the list), `toggle MOD`,
+                 `page mods` (the face's small screen shows the list of mods as a page of the unit) and `page off`
 """
 import os
 import subprocess
@@ -28,7 +29,7 @@ class Capture:
         self.proc = subprocess.Popen(
             ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "%dx%d" % (w, h),
              "-r", str(fps), "-i", "-", "-an", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264",
-             "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p", path],
+             "-preset", "ultrafast", "-crf", os.environ.get("DJS_CAPTURE_CRF", "20"), "-pix_fmt", "yuv420p", path],
             stdin=subprocess.PIPE)
         self.audio = open(path + ".f32", "wb")
         self.began = None                # time.perf_counter() of the first frame
