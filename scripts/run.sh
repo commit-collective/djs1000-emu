@@ -62,6 +62,10 @@ fi
 # the shim reports as a drive mounted on /media/usb1/sda1.
 USB="${DJS_USB:-$DJS/usb}"
 mkdir -p "$USB" "$ROOT/media/usb1/sda1"
+# The unit's internal storage (the eMMC, a FAT volume mounted on /mnt/emmc: the factory samples and projects, and the
+# user's): a folder on the host, $DJS_EMMC, if there is one. Without it /mnt/emmc is an empty folder.
+EMMC="${DJS_EMMC:-}"
+[ -n "$EMMC" ] && mkdir -p "$EMMC"
 # The unit's /tmp is in RAM: empty at each start, with the USB message queues
 # the shim keeps there (see queue_put() in shim/djsdev.c).
 find "$ROOT/tmp" -mindepth 1 -delete
@@ -179,18 +183,19 @@ if [ -z "${DJS_PROOT:-}" ] && unshare -rm true 2> /dev/null; then
     # namespaces are not allowed. proot stops the guest at every system call and the app makes very many: the app is
     # ready in 17 s here, against 45 s. The same places are bound. The
     # processes of the guest under qemu are the kernel's (binfmt_misc), and carry the tag in their environment.
-    export ROOT USB DATA AUTO QENV QARGS DJS DJSDEV_TAG="${TAG:-}"
+    export ROOT USB DATA AUTO EMMC QENV QARGS DJS DJSDEV_TAG="${TAG:-}"
     mkdir -p "$ROOT/tmp/.X11-unix" "$ROOT/dev" "$ROOT/proc" "$ROOT/sys" "$ROOT/media/usb1/sda1" "$ROOT/root/data" "$ROOT/mnt/iso"
     install -m 755 "$(command -v qemu-arm-static)" "$ROOT/usr/bin/qemu-arm-static"
     timeout "$secs" unshare -rm bash -c '
         mount --rbind /dev "$ROOT/dev" && mount --bind "$DJS/run/console.log" "$ROOT/dev/console" &&
         mount --rbind /proc "$ROOT/proc" && mount --rbind /sys "$ROOT/sys" &&
         mount --rbind /tmp/.X11-unix "$ROOT/tmp/.X11-unix" && mount --bind "$USB" "$ROOT/media/usb1/sda1" &&
-        mount --bind "$DATA" "$ROOT/root/data" && mount --bind "$AUTO" "$ROOT/mnt/iso" || exit 1
+        mount --bind "$DATA" "$ROOT/root/data" && mount --bind "$AUTO" "$ROOT/mnt/iso" &&
+        { [ -z "$EMMC" ] || mount --bind "$EMMC" "$ROOT/mnt/emmc"; } || exit 1
         exec chroot "$ROOT" /bin/sh -c '"'"'cd /root/pdj && exec /usr/bin/qemu-arm-static $QENV $QARGS "$@"'"'"' sh "$@"
     ' sh "$@"
 else
 timeout "$secs" proot -q "qemu-arm-static $QENV $QARGS" -r "$ROOT" \
     -b /dev -b "$DJS/run/console.log:/dev/console" -b /proc -b /sys -b /tmp/.X11-unix \
-    -b "$USB:/media/usb1/sda1" -b "$DATA:/root/data" -b "$AUTO:/mnt/iso" -w /root/pdj "$@"
+    -b "$USB:/media/usb1/sda1" -b "$DATA:/root/data" -b "$AUTO:/mnt/iso" ${EMMC:+-b "$EMMC:/mnt/emmc"} -w /root/pdj "$@"
 fi

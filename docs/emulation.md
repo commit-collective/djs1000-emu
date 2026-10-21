@@ -15,6 +15,11 @@ What `djsdev.c` stands in for, and why:
 | `/root/data/PadCalibration.xml` (the unit's data partition) | made by `run.sh`: 336 for every pad | the app takes every pad as held for ever and blinks them all red, see [panel-protocol.md](panel-protocol.md) |
 | `/proc/udev_usb1`, `/proc/udev_usbctn1` (Pioneer's `fs/proc/udev_usb.c`, `udev_usbctn.c`: system-wide message queues udev writes to, a message kept until some reader takes it, one beginning with `0` emptying the queue) | a file in the guest's `/tmp` per queue, shared by every process (`init.sh`'s shell writes what udev would), handed to the app through a socket pair. `umount()` succeeds | no drive: "Save To: ---" |
 
+The unit's internal storage (the eMMC, a FAT volume on `/mnt/emmc`: the factory samples and projects) is a folder of the
+host too, `$DJS_EMMC`, bound on `/mnt/emmc` by `run.sh` when it is set (`start.py` passes it on). It holds a `PIONEER DJ SAMPLER`
+folder, as the stick does. The app lists its projects under OPEN, Internal. Without `$DJS_EMMC`, `/mnt/emmc` is empty. The factory
+content is Pioneer's and the sample packs' makers': copy it off a unit of your own and keep it out of this repository.
+
 The USB drive is the host folder `~/djs/usb` (`$DJS_USB`), bound on
 `/media/usb1/sda1` by `run.sh`. The app (`UsbMountManager`) takes `mount <path>`, `umount <path>`, `do_umount <n> <path>`
 (which it writes itself for USB STOP), and `connect` / `disconnect` on the
