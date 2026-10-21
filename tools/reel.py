@@ -44,29 +44,36 @@ DECK_W, DECK_H = 2196, 1800       # the deck's window: the regions below are mea
 TOP, FOOT = 190, 96               # the band for the caption above the picture and the one for the small text below it
 
 # Regions of the deck's window (x, y, w, h) and where they go on the 1080x1920 picture.
-SCREEN = (1380, 16, 800, 480)                # the app's screen
-PANEL = (0, 500, 1360, 1260)                 # knobs, pads, touch strip, fader and the step buttons
-PANEL_TOP = (0, 500, 1360, 1140)             # the same without the last row of step buttons
-MODS = (1380, 510, 800, 540)                 # the list of mods and what the one pointed at does
-# The top of the picture is a setting (--top, or TOP in the episode):
-#   screen  the app's big screen above the panel, which loses its own top (the small screen and its bezel). The mods scenes show
-#           the list of mods in the big screen's place.
-#   device  the unit as it is, its top and its small screen kept, in one framing for every scene: it does not move when the list
-#           of mods comes up, which the deck shows in the unit's small screen as a page of the unit (the `page mods` command of
-#           the recording, see app/virtual_djs.py).
-DEVICE = (0, 20, 1360, 1740)                 # the whole panel, the bezel of the small screen at its top
+SCREEN = (1380, 16, 798, 478)                # the app's screen (the big one beside the face, inside its border): 800x480 less its last
+#                                              column and row, which the frame has in light grey (210) and no other edge does (and
+#                                              less one more, for the crop is an even number of pixels)
+PANEL = (0, 486, 1360, 1270)                 # the face below the bezel of its small screen: knobs, pads, strip, fader, step buttons
+DEVICE = (0, 20, 1360, 1740)                 # the whole face, the bezel of the small screen at its top
+LINE = "0x3a3c42"                            # the thin line around a card
+MARGIN, GAP = 24, 22                         # the picture's side margin, and the space between the two cards
+CARD = 1080 - 2 * MARGIN                     # a card's width
+SCREEN_H = int(round(SCREEN[3] * CARD / float(SCREEN[2])))
+PANEL_H = int(round(PANEL[3] * CARD / float(PANEL[2])))
+SCREEN_AT = (MARGIN, TOP, CARD, SCREEN_H)
+PANEL_AT = (MARGIN, TOP + SCREEN_H + GAP, CARD, PANEL_H)
+# The top of the picture is a setting (--top, or TOP in the episode). In both, the unit does not move when the list of mods comes
+# up: the two kinds of scene have one layout, and the deck itself shows the list as a page of the unit (the `page mods` command of
+# the recording, see app/virtual_djs.py).
+#   screen  two framed cards: the app's big screen, and the face under its bezel. The page of mods is in the big screen.
+#   device  the unit as it is, its top and its small screen kept. The page of mods is in its small screen.
 LAYOUTS = {
-    "play": [(SCREEN, (0, TOP, 1080, 648)), (PANEL, (0, TOP + 648, 1080, 1000))],
-    "mods": [(MODS, (0, TOP, 1080, 729)), (PANEL_TOP, (0, TOP + 729, 1080, 905))],
+    "play": [(SCREEN, SCREEN_AT), ("box", SCREEN_AT), (PANEL, PANEL_AT), ("box", PANEL_AT)],
     "play-device": [(DEVICE, (0, TOP + 126, 1080, 1382))],
-    "mods-device": [(DEVICE, (0, TOP + 126, 1080, 1382))],
     "end": [],
 }
 
 
 def layout_named(name, top):
-    """The layout a scene asks for, in the setting for the top of the picture."""
-    return name if name == "end" or top == "screen" else name + "-device"
+    """The layout a scene asks for, in the setting for the top of the picture. Every scene but the end card has the one layout of
+    the setting (a scene's name, play or mods, is for the episode's own use): the unit does not move between them."""
+    if name == "end":
+        return "end"
+    return "play" if top == "screen" else "play-device"
 
 
 class Timeline:
@@ -206,11 +213,15 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
         regions = LAYOUTS[layout_named(name, top)]
         dur = t1 - t0
         lines.append("color=c=black:s=%dx%d:r=%d:d=%.3f,format=yuv420p[b%d_0];" % (W, H, fps, dur, i))
-        cut = [j for j, (src, _) in enumerate(regions) if src is not None]      # a region without a source is a black box
+        # A region is (source, where): a rectangle of the window, or None for a black box, or "box" for a thin line around where.
+        cut = [j for j, (src, _) in enumerate(regions) if isinstance(src, tuple)]
         if cut:
             outs = "".join("[s%d_%d]" % (i, j) for j in cut)
             lines.append("[0:v]trim=start=%.3f:end=%.3f,setpts=PTS-STARTPTS,split=%d%s;" % (t0, t1, len(cut), outs))
         for j, (src, (dx, dy, dw, dh)) in enumerate(regions):
+            if src == "box":
+                lines.append("[b%d_%d]drawbox=x=%d:y=%d:w=%d:h=%d:color=%s:t=1[b%d_%d];" % (i, j, dx - 1, dy - 1, dw + 2, dh + 2, LINE, i, j + 1))
+                continue
             if src is None:
                 lines.append("color=c=black:s=%dx%d:r=%d:d=%.3f,format=yuv420p[c%d_%d];" % (dw, dh, fps, dur, i, j))
             else:

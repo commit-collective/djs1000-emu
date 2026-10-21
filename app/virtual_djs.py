@@ -614,12 +614,13 @@ class Deck:
 
     def draw_dock(self):
         win = self.win
-        if not self.have_screen:
+        shown = self.render_mod_page() if self.mod_page else self.screen      # the page of mods replaces the app's screen here too
+        if not self.have_screen and not self.mod_page:
             self.draw_boot(self.dock)
-        elif self.dock.size == self.screen.get_size():
-            win.blit(self.screen, self.dock)
+        elif self.dock.size == shown.get_size():
+            win.blit(shown, self.dock)
         else:
-            win.blit(pygame.transform.smoothscale(self.screen, self.dock.size), self.dock)
+            win.blit(pygame.transform.smoothscale(shown, self.dock.size), self.dock)
         pygame.draw.rect(win, (46, 47, 51), self.dock.inflate(2, 2), 1)
         self.mod_rects = []
         if not self.show_lamps:

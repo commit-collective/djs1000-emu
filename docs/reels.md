@@ -31,23 +31,25 @@ post says. A scene has a layout, a caption above the picture, a line below it, a
 `ctx.s`, the session). Use `ctx.press` and `ctx.touch` while a project plays: the session's own waits for the screen to hold still,
 which it never does then.
 
-The layouts are in `tools/reel.py` (`LAYOUTS`): `play`, `mods` and `end` (black, for the end card, `END` in the episode). They cut
-regions out of the deck's window, which is recorded at 2196x1800 so that the app's screen is 800x480 in it, and the regions are
-measured on that.
+The layouts are in `tools/reel.py` (`LAYOUTS`) and cut regions out of the deck's window, which is recorded at 2196x1800 so that the
+app's screen is 800x480 in it. The regions are measured on that window. A scene's `layout` is `play`, `mods` or `end` (black, for the
+end card, `END` in the episode): `play` and `mods` are the same picture, so the unit never moves between them, and the name is for the
+episode's own use.
 
 ## The top of the picture
 
-How `play` and `mods` look depends on a setting, `--top` (or `TOP` in the episode, `screen` if neither):
+The picture of every scene but the end card is one layout, which depends on a setting, `--top` (or `TOP` in the episode, `screen` if
+neither):
 
-| `--top` | `play` | `mods` |
+| `--top` | the picture | the list of mods |
 |---|---|---|
-| `screen` | the app's big screen above the panel, which loses its own top (the small screen and its bezel) | the list of mods in the big screen's place, the panel below |
-| `device` | the unit as it is, its top and its small screen kept | the same framing: the unit does not move, and its small screen shows the list of mods as a page of the unit |
+| `screen` | two framed cards with an even margin: the app's big screen, and the face of the unit under the bezel of its small screen | a page in the big screen |
+| `device` | the unit as it is, its top and its small screen kept | a page in the unit's small screen, which is small in the picture, so the text is too |
 
-The page of mods in `device` is drawn by the deck itself at the size of the unit's screen (800x480, in the style of its lists), when the
-scene sends `page mods` and until `page off`: nothing is cut out and pasted. The recording is the same for both looks, but only a
-recording made with `page mods` in its scene has the page, so `--from-raw --top device` works on a recording made after that. The unit's
-screen is small in the picture of `device`, so the text of the page is too: it is the price of keeping the unit still.
+The page of mods is drawn by the deck itself at the size of the unit's screen (800x480, in the style of its lists), when the scene
+sends `page mods` and until `page off`: nothing is cut out and pasted, and nothing in the picture moves when it comes up. The
+recording is the same for both looks, but only a recording made with `page mods` in its scene has the page, so `--from-raw --top ...`
+works on a recording made after that.
 
 ## The unit's internal storage
 
