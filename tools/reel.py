@@ -21,6 +21,7 @@ the firmware's screen and the unit's factory content.
 """
 import argparse
 import importlib.util
+import math
 import os
 import shutil
 import subprocess
@@ -274,10 +275,48 @@ def burn(video, audio, work, chain, out, fps):
                            os.path.abspath(out)], cwd=work)
 
 
+def declick(path, out, rate=44100, fade=0.008):
+    """Copies the sound with a short fade out before each hard stop. When the unit stops (the pattern, a sample), what was loud
+    can end on a sample that is far from zero and the sound drops to digital silence: a click. Found by the level falling by
+    more than 35 dB in 5 ms from above -40 dB. The sound is not touched anywhere else."""
+    import array
+    data = array.array("f")
+    with open(path, "rb") as f:
+        data.frombytes(f.read())
+    hop = int(rate * 0.005)
+    frames = len(data) // 2
+    level = []
+    for i in range(0, frames - hop, hop):
+        total = 0.0
+        for k in range(i * 2, (i + hop) * 2, 2):
+            total += data[k] * data[k]
+        level.append(10 * math.log10(total / hop + 1e-18))
+    count = 0
+    for k in range(1, len(level)):
+        if level[k - 1] > -40 and level[k] < level[k - 1] - 35:
+            end = k * hop                                        # the frame the silence starts at
+            while end > 0 and abs(data[2 * (end - 1)]) < 1e-6 and abs(data[2 * (end - 1) + 1]) < 1e-6:
+                end -= 1                                         # (the signal may stop a little before the window)
+            n = int(rate * fade)
+            for j in range(n):
+                g = j / float(n)                                 # 1 down to 0 over the last n frames
+                for c in (0, 1):
+                    data[2 * (end - n + j) + c] *= 1.0 - g
+            count += 1
+    with open(out, "wb") as f:
+        f.write(data.tobytes())
+    return count
+
+
 def master_sound(raw, work, out):
-    """The deck's master output, as a track at a loudness a phone plays: -14 LUFS, peaks under -1.5 dB."""
-    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-f", "f32le", "-ar", "44100", "-ac", "2", "-i",
-                           os.path.abspath(raw) + ".f32", "-af", "loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.89:level=0",
+    """The deck's master output, as a track at a loudness a phone plays: -14 LUFS, peaks under -1.5 dB, a click taken out where
+    the sound stops hard, and a few milliseconds of fade in at the start."""
+    clean = os.path.abspath(raw) + ".clean.f32"
+    n = declick(os.path.abspath(raw) + ".f32", clean)
+    if n:
+        print("declicked %d hard stop(s)" % n)
+    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-f", "f32le", "-ar", "44100", "-ac", "2", "-i", clean,
+                           "-af", "afade=t=in:d=0.02,loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.89:level=0",
                            "-c:a", "aac", "-b:a", "192k", os.path.abspath(out)], cwd=work)
 
 
