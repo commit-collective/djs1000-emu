@@ -1035,6 +1035,11 @@ def main():
                     deck.mods.toggle(command[1].strip())
                 elif command[0] == "page" and len(command) > 1:
                     deck.mod_page = command[1].strip() == "mods"
+                elif command[0] == "knob" and len(command) > 1:        # `knob NAME DELTA`: turns a knob, and the picture of it, as the mouse wheel does
+                    name, _, delta = command[1].partition(" ")
+                    for i, knob in enumerate(L.KNOBS):
+                        if knob.name == name:
+                            deck.turn(i, int(delta))
             capture[0].frame(deck.win)
             if capture[0].stopped():
                 running = False

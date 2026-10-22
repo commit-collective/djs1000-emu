@@ -10,7 +10,8 @@ A script that drives the app while this records talks to the deck through files 
     FILE.start   written when the first frame is taken: the time (time.time()) it began
     FILE.stop    when this file exists, the deck ends the recording and closes
     FILE.cmd     lines appended to it are run as they come: `hover MOD` (the mod's text under the list), `toggle MOD`,
-                 `page mods` (the face's small screen shows the list of mods as a page of the unit) and `page off`
+                 `page mods` (the face's small screen shows the list of mods as a page of the unit) and `page off`,
+                 `knob NAME DELTA` (turns a knob of the face, as the mouse wheel does: fx_level, knob_1 to knob_6 ...)
 """
 import os
 import subprocess
