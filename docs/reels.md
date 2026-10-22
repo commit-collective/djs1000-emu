@@ -3,10 +3,10 @@
 `tools/reel.py` makes a short video in 1080x1920 (for Reddit, Shorts, Reels and TikTok) the way `tools/demo.py` makes the long one:
 a script plays the unit and the virtual deck records it. Run it on the host, like `start.py`.
 
-    python tools/reel.py emulator_intro --patch ../djs1000-mods/build/autoexec.bin
+    python tools/reel.py example
 
 It needs ffmpeg on the path, Pillow and pygame-ce for the deck, deckbench beside this repository (for the episodes that show
-Pro DJ Link), and a copy of the unit's internal storage in WSL (below). The output goes in `DIR/NAME/`, where DIR is `--out`, else `demo/reels`. `demo/` is the one folder for what the tools generate (the
+Pro DJ Link, and `--patch` for the mods), and a copy of the unit's internal storage in WSL (below). The output goes in `DIR/NAME/`, where DIR is `--out`, else `demo/reels`. `demo/` is the one folder for what the tools generate (the
 demonstration video as well), and git ignores it: videos are not committed, and these show the firmware's screen.
 
 | file | what |
@@ -22,8 +22,14 @@ caption.
 
 ## An episode
 
-An episode is a file in `tools/reels` (`emulator_intro.py` is the first). It names the project to open, the scenes and what the
-post says. A scene has a layout, a caption above the picture, a line below it, an action and the least time it lasts:
+An episode is a Python file. [`tools/reels/example.py`](../tools/reels/example.py) is the one to start from: copy it to
+`demo/episodes/`, which git ignores, so your episodes and what you post with them stay yours. `reel.py NAME` looks in
+`demo/episodes` and then in `tools/reels`, and `reel.py path/to/file.py` takes any file. `--check` loads an episode and looks at its
+scenes (a layout that does not exist, an action with no function) without recording, so it needs no unit. `--project` opens another
+project than the episode's `PROJECT` (no name is the first in the list).
+
+An episode names the project to open and the scenes. A scene has a layout, a caption above the picture, a line below it, an action
+and the least time it lasts:
 
     {"layout": "play", "caption": "Pads, knobs, touch strip", "sub": "all of it works", "do": "pads", "seconds": 7.0}
 

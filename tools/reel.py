@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Makes a short vertical video (a reel) of the emulator: a script plays the unit and the virtual deck records it.
 
-    reel.py EPISODE [--patch autoexec.bin] [--out DIR] [--fps 30] [--top screen|device] [--no-link]
+    reel.py EPISODE [--patch autoexec.bin] [--out DIR] [--fps 30] [--top screen|device] [--no-link] [--project NAME]
+    reel.py EPISODE --check
 
-EPISODE is a file in tools/reels (emulator_intro for tools/reels/emulator_intro.py): its scenes, the text of each and what is played
-in it. The unit starts on a fresh set of internal storage (a copy of the factory one made of hard links, see DJS_EMMC_SRC), the
+EPISODE is a file with the scenes, the text of each and what is played in it: a path to a .py file, or a name, looked up in
+demo/episodes (yours: git ignores it) and then in tools/reels (example.py is the one to start from). --check only loads it and
+looks at its scenes, nothing is recorded. The unit starts on a fresh set of internal storage (a copy of the factory one made of hard links, see DJS_EMMC_SRC), the
 episode's project is opened, and the deck records (as tools/demo.py does: the window as video, the master output as sound). The
 window is then cut up and stacked into 1080x1920, a layout for each scene (the screen of the app above, the panel below, or the
 list of mods), and written in DIR/NAME/ (DIR is --out, else demo/reels in this repository, which git ignores like the rest of demo/):
@@ -124,14 +126,48 @@ class Context:
         self.tl.say(line)
 
 
+def episode_path(name):
+    """A path to an episode, or the name of one: demo/episodes (private, git ignores it) before tools/reels."""
+    if name.endswith(".py") or os.sep in name or "/" in name:
+        return os.path.abspath(name)
+    for folder in (os.path.join(REPO, "demo", "episodes"), os.path.join(HERE, "reels")):
+        path = os.path.join(folder, name + ".py")
+        if os.path.exists(path):
+            return path
+    return os.path.join(HERE, "reels", name + ".py")
+
+
 def load_episode(name):
-    path = os.path.join(HERE, "reels", name + ".py")
+    path = episode_path(name)
     if not os.path.exists(path):
         sys.exit("no episode %s: it would be %s" % (name, path))
-    spec = importlib.util.spec_from_file_location("episode_" + name, path)
+    base = os.path.splitext(os.path.basename(path))[0]
+    spec = importlib.util.spec_from_file_location("episode_" + base, path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.path.insert(0, os.path.dirname(path))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
+    module.NAME = base
     return module
+
+
+def check_episode(episode):
+    """The faults an episode can have that need no unit to find: a scene with no layout, an action with no function."""
+    faults = []
+    scenes = getattr(episode, "SCENES", None)
+    if not scenes:
+        return ["no SCENES"]
+    for i, scene in enumerate(scenes, 1):
+        if scene.get("layout") not in ("play", "mods", "end"):
+            faults.append("scene %d: layout %r is not play, mods or end" % (i, scene.get("layout")))
+        action = scene.get("do")
+        if action and not callable(getattr(episode, "do_" + action, None)):
+            faults.append("scene %d: no function do_%s" % (i, action))
+        if not scene.get("seconds", 0) > 0:
+            faults.append("scene %d: no seconds" % i)
+    return faults
 
 
 def prepare(emu, patch):
@@ -158,9 +194,11 @@ cp "$P" "$D/usb/autoexec.bin"
 
 
 def project_index(emu, name):
-    """The row of the project in the app's list (alphabetical)."""
+    """The row of the project in the app's list (alphabetical). No name is the first one."""
     code, text = emu.sh('ls "${DJS_HOME:-$HOME/djs}/reel/emmc/PIONEER DJ SAMPLER/Projects"')
     names = sorted((n for n in text.split("\n") if n.endswith(".prj")), key=str.lower)
+    if not name:
+        return 0
     if name + ".prj" not in names:
         sys.exit("no project %s in the internal storage: %s" % (name, ", ".join(names)))
     return names.index(name + ".prj")
@@ -356,13 +394,21 @@ def main():
     ap.add_argument("--top", choices=("screen", "device"),
                     help="the top of the picture: the app's big screen above the panel (screen), or the unit with its own top and "
                          "small screen, the mods composited inside it (device). Default: TOP in the episode, else screen")
+    ap.add_argument("--project", help="the project to open from the unit's internal storage (default: PROJECT in the episode, else the first)")
+    ap.add_argument("--check", action="store_true", help="only look at the episode's scenes, no recording (needs no unit)")
     ap.add_argument("--no-link", action="store_true", help="no simulated decks (deckbench)")
     ap.add_argument("--from-raw", action="store_true", help="do not record again: make the picture from the last recording")
     args = ap.parse_args()
     episode = load_episode(args.episode)
+    if args.check:
+        faults = check_episode(episode)
+        for fault in faults:
+            print("%s: %s" % (episode.NAME, fault))
+        print("%s: %d scenes, %s" % (episode.NAME, len(getattr(episode, "SCENES", [])), "%d faults" % len(faults) if faults else "ok"))
+        sys.exit(1 if faults else 0)
     if getattr(episode, "PATCH", False) and not args.patch and not args.from_raw:
         sys.exit("this episode shows the mods: give the mods' autoexec.bin with --patch")
-    out_dir = os.path.abspath(os.path.join(args.out, args.episode))
+    out_dir = os.path.abspath(os.path.join(args.out, episode.NAME))
     work = os.path.join(out_dir, "work")
     os.makedirs(work, exist_ok=True)
     raw = os.path.join(work, "raw.mp4")
@@ -432,8 +478,8 @@ def record(args, episode, raw):
         s.wait_usb()
         if args.patch:
             regress.wait_patch(emu, s)
-        open_internal_project(s, project_index(emu, episode.PROJECT))
-        episode.before(s)                       # off camera: what the first picture must already show
+        open_internal_project(s, project_index(emu, args.project or getattr(episode, "PROJECT", "")))
+        getattr(episode, "before", lambda s: None)(s)                       # off camera: what the first picture must already show
 
         cmd = [sys.executable, os.path.join(REPO, "app", "virtual_djs.py"), "--port", str(emu.port), "--no-audio",
                "--no-input", "--width", str(DECK_W), "--height", str(DECK_H), "--record", raw, "--fps", str(args.fps),
