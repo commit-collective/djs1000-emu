@@ -538,7 +538,7 @@ class Deck:
 
     def draw(self):
         win = self.win
-        win.fill(BG)
+        win.fill(art.bg())
         win.blit(self.face, (0, 0))
         if self.mod_page:
             win.blit(pygame.transform.smoothscale(self.render_mod_page(), self.lcd_rect.size), self.lcd_rect)
@@ -928,6 +928,9 @@ def main():
     ap.add_argument("--list-audio", action="store_true", help="print the sound devices and quit")
     ap.add_argument("--compact", action="store_true",
                     help="start without the side panel (the large screen; F10 shows it)")
+    ap.add_argument("--face", choices=("flat", "real"), default=os.environ.get("DJS_FACE", "real"),
+                    help="how the face is drawn: real (black gloss, bevels, chrome and brushed metal, shadows) or flat (dark "
+                         "grey plastic, the first look; default $DJS_FACE, else real)")
     ap.add_argument("--usb", metavar="DIR",
                     help="the emulator's USB folder, to show and switch the mods of a patch on it")
     ap.add_argument("--modlist", metavar="FILE",
@@ -980,6 +983,7 @@ def main():
             recorder = audio.Recorder(link.send_input, audio.pick(args.input, True))
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
+    art.set_style(args.face)
     deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb, args.modlist))
     if args.record:
         capture.append(Capture(args.record, (w, h), args.fps))

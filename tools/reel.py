@@ -311,6 +311,9 @@ def main():
     ap.add_argument("--out", default=os.path.join(REPO, "demo", "reels"),
                     help="where the videos go: a folder for each episode in it (default demo/reels, git ignores demo/)")
     ap.add_argument("--fps", type=int, default=30)
+    ap.add_argument("--face", choices=("flat", "real"),
+                    help="how the deck draws the unit's face: real (black gloss, chrome, brushed metal, shadows), or flat. "
+                         "Default: FACE in the episode, else real. It is recorded, so changing it means recording again")
     ap.add_argument("--top", choices=("screen", "device"),
                     help="the top of the picture: the app's big screen above the panel (screen), or the unit with its own top and "
                          "small screen, the mods composited inside it (device). Default: TOP in the episode, else screen")
@@ -394,7 +397,8 @@ def record(args, episode, raw):
         episode.before(s)                       # off camera: what the first picture must already show
 
         cmd = [sys.executable, os.path.join(REPO, "app", "virtual_djs.py"), "--port", str(emu.port), "--no-audio",
-               "--no-input", "--width", str(DECK_W), "--height", str(DECK_H), "--record", raw, "--fps", str(args.fps)]
+               "--no-input", "--width", str(DECK_W), "--height", str(DECK_H), "--record", raw, "--fps", str(args.fps),
+               "--face", args.face or getattr(episode, "FACE", "real")]
         usb, modlist = emu.usb(), emu.modlist()
         if usb and args.patch:
             cmd += ["--usb", usb]

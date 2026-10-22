@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "app"))
 
 import pygame  # noqa: E402
 
+import art  # noqa: E402
 import layout as L  # noqa: E402
 import virtual_djs  # noqa: E402
 
@@ -43,9 +44,31 @@ class FakePlayer:
         pass
 
 
+def sweep_art():
+    """The face and every sprite at many sizes of window, in the style set: a shape that is less than a pixel at a small size
+    must not raise (a window the size of the user's did, once)."""
+    for scale in (0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.5):
+        art.face(scale)
+        for i in range(len(L.KEYS)):
+            for level, rgb, down in ((0, None, False), (2, None, True), (0, (250, 120, 40), False)):
+                art.key_sprite(i, scale, level, rgb, down)
+        for i in range(len(L.KNOBS)):
+            art.knob_sprite(i, scale, 3, False)
+            art.knob_sprite(i, scale, 3, True)
+        art.slider_cap(scale)
+
+
 def main():
     pygame.init()
     link = FakeLink()
+    for style in ("flat", "real"):
+        art.set_style(style)
+        sweep_art()
+        deck_checks(link)
+    print(len(link.sent), "commands sent; ok")
+
+
+def deck_checks(link):
     for size in ((1627, 1060), (700, 900), (420, 500)):
         deck = virtual_djs.Deck(link, size, (FakePlayer(), None), None, [0])
         deck.pump()
@@ -86,7 +109,6 @@ def main():
         deck.draw()
         deck.up_at = None
         deck.draw()
-    print(len(link.sent), "commands sent; ok")
 
 
 if __name__ == "__main__":

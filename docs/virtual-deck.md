@@ -20,7 +20,11 @@ Beside the face is the app's screen at full size, the easier one to touch,
 and under it a reminder of what the mouse and the keys do. F10 hides that
 panel and narrows the window to the face (`--compact` starts that way). F12
 swaps the reminder for the lamp diagnostics: every two-level lamp by id, as
-the app sets it. Hold the mouse on keys and pads (a pad
+the app sets it. The face is drawn as the unit looks (`--face real`, the default): black gloss plastic with a lit rim and raised
+rails down the sides, a bevelled housing for the screen with framed PROJECT, SAMPLING and FX buttons and a knurled encoder in a chrome ring, a chrome
+frame round the pads, transport keys of brushed metal right through with their lamp shining in the middle, a grained FX strip, dull translucent grey pads (rubber) and step keys (hard plastic, flat) while their lamps are
+off, and a little shade under the controls. It costs a third of a second once at the start and nothing per frame, because the face
+and the keys are made once and kept. `--face flat` (or `$DJS_FACE=flat`) is the first look: dark grey plastic and flat controls. Hold the mouse on keys and pads (a pad
 plays harder the lower you press it), turn knobs with the wheel or by
 dragging, click the selector to push it, and use the mouse as a finger on
 the screen. The status line names the control under the mouse and its

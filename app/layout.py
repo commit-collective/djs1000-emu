@@ -133,7 +133,7 @@ KEYS = [
         lamp=0x01, color=LIME, keycap="P"),
     Key("sampling", "rect", box=(222, 248, 330, 292), label="SAMPLING", bit=(5, 6),
         lamp=0x02, color=WHITE, keycap="L"),
-    Key("fx", "rect", box=(226, 330, 330, 372), label="FX", bit=(5, 7), lamp=0x03,
+    Key("fx", "rect", box=(222, 328, 330, 372), label="FX", bit=(5, 7), lamp=0x03,
         color=BLUE, keycap="X"),
     Key("back", "dome", box=(1150, 131, 1212, 166), bit=(1, 2), keycap="Esc"),
     Key("home", "dome", circle=(1268, 149, 19), bit=(1, 3), color=RED, keycap="H"),

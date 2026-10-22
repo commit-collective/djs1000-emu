@@ -16,12 +16,18 @@ import math
 import os
 from functools import lru_cache
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 import layout as L
 
 SS = 2                                   # supersampling factor
 GLOW = 12                                # units of margin a sprite keeps for its glow
+
+# The look of the face: "real" (the default: black gloss plastic, a bevelled
+# housing, a chrome frame round the pads, brushed metal on the transport keys, shadows) or "flat" (the first one: dark grey
+# plastic, flat controls). Set it once, before the first drawing,
+# with set_style(): the face and the sprites are made once for the style and kept.
+STYLE = "real"
 
 BG = (5, 5, 5)
 BODY = (33, 34, 37)
@@ -30,6 +36,9 @@ GLOSS = (11, 11, 13)
 KEY_FILL = (13, 13, 15)
 PRINT = (225, 228, 232)
 UNLIT_PAD = (44, 45, 50)
+REAL_BIG = 0.92                          # the size of the round transport keys in the real face, as a share of their place
+UNLIT_REAL = (172, 175, 181)             # a pad with its lamp off: dull translucent grey (rubber, so matte)
+UNLIT_STEP = (190, 193, 199)             # a step key with its lamp off: the same, a little lighter (hard plastic, so it shines)
 CHROME = (196, 198, 204)
 
 _FONTS = {
@@ -130,6 +139,65 @@ class _Canvas:
     def done(self):
         return self.img.resize(self.size, Image.LANCZOS)
 
+    # What the "real" style adds. Each works on the part of the canvas it covers, not on all of it: the face is big.
+    def gradient_rect(self, b, radius, a, z, direction="v"):
+        """A rectangle filled with a gradient from colour a (top, left, or top-left) to z. direction: v, h or d (diagonal)."""
+        x0, y0, x1, y1 = (int(round(v)) for v in self.box(b))
+        w, h = max(1, x1 - x0), max(1, y1 - y0)
+        g = Image.linear_gradient("L")                       # black at the top to white at the bottom
+        if direction == "h":
+            g = g.transpose(Image.ROTATE_90)
+        elif direction == "d":
+            g = ImageChops.add(g, g.transpose(Image.ROTATE_90), scale=2)
+        fill = ImageOps.colorize(g.resize((w, h), Image.BILINEAR), a, z).convert("RGBA")
+        mask = Image.new("L", (w, h), 0)
+        r = int(min(radius * self.k, w / 2 - 1, h / 2 - 1))
+        if r >= 1:
+            ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=r, fill=255)
+        else:
+            mask.paste(255, (0, 0, w, h))
+        self.img.paste(fill, (x0, y0), mask)
+
+    def overlay(self, draw, bbox, rgba, blur=0):
+        """Blends a shape (draw(ImageDraw, offset-adjusted callback)) in colour rgba over what is there, inside bbox (face units)."""
+        x0, y0, x1, y1 = (int(round(v)) for v in self.box(bbox))
+        pad = int(blur * self.k * 3) + 2
+        lx, ly = x0 - pad, y0 - pad                          # the layer's corner, in canvas pixels
+        w, h = max(1, x1 - x0) + 2 * pad, max(1, y1 - y0) + 2 * pad
+        layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw(ImageDraw.Draw(layer), lambda x, y: ((x - self.x0) * self.k - lx, (y - self.y0) * self.k - ly), rgba)
+        if blur:
+            layer = layer.filter(ImageFilter.GaussianBlur(blur * self.k))
+        cw, ch = self.img.size                               # only what is inside the canvas
+        sx0, sy0, dx0, dy0 = max(0, -lx), max(0, -ly), max(0, lx), max(0, ly)
+        sx1, sy1 = min(w, cw - lx), min(h, ch - ly)
+        if sx1 > sx0 and sy1 > sy0:
+            self.img.alpha_composite(layer.crop((sx0, sy0, sx1, sy1)), (dx0, dy0))
+
+    def shade_poly(self, pts, rgba, blur=0):
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        self.overlay(lambda d, m, col: d.polygon([m(*q) for q in pts], fill=col), (min(xs), min(ys), max(xs), max(ys)), rgba, blur)
+
+    def shade_rect(self, b, rgba, radius=0, blur=0):
+        def draw(d, m, col):
+            x0, y0 = m(b[0], b[1])
+            x1, y1 = m(b[2], b[3])
+            x0, y0, x1, y1 = int(round(x0)), int(round(y0)), int(round(x1)), int(round(y1))
+            x1, y1 = max(x1, x0 + 1), max(y1, y0 + 1)                    # at a small scale it can be less than a pixel
+            r = int(min(radius * self.k, (x1 - x0 - 1) / 2.0, (y1 - y0 - 1) / 2.0))
+            if r >= 1:
+                try:
+                    d.rounded_rectangle((x0, y0, x1, y1), radius=r, fill=col)
+                    return
+                except ValueError:                                       # corners that do not fit: a plain one
+                    pass
+            d.rectangle((x0, y0, x1, y1), fill=col)
+        self.overlay(draw, b, rgba, blur)
+
+    def shade_circle(self, cx, cy, r, rgba, blur=0):
+        self.overlay(lambda d, m, col: d.ellipse((*m(cx - r, cy - r), *m(cx + r, cy + r)), fill=col),
+                     (cx - r, cy - r, cx + r, cy + r), rgba, blur)
+
 
 def _key_shape(c, key, fill, inset=0):
     if key.circle:
@@ -141,16 +209,28 @@ def _key_shape(c, key, fill, inset=0):
         c.rect((x0 + inset, y0 + inset, x1 - inset, y1 - inset), radius=radius, fill=fill)
 
 
-def _symbol(c, key, color):
+def _symbol(c, key, color, s=1.0):
+    """The sign on a round key, s times its size."""
     cx, cy, r = key.circle
     if key.symbol == "play":
-        c.poly([(cx - 20, cy - 11), (cx - 20, cy + 11), (cx - 3, cy)], color)
-        c.rect((cx + 4, cy - 10, cx + 9, cy + 10), fill=color)
-        c.rect((cx + 14, cy - 10, cx + 19, cy + 10), fill=color)
+        c.poly([(cx - 20 * s, cy - 11 * s), (cx - 20 * s, cy + 11 * s), (cx - 3 * s, cy)], color)
+        c.rect((cx + 4 * s, cy - 10 * s, cx + 9 * s, cy + 10 * s), fill=color)
+        c.rect((cx + 14 * s, cy - 10 * s, cx + 19 * s, cy + 10 * s), fill=color)
     elif key.symbol == "stop":
-        c.rect((cx - 7, cy - 7, cx + 7, cy + 7), radius=1, fill=color)
+        c.rect((cx - 7 * s, cy - 7 * s, cx + 7 * s, cy + 7 * s), radius=1, fill=color)
     elif key.symbol == "rec":
-        c.circle(cx, cy, 8, fill=color)
+        c.circle(cx, cy, 8 * s, fill=color)
+
+
+def _brushed(c, cx, cy, r, dark, light, pressed=False):
+    """A disc of brushed metal: two bright lobes across it, as a conic highlight, in wedges."""
+    steps = 120
+    for i in range(steps):
+        a0, a1 = i * 360.0 / steps, (i + 1) * 360.0 / steps
+        mid = math.radians((a0 + a1) / 2)
+        t = 0.5 + 0.5 * math.sin(2 * mid + 0.9)
+        color = _mix(dark, light, (t ** 1.3) * (0.8 if pressed else 1.0))
+        c.d.pieslice(c.box((cx - r, cy - r, cx + r, cy + r)), a0, a1 + 0.6, fill=color)
 
 
 def _draw_key(c, key, level, rgb, down):
@@ -160,17 +240,33 @@ def _draw_key(c, key, level, rgb, down):
     kind = key.kind
     if kind in ("pad", "step"):
         color = lamp_color(rgb) if rgb else None
-        base = color or UNLIT_PAD
+        base = color or ((UNLIT_STEP if kind == "step" else UNLIT_REAL) if STYLE == "real" else UNLIT_PAD)
         if color:
             c.glow(lambda g, f: _key_shape(g, key, f), color, 6, 0.55)
-        _key_shape(c, key, _mix(base, (0, 0, 0), 0.35))
-        _key_shape(c, key, base, inset=3)
         x0, y0, x1, y1 = key.box
-        if color:
+        if STYLE == "real" and kind == "step":      # a step key is flat: one plain edge, no bevel
+            _key_shape(c, key, _mix(base, (0, 0, 0), 0.16))
+            _key_shape(c, key, base, inset=1.5)
+        else:
+            if STYLE == "real":                      # a pad stands proud: it casts a shade below
+                c.shade_rect((x0 + 2, y0 + 4, x1 + 2, y1 + 7), (0, 0, 0, 120), radius=10, blur=3)
+            _key_shape(c, key, _mix(base, (0, 0, 0), 0.35))
+            _key_shape(c, key, base, inset=3)
+        if color:                                  # the soft bloom in the middle
             c.glow(lambda g, f: g.rect((x0 + 18, y0 + 18, x1 - 18, y1 - 18), radius=12, fill=f),
                    _mix(color, (255, 255, 255), 0.6), 14, 0.2 + 0.5 * max(rgb) / 255)
         if down:
             _key_shape(c, key, (255, 255, 255, 70), inset=3)
+    elif kind == "rect" and STYLE == "real" and key.name in ("project", "sampling", "fx"):
+        x0, y0, x1, y1 = key.box
+        if lit:
+            c.glow(lambda g, f: _key_shape(g, key, f), lit, 6, 0.9)
+        _key_shape(c, key, (176, 178, 184))                                  # the bezel
+        _key_shape(c, key, (8, 8, 10), inset=2.5)
+        _key_shape(c, key, lit or (84, 86, 92), inset=4)                     # the lamp, a line
+        _key_shape(c, key, (22, 22, 25) if not down else (62, 64, 70), inset=7)
+        c.shade_rect((x0 + 9, y0 + 9, x1 - 9, y0 + (y1 - y0) * 0.45), (255, 255, 255, 12), radius=3)       # the gloss of its face
+        c.text((x0 + x1) / 2, (y0 + y1) / 2, key.label, key.font, fill=lit or PRINT)
     elif kind == "rect":
         edge = lit or CHROME
         if lit:
@@ -191,6 +287,19 @@ def _draw_key(c, key, level, rgb, down):
         if lit:
             c.glow(lambda g, f: _key_shape(g, key, f), lit, 4, 0.9)
         _key_shape(c, key, lit or _mix(key.color, (0, 0, 0), 0.72))
+    elif kind == "big" and STYLE == "real":
+        cx, cy, r = key.circle
+        r *= REAL_BIG                                                         # a little smaller than the place it holds
+        if lit:
+            c.glow(lambda g, f: g.circle(cx, cy, r + 2, fill=f), lit, 7, 0.9)
+        c.circle(cx, cy, r, fill=(6, 6, 7))                                  # a black ring round the metal
+        c.circle(cx, cy, r - 1.5, outline=(58, 59, 64), width=1)
+        _brushed(c, cx, cy, r - 6, (30, 31, 35), (150, 152, 158), down)      # metal right through: no centre part, dark enough for the lamp
+        c.circle(cx, cy, r - 6, outline=(112, 114, 120), width=1)
+        size = 0.85 if key.symbol == "play" else 0.8                         # the sign is about a quarter of the width of the metal
+        if lit:
+            c.glow(lambda g, f: _symbol(g, key, f, size), lit, 4, 1.0)
+        _symbol(c, key, lit or (16, 16, 18), size)                           # engraved in it, dark when its lamp is off
     elif kind == "big":
         cx, cy, r = key.circle
         if lit:
@@ -201,9 +310,13 @@ def _draw_key(c, key, level, rgb, down):
         c.circle(cx, cy, r - 12, outline=(150, 152, 158), width=1.5)
         _symbol(c, key, lit or (228, 230, 235))
     else:                                   # dome
-        if lit:
+        dot = STYLE == "real" and key.circle is not None and not key.label and not key.symbol
+        if lit and dot:
+            cx, cy, r = key.circle
+            c.glow(lambda g, f: g.circle(cx, cy, r * 0.3, fill=f), lit, 4, 1.0)
+        elif lit:
             c.glow(lambda g, f: _key_shape(g, key, f), lit, 5, 0.9)
-        _key_shape(c, key, lit or (74, 75, 80))
+        _key_shape(c, key, (74, 75, 80) if dot else (lit or (74, 75, 80)))
         fill = (20, 20, 22) if not down else (58, 60, 66)
         if key.name == "fx_on":
             fill = _mix(fill, key.color, 0.3 if not lit else 1.0)
@@ -213,6 +326,9 @@ def _draw_key(c, key, level, rgb, down):
             c.text(cx, cy, key.label, key.font, fill=lit or PRINT)
         elif key.symbol:
             _symbol(c, key, lit or _mix(key.color, (0, 0, 0), 0.35))
+        elif STYLE == "real" and key.circle is None:                        # a pill: a light along its top edge
+            x0, y0, x1, y1 = key.box
+            c.shade_rect((x0 + 8, y0 + 4, x1 - 8, y0 + 9), (255, 255, 255, 40), radius=2, blur=1)
         elif key.circle and key.circle[2] > 12:
             cx, cy, r = key.circle
             c.circle(cx, cy, r * 0.28, fill=lit or (48, 49, 53))
@@ -241,6 +357,20 @@ def key_sprite(index, scale, level=0, rgb=None, down=False):
 
 def _draw_knob(c, knob, angle, down=False):
     cx, cy, r = knob.circle
+    if knob.look == "selector" and STYLE == "real":
+        c.circle(cx, cy, r + 26, fill=(7, 7, 8))
+        c.circle(cx, cy, r, fill=(120, 122, 128))                              # the chrome ring, the same all the way round
+        c.circle(cx, cy, r - 1.5, fill=(226, 228, 233))
+        c.circle(cx, cy, r - 6, fill=(196, 198, 204))
+        c.circle(cx, cy, r - 9, fill=(11, 11, 13) if not down else (44, 45, 50))
+        for i in range(48):                                                    # the knurl of the knob, which turns with it
+            a = angle + i * math.tau / 48
+            c.line([(cx + (r - 23) * math.cos(a), cy + (r - 23) * math.sin(a)), (cx + (r - 11) * math.cos(a), cy + (r - 11) * math.sin(a))],
+                   (74, 75, 80) if i % 2 else (22, 22, 25), 2.4)
+        c.circle(cx, cy, r - 24, fill=(16, 16, 18))
+        c.circle(cx, cy, r - 30, fill=(26, 27, 30))
+        c.circle(cx, cy, r - 38, fill=(18, 18, 20))
+        return
     if knob.look == "selector":
         c.circle(cx, cy, r + 26, fill=(7, 7, 8))
         c.circle(cx, cy, r, fill=(238, 240, 245))
@@ -251,10 +381,17 @@ def _draw_knob(c, knob, angle, down=False):
         c.circle(cx, cy, r - 14, fill=(24, 24, 27) if not down else (50, 51, 56))
         c.circle(cx, cy, r - 26, fill=(34, 35, 39))
         return
-    c.circle(cx, cy, r, fill=(70, 71, 76))
-    c.circle(cx, cy, r - 3, fill=(8, 8, 9))
-    c.circle(cx, cy, r * 0.62, fill=(40, 41, 45))
-    c.circle(cx, cy, r * 0.5, fill=(22, 22, 25))
+    if STYLE == "real":                     # a ring that catches the light, a cap lit from the top left
+        c.circle(cx, cy, r, fill=(132, 134, 140))
+        c.circle(cx, cy, r - 1.5, fill=(70, 72, 77))
+        c.circle(cx, cy, r - 3.5, fill=(9, 9, 11))
+        c.circle(cx - r * 0.05, cy - r * 0.07, r * 0.68, fill=(44, 45, 50))
+        c.circle(cx + r * 0.01, cy + r * 0.02, r * 0.58, fill=(18, 18, 21))
+    else:
+        c.circle(cx, cy, r, fill=(70, 71, 76))
+        c.circle(cx, cy, r - 3, fill=(8, 8, 9))
+        c.circle(cx, cy, r * 0.62, fill=(40, 41, 45))
+        c.circle(cx, cy, r * 0.5, fill=(22, 22, 25))
     if knob.look != "pot":                  # an encoder turns without end: no mark
         return
     c.line([(cx + r * 0.2 * math.cos(angle), cy + r * 0.2 * math.sin(angle)),
@@ -286,6 +423,14 @@ def knob_sprite(index, scale, step=0, down=False):
 
 @lru_cache(maxsize=8)
 def slider_cap(scale):
+    if STYLE == "real":                       # a very dark cap, longer than the first, with a rounded grip across its middle
+        c = _Canvas(-44, -38, 88, 76, scale)
+        c.gradient_rect((-40, -36, 40, 36), 6, (34, 35, 39), (9, 9, 11), "v")
+        c.rect((-40, -36, 40, 36), radius=6, outline=(52, 54, 59), width=1.2)
+        c.gradient_rect((-42, -17, 42, 9), 6, (88, 90, 96), (28, 29, 33), "v")           # the grip, a bar across the cap that the light runs along
+        c.rect((-42, -17, 42, 9), radius=6, outline=(12, 12, 14), width=1.5)
+        c.line([(-36, -5), (36, -5)], (236, 238, 242), 3.2)                              # and the bright line on it
+        return c.done()
     c = _Canvas(-42, -26, 84, 52, scale)
     c.rect((-40, -24, 40, 24), radius=4, fill=(20, 20, 22), outline=(96, 98, 104), width=2)
     for y in (-14, -8, 8, 14):
@@ -294,21 +439,88 @@ def slider_cap(scale):
     return c.done()
 
 
+def _real_body(c):
+    """The case in black gloss plastic with a rim that catches the light, and the screen's housing, bevelled."""
+    c.gradient_rect(L.BODY, 14, (37, 37, 40), (27, 27, 30), "v")           # about 33 in the middle, as the unit measures
+    c.rect(L.BODY, radius=14, outline=(66, 67, 72), width=2)
+    bx0, by0, bx1, by1 = L.BODY
+    c.line([(bx0 + 16, by0 + 3), (bx1 - 16, by0 + 3)], (104, 105, 110), 2)
+    c.gradient_rect(L.TOP_BLOCK, 8, (13, 13, 15), (3, 3, 4), "v")                      # glass: black, as the pads' surround
+    c.rect(L.TOP_BLOCK, radius=8, outline=(98, 99, 104), width=3)
+    tx0, ty0, tx1, ty1 = L.TOP_BLOCK
+    c.rect((tx0 + 5, ty0 + 5, tx1 - 5, ty1 - 5), radius=6, outline=(18, 18, 20), width=2)
+    c.line([(tx0 + 12, ty0 + 2), (tx1 - 12, ty0 + 2)], (150, 151, 156), 2)
+    c.poly(L.KNOB_TRAY, (3, 3, 4))
+    c.shade_poly([(tx1 - 150, ty0 + 4), (tx1 - 4, ty0 + 4), (tx1 - 4, ty0 + 200), (tx0 + 150, ty1 - 4), (tx0 + 4, ty1 - 4), (tx0 + 4, ty1 - 200)],
+                 (255, 255, 255, 9), blur=5)                                  # and its streak of reflection
+    # The unit's sides have a raised rail below the encoders, chamfered at both ends, its inner edge bright and a shade beside it.
+    y0, y1 = 730, 1500
+    for left in (True, False):
+        def X(dx, left=left):
+            return bx0 + dx if left else bx1 - dx
+        c.shade_poly([(X(1), y0), (X(26), y0 + 26), (X(26), y1 - 26), (X(1), y1)], (255, 255, 255, 22))
+        c.line([(X(26), y0 + 26), (X(26), y1 - 26)], (104, 105, 110), 2)
+        c.line([(X(1), y0), (X(26), y0 + 26)], (92, 93, 98), 2)
+        c.line([(X(1), y1), (X(26), y1 - 26)], (62, 63, 68), 2)
+        c.line([(X(28), y0 + 28), (X(28), y1 - 28)], (10, 10, 12), 2)
+
+
+def _stipple(c, b, base, dot, pitch=3.0, radius=0.62):
+    """A rectangle of fine dots in rows, every other row shifted: the grain of the FX strip."""
+    c.rect(b, fill=base)
+    x0, y0, x1, y1 = b
+    y, row = y0 + pitch / 2, 0
+    while y < y1 - 0.3:
+        x = x0 + pitch / 2 + (pitch / 2 if row % 2 else 0)
+        while x < x1 - 1:
+            c.circle(x, y, radius, fill=dot)
+            x += pitch
+        y += pitch * 0.87
+        row += 1
+
+
+def bg():
+    """What is round the unit: pure black in the real face (the housing stands proud of the case, and nothing fills the corners
+    beside it), a hair lighter in the flat one."""
+    return (0, 0, 0) if STYLE == "real" else BG
+
+
+def set_style(name):
+    """"flat" or "real". Call it before anything is drawn: what was made in the other style is forgotten."""
+    global STYLE
+    if name not in ("flat", "real"):
+        raise ValueError("no such face: %s" % name)
+    STYLE = name
+    for fn in (face, _key_sprite, _knob_sprite, slider_cap):
+        fn.cache_clear()
+
+
 @lru_cache(maxsize=4)
 def face(scale):
     """The whole panel with every control unlit, as an RGB image."""
-    c = _Canvas(0, 0, L.W, L.H, scale, fill=(*BG, 255))
-    c.rect(L.BODY, radius=14, fill=BODY, outline=BODY_EDGE, width=2)
-    c.rect(L.TOP_BLOCK, radius=8, fill=GLOSS, outline=(70, 71, 76), width=3)
-    c.poly(L.KNOB_TRAY, GLOSS)
+    c = _Canvas(0, 0, L.W, L.H, scale, fill=(*bg(), 255))
+    real = STYLE == "real"
+    if real:
+        _real_body(c)
+    else:
+        c.rect(L.BODY, radius=14, fill=BODY, outline=BODY_EDGE, width=2)
+        c.rect(L.TOP_BLOCK, radius=8, fill=GLOSS, outline=(70, 71, 76), width=3)
+        c.poly(L.KNOB_TRAY, GLOSS)
     x0, y0, x1, y1 = L.LCD
-    c.rect((x0 - 20, y0 - 8, x1 + 26, y1 + 8), radius=4, fill=(4, 4, 5), outline=(46, 47, 51),
-           width=2)
+    c.rect((x0 - 20, y0 - 8, x1 + 26, y1 + 8), radius=4, fill=(4, 4, 5), outline=(84, 85, 90) if real else (46, 47, 51),
+           width=3 if real else 2)
     c.rect(L.LCD, fill=(0, 0, 0))
-    # The selector's panel and the FX strip of hatching.
-    c.rect((1128, 82, 1304, 522), radius=6, fill=(17, 17, 19))
-    c.rect((46, 566, 294, 588), fill=(46, 47, 51))
-    c.rect((200, 316, 354, 384), fill=(30, 31, 34))
+    # The selector's panel and the FX strip of hatching (the real unit has neither plate, nor a patch round FX).
+    if not real:
+        c.rect((1128, 82, 1304, 522), radius=6, fill=(17, 17, 19))
+    if real:
+        _stipple(c, (46, 566, 294, 588), (50, 51, 55), (150, 152, 157), pitch=2.7, radius=0.8)
+    else:
+        c.rect((46, 566, 294, 588), fill=(46, 47, 51))
+    if real:
+        _stipple(c, (200, 316, 354, 384), (58, 59, 63), (92, 94, 99), pitch=2.7, radius=0.7)
+    else:
+        c.rect((200, 316, 354, 384), fill=(30, 31, 34))
     # USB port.
     c.rect(L.USB_PORT, radius=5, fill=(190, 192, 198))
     ux0, uy0, ux1, uy1 = L.USB_PORT
@@ -326,9 +538,15 @@ def face(scale):
         c.line([(258, y + 52), (258, y + 76), (248, y + 76)], (200, 203, 208), 2)
     c.line([(262, 1090), (286, 1090)], (200, 203, 208), 2)
     # Pads.
-    c.rect(L.PAD_FRAME, radius=6, fill=(190, 192, 198))
     px0, py0, px1, py1 = L.PAD_FRAME
-    c.rect((px0 + 9, py0 + 9, px1 - 9, py1 - 9), radius=3, fill=(3, 3, 4))
+    if real:                                # a chrome frame round a glossy black surface with a streak of reflection across it
+        c.gradient_rect(L.PAD_FRAME, 6, (170, 172, 178), (24, 24, 27), "d")
+        c.rect((px0 + 9, py0 + 9, px1 - 9, py1 - 9), radius=3, fill=(2, 2, 3))
+        c.shade_poly([(px1 - 9, py0 + 9), (px1 - 9, py0 + 150), (px0 + 9, py1 - 220), (px0 + 9, py1 - 400)], (255, 255, 255, 13), blur=4)
+        c.line([(px0 + 14, py0 + 3), (px1 - 14, py0 + 3)], (250, 251, 253), 2)
+    else:
+        c.rect(L.PAD_FRAME, radius=6, fill=(190, 192, 198))
+        c.rect((px0 + 9, py0 + 9, px1 - 9, py1 - 9), radius=3, fill=(3, 3, 4))
     # Tempo slider.
     c.rect(L.SLIDER_FRAME, radius=8, fill=(22, 22, 25), outline=(60, 61, 66), width=2)
     sx, st, sb = L.SLIDER
@@ -346,8 +564,24 @@ def face(scale):
     for n in (0, 4, 8, 12):
         x, y = L.STEP_X[n % 8], L.STEP_Y[n // 8] - 71
         c.rect((x - 31, y - 10, x + 31, y + 10), outline=PRINT, width=1.5)
+    if real:                                # what stands on the face casts a little shade
+        for knob in L.KNOBS:
+            if knob.look == "knob":                      # (the encoder is round and even, with no shade to one side)
+                cx, cy, r = knob.circle
+                c.shade_circle(cx, cy + 5, r + 1, (0, 0, 0, 150), blur=6)
+        for key in L.KEYS:
+            if key.circle:
+                cx, cy, r = key.circle
+                c.shade_circle(cx, cy + 4, r * (REAL_BIG if key.kind == "big" else 1), (0, 0, 0, 130), blur=5)
+            elif key.kind == "rect":            # the pads and step keys keep their first look: no shade
+                x0, y0, x1, y1 = key.box
+                c.shade_rect((x0, y0 + 4, x1, y1 + 5), (0, 0, 0, 110), radius=8, blur=4)
     for t in L.TEXTS:
         c.text(t.x, t.y, t.text, t.size, fill=t.color, anchor=t.anchor, bold=t.bold)
+    if real:
+        for t in L.TEXTS:
+            if t.text == "WAKE UP":                  # the unit prints it in a box
+                c.rect((t.x - 31, t.y - 8, t.x + 31, t.y + 8), radius=2, outline=(225, 228, 232), width=1.4)
     for knob in L.KNOBS:
         if knob.look == "knob":
             _draw_knob(c, knob, 0)

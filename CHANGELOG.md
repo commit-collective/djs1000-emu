@@ -4,6 +4,12 @@ Newest first. A release is a tagged commit.
 
 ## Not yet released
 
+- The virtual deck draws the face as the unit looks (`--face real`, now the default): black gloss plastic with raised rails down the sides, a
+  bevelled screen housing with framed PROJECT, SAMPLING and FX buttons and a knurled encoder in a chrome ring, a chrome frame
+  round the pads, transport keys of brushed metal right through with their lamp shining in the middle, a grained FX strip, dull
+  translucent grey pads (rubber) and step keys (hard plastic, flat) while their lamps are off, shade under the
+  controls. It costs nothing per frame. `--face flat` is the first look, and stays available.
+
 ## v0.1.0
 
 First release.
