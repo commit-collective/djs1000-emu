@@ -3,7 +3,7 @@
 """Makes a short vertical video (a reel) of the emulator: a script plays the unit and the virtual deck records it.
 
     reel.py EPISODE [--patch autoexec.bin] [--out DIR] [--fps 30] [--top screen|device] [--no-link] [--project NAME]
-             [--shape portrait|landscape]
+             [--shape portrait|landscape|hero|site|window]
     reel.py EPISODE --check
 
 EPISODE is a file with the scenes, the text of each and what is played in it: a path to a .py file, or a name, looked up in
@@ -168,12 +168,21 @@ def hero_filters(i, fps, dur):
     return [(HERO_BACKGROUND + "[b%d_0];") % (W, H, fps, dur, i)]
 
 
+def window():
+    """The layouts for --shape window: the deck's window as it is, the size it was recorded at, in every scene."""
+    whole = [((0, 0, DECK_W, DECK_H), (0, 0, DECK_W, DECK_H))]
+    return {"play": whole, "play-device": whole, "end": whole}
+
+
 def set_shape(shape):
     """Portrait (1080x1920, the default), landscape (1920x1080) or hero (1920x1080 as the website's picture): the size, the layouts
     and where the text goes."""
     global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y, CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE
     CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE = "(w-text_w)/2", None, "0x3a3c42", 5, shape
-    if shape == "site":
+    if shape == "window":
+        W, H = DECK_W, DECK_H
+        LAYOUTS = window()
+    elif shape == "site":
         W, H = SITE_SIZE
         LAYOUTS = site()
         CARD_RADIUS, BACKGROUND = 6, site_filters
@@ -458,6 +467,8 @@ def cue_list(tl):
 
 def captions(tl, length, episode, work):
     """The drawtext filters of the text: the caption above the picture, the small line below, and the end card."""
+    if SHAPE in ("site", "window"):                    # the picture is the window or the website's picture, as it is: no text on it
+        return []
     font = os.path.join(work, "font.ttf")
     shutil.copyfile(demo.find_font(), font)
     chain = []
@@ -575,10 +586,11 @@ def main():
                          "small screen, the mods composited inside it (device). Default: TOP in the episode, else screen")
     ap.add_argument("--project", help="the project to open from the unit's internal storage (default: PROJECT in the episode, else the first)")
     ap.add_argument("--check", action="store_true", help="only look at the episode's scenes, no recording (needs no unit)")
-    ap.add_argument("--shape", choices=("portrait", "landscape", "hero", "site"), default=None,
+    ap.add_argument("--shape", choices=("portrait", "landscape", "hero", "site", "window"), default=None,
                     help="portrait is 1080x1920 (Reels, Shorts, TikTok), landscape 1920x1080 (Reddit, YouTube). It is made from the "
                          "same recording, so --from-raw changes it. hero is landscape in the look of the website's picture, site is that picture "
-                         "itself, to the pixel, made to move (2168x1442). Default: SHAPE in the episode, else portrait")
+                         "itself, to the pixel, made to move (2168x1442), window is the deck's whole window as it is, at its own size "
+                         "(2196x1800), with no layout and no text. Default: SHAPE in the episode, else portrait")
     ap.add_argument("--no-link", action="store_true", help="no simulated decks (deckbench)")
     ap.add_argument("--from-raw", action="store_true", help="do not record again: make the picture from the last recording")
     args = ap.parse_args()
@@ -595,7 +607,7 @@ def main():
     set_shape(args.shape)
     out_dir = os.path.abspath(os.path.join(args.out, episode.NAME))
     # The hero shape has the list of mods beside the unit, so the app's screen is not given a page of it: it is another recording
-    work = os.path.join(out_dir, "work-hero" if args.shape in ("hero", "site") else "work")
+    work = os.path.join(out_dir, "work-hero" if args.shape in ("hero", "site", "window") else "work")
     os.makedirs(work, exist_ok=True)
     raw = os.path.join(work, "raw.mp4")
 
@@ -605,7 +617,7 @@ def main():
     length = plan["length"]
     tl = plan["timeline"]
     top = args.top or getattr(episode, "TOP", "screen")
-    tag = args.shape if args.shape in ("hero", "site") else top + ("-wide" if args.shape == "landscape" else "")        # the files of the landscape picture have -wide after the look
+    tag = args.shape if args.shape in ("hero", "site", "window") else top + ("-wide" if args.shape == "landscape" else "")        # the files of the landscape picture have -wide after the look
     composite(raw, work, tl, length, args.fps, os.path.join(work, "clean-video.mp4"), top)
     master_sound(raw, work, os.path.join(work, "sound.m4a"))
     mux(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s.mp4" % tag))
@@ -623,6 +635,8 @@ def main():
 
 def end_card(episode, tl, length):
     """drawtext filters of the end card's lines, in the last layout ("end"): a black picture."""
+    if SHAPE in ("site", "window"):
+        return []
     segs = [s for s in layout_segments(tl, length) if s[2] == "end"]
     if not segs:
         return []
@@ -698,7 +712,7 @@ def record(args, episode, raw):
         script = demo.Script(s, float(open(raw + ".start").read()))
         script.commands = raw + ".cmd"
         tl = Timeline(script)
-        ctx = Context(s, tl, bench, pages=args.shape not in ("hero", "site"))
+        ctx = Context(s, tl, bench, pages=args.shape not in ("hero", "site", "window"))
         for scene in episode.SCENES:
             began = tl.now()
             tl.layout(scene["layout"])

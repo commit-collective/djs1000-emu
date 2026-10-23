@@ -34,6 +34,10 @@ on its right the app's screen above the list of mods, each in a thin frame with 
 writes `reel-hero.mp4`. The list of mods is beside the unit, so the app's screen is not given a page of it (`page` commands are
 not sent) and it is recorded on its own, in `work-hero`.
 
+`--shape window` is the deck's whole window as it is, at the size it was recorded at (2196x1800): the unit, the app's screen, the list of mods
+and the status line, with no layout, no caption and no end card, and it writes `reel-window.mp4`. Like `hero` and `site`, the list of mods
+is the panel beside the unit and not a page on its screen, so it is recorded on its own (`work-hero`).
+
 `--shape site` is that picture itself, to the pixel (2168x1442, as the picture is 2167 wide): the website's `hero.png` is the background
 with the unit taken out, so its titles, grid and frames are exactly the website's, and the unit, the app's screen and the list of
 mods are put where the picture has them, with the same rounded corners. There is no text. `tools/reels/hero.py` is the episode for it
