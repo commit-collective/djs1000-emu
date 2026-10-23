@@ -40,6 +40,31 @@ def before(s):
     s.pump(1.0)
 
 
+MODS = ["input-select", "quick-sample", "rec-length", "rec-quantize", "loop-bounce", "sample-names", "fx-chain", "reverb-v2",
+        "track-reverb", "tempo-ducker", "cue-tracks"]
+
+
 def do_play(ctx):
-    """The pattern plays, with the text of one mod under the list, as in the picture."""
+    """The pattern plays and the list of mods is gone through: the pointer runs down it, then switches go off and on at random (the
+    same ones every time), quickly, and all of them are on again at the end with the text of one mod under the list, as in the
+    picture."""
+    import random
+    rng = random.Random(5)
+    for mod in MODS:                                          # down the list
+        ctx.say("hover " + mod)
+        ctx.wait(0.25)
+    off = set()
+    for _ in range(16):                                       # and at random
+        mod = rng.choice(MODS)
+        ctx.say("hover " + mod)
+        ctx.wait(0.12)
+        ctx.say("toggle " + mod)
+        off ^= {mod}
+        ctx.wait(0.3)
+    for mod in MODS:                                          # all on again
+        if mod in off:
+            ctx.say("hover " + mod)
+            ctx.wait(0.1)
+            ctx.say("toggle " + mod)
+            ctx.wait(0.2)
     ctx.say("hover rec-length")
