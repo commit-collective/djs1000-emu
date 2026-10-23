@@ -24,6 +24,10 @@ caption.
 the right, in both looks (in `device`, the unit as it is, with its small screen, and the big screen as large as the room allows). Its
 files have `-wide` after the look (`reel-screen-wide.mp4`), so both shapes sit in the one folder.
 
+`--shape hero` is 1920x1080 in the look of the website's picture (`tools/hero.py`): the unit on a dark grid with nothing round it, and
+on its right the app's screen above the list of mods, each in a thin frame, with the caption over the cards. It ignores `--top` and
+writes `reel-hero.mp4`.
+
 ## An episode
 
 An episode is a Python file. [`tools/reels/example.py`](../tools/reels/example.py) is the one to start from: copy it to

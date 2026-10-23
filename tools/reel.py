@@ -72,6 +72,7 @@ PORTRAIT = {
 }
 LAYOUTS = PORTRAIT
 CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 52, 1920 - 58, 66, 34, 560
+CAPTION_X, BACKGROUND = "(w-text_w)/2", None
 
 
 def landscape():
@@ -93,10 +94,45 @@ def landscape():
     return layouts
 
 
+class Cut(tuple):
+    """A rectangle of the deck's window that is shown without what is round the unit: the picture has its dark grid behind it."""
+
+
+# The shape of the website's picture of the emulator (tools/hero.py): the unit on a dark grid with nothing round it, and on its right
+# the app's screen above the list of mods, each in a thin frame. The caption is over the cards instead of over the picture.
+UNIT_FROM = (0, 25, 1358, 1742)                # the unit, from the top of the housing to the foot of the case
+MODS_FROM = (1380, 515, 800, 500)              # the list of mods and the text of the one pointed at
+HERO_BACKGROUND = "color=c=0x0d0d0f:s=%dx%d:r=%d:d=%.3f,drawgrid=width=64:height=64:thickness=1:color=white@0.03,format=yuv420p"
+
+
+def hero():
+    """The layouts for a 1920x1080 video in the look of the website's picture (--shape hero)."""
+    unit_h = 1000
+    unit_w = int(round(UNIT_FROM[2] * unit_h / float(UNIT_FROM[3])))
+    card_w = 710
+    screen_h = int(round(SCREEN[3] * card_w / float(SCREEN[2])))
+    mods_h = int(round(MODS_FROM[3] * card_w / float(MODS_FROM[2])))
+    x = (1920 - (unit_w + 60 + card_w)) // 2
+    unit_at = (x, 40, unit_w, unit_h)
+    screen_at = (x + unit_w + 60, 150, card_w, screen_h)
+    mods_at = (screen_at[0], screen_at[1] + screen_h + 20, card_w, mods_h)
+    play = [(Cut(UNIT_FROM), unit_at), (SCREEN, screen_at), ("box", screen_at), ((MODS_FROM[0], MODS_FROM[1], MODS_FROM[2], MODS_FROM[3]), mods_at),
+            ("box", mods_at)]
+    return {"play": play, "play-device": play, "end": []}, screen_at[0]
+
+
 def set_shape(shape):
-    """Portrait (1080x1920, the default) or landscape (1920x1080): the size, the layouts and where the text goes."""
-    global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y
-    if shape == "landscape":
+    """Portrait (1080x1920, the default), landscape (1920x1080) or hero (1920x1080 as the website's picture): the size, the layouts
+    and where the text goes."""
+    global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y, CAPTION_X, BACKGROUND, LINE
+    CAPTION_X, BACKGROUND, LINE = "(w-text_w)/2", None, "0x3a3c42"
+    if shape == "hero":
+        W, H = 1920, 1080
+        LAYOUTS, left = hero()
+        CAPTION_X = str(left)
+        CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 40, 94, 40, 26, 330
+        BACKGROUND, LINE = HERO_BACKGROUND, "0x2e2e2e"
+    elif shape == "landscape":
         W, H = 1920, 1080
         LAYOUTS = landscape()
         CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 28, H - 52, 58, 32, 330
@@ -282,11 +318,16 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
     """The window of the deck, cut up and stacked into 1080x1920 as each scene's layout says. No text."""
     raw_w, raw_h = probe(raw)
     k = raw_h / float(DECK_H)
+    if any(isinstance(src, Cut) for regions in LAYOUTS.values() for src, _ in regions):
+        unit_mask(raw, work, k)
     lines, labels = [], []
     for i, (t0, t1, name) in enumerate(layout_segments(tl, length)):
         regions = LAYOUTS[layout_named(name, top)]
         dur = t1 - t0
-        lines.append("color=c=black:s=%dx%d:r=%d:d=%.3f,format=yuv420p[b%d_0];" % (W, H, fps, dur, i))
+        if BACKGROUND:
+            lines.append((BACKGROUND + "[b%d_0];") % (W, H, fps, dur, i))
+        else:
+            lines.append("color=c=black:s=%dx%d:r=%d:d=%.3f,format=yuv420p[b%d_0];" % (W, H, fps, dur, i))
         # A region is (source, where): a rectangle of the window, or None for a black box, or "box" for a thin line around where.
         cut = [j for j, (src, _) in enumerate(regions) if isinstance(src, tuple)]
         if cut:
@@ -302,6 +343,9 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
                 sx, sy, sw, sh = src
                 lines.append("[s%d_%d]crop=%d:%d:%d:%d,scale=%d:%d:flags=lanczos,setsar=1[c%d_%d];" % (
                     i, j, even(sw * k), even(sh * k), even(sx * k), even(sy * k), dw, dh, i, j))
+                if isinstance(src, Cut):                  # the black round the unit is left out: the mask is 255 where the unit is
+                    lines.append("movie=unit-mask.png,scale=%d:%d,format=gray[m%d_%d];" % (dw, dh, i, j))
+                    lines.append("[c%d_%d]format=rgba[r%d_%d];[r%d_%d][m%d_%d]alphamerge[c%d_%d];" % (i, j, i, j, i, j, i, j, i, j))
             lines.append("[b%d_%d][c%d_%d]overlay=%d:%d[b%d_%d];" % (i, j, i, j, dx, dy, i, j + 1))
         lines.append("[b%d_%d]fps=%d,setsar=1[seg%d];" % (i, len(regions), fps, i))
         labels.append("[seg%d]" % i)
@@ -312,6 +356,18 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
     subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-i", os.path.abspath(raw), "-filter_complex_script", "composite.txt",
                            "-map", "[outv]", "-c:v", "libx264", "-preset", "medium", "-crf", "14", "-pix_fmt", "yuv420p", "-r", str(fps),
                            os.path.abspath(out)], cwd=work)
+
+
+def unit_mask(raw, work, k):
+    """work/unit-mask.png: white where the unit is and black round it, from a frame of the recording (the unit's own black is inside
+    it, so what is round it is the black that joins the corners, as tools/hero.py has it)."""
+    import hero
+    from PIL import Image, ImageOps
+    frame = os.path.join(work, "unit-frame.png")
+    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-ss", "1", "-i", os.path.abspath(raw), "-frames:v", "1", frame])
+    sx, sy, sw, sh = UNIT_FROM
+    crop = Image.open(frame).convert("RGB").crop((int(sx * k), int(sy * k), int((sx + sw) * k), int((sy + sh) * k)))
+    ImageOps.invert(hero.outside(crop)).save(os.path.join(work, "unit-mask.png"))
 
 
 def cue_list(tl):
@@ -334,8 +390,8 @@ def captions(tl, length, episode, work):
             name = "text%d%s.txt" % (i, kind)
             with open(os.path.join(work, name), "w", encoding="utf-8") as f:
                 f.write(text)
-            chain.append("drawtext=fontfile=font.ttf:textfile=%s:x=(w-text_w)/2:y=%d:fontsize=%d:fontcolor=%s:line_spacing=12:"
-                         "enable='between(t,%.2f,%.2f)'" % (name, y, size, colour, t + 0.15, end - 0.1))
+            chain.append("drawtext=fontfile=font.ttf:textfile=%s:x=%s:y=%d:fontsize=%d:fontcolor=%s:line_spacing=12:"
+                         "enable='between(t,%.2f,%.2f)'" % (name, CAPTION_X, y, size, colour, t + 0.15, end - 0.1))
     return chain
 
 
@@ -431,9 +487,9 @@ def main():
                          "small screen, the mods composited inside it (device). Default: TOP in the episode, else screen")
     ap.add_argument("--project", help="the project to open from the unit's internal storage (default: PROJECT in the episode, else the first)")
     ap.add_argument("--check", action="store_true", help="only look at the episode's scenes, no recording (needs no unit)")
-    ap.add_argument("--shape", choices=("portrait", "landscape"), default="portrait",
+    ap.add_argument("--shape", choices=("portrait", "landscape", "hero"), default="portrait",
                     help="portrait is 1080x1920 (Reels, Shorts, TikTok), landscape 1920x1080 (Reddit, YouTube). It is made from the "
-                         "same recording, so --from-raw changes it")
+                         "same recording, so --from-raw changes it. hero is landscape in the look of the website's picture")
     ap.add_argument("--no-link", action="store_true", help="no simulated decks (deckbench)")
     ap.add_argument("--from-raw", action="store_true", help="do not record again: make the picture from the last recording")
     args = ap.parse_args()
@@ -458,7 +514,7 @@ def main():
     length = plan["length"]
     tl = plan["timeline"]
     top = args.top or getattr(episode, "TOP", "screen")
-    tag = top + ("-wide" if args.shape == "landscape" else "")        # the files of the landscape picture have -wide after the look
+    tag = "hero" if args.shape == "hero" else top + ("-wide" if args.shape == "landscape" else "")        # the files of the landscape picture have -wide after the look
     composite(raw, work, tl, length, args.fps, os.path.join(work, "clean-video.mp4"), top)
     master_sound(raw, work, os.path.join(work, "sound.m4a"))
     mux(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s.mp4" % tag))
