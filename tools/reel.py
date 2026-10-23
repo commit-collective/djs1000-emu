@@ -294,9 +294,10 @@ def check_episode(episode):
     return faults
 
 
-def prepare(emu, patch):
-    """A fresh unit: empty stick and settings, and the internal storage as hard links to the copy of the factory one (instant, and
-    the app's writes go to the folders that are copies: projects, scenes and system)."""
+def prepare(emu, patch, kit=False):
+    """A fresh unit: empty stick (or with the generated test kit on it, for an episode that loads it) and settings, and the internal
+    storage as hard links to the copy of the factory one (instant, and the app's writes go to the folders that are copies: projects,
+    scenes and system)."""
     cmd = '''
 D="${DJS_HOME:-$HOME/djs}/reel"
 SRC="${DJS_EMMC_SRC:-$HOME/djs/emmc-src}"
@@ -308,6 +309,9 @@ for f in Projects Scenes System; do
     cp -a "$SRC/PIONEER DJ SAMPLER/$f" "$D/emmc/PIONEER DJ SAMPLER/$f" || exit 1
 done
 '''
+    if kit:
+        cmd += '''python3 '%s/tools/make_test_kit.py' "$D/usb/PIONEER DJ SAMPLER/Samples/Test Kit"
+''' % emu.repo()
     if patch:
         cmd += '''P='%s'; command -v wslpath > /dev/null && P=$(wslpath -a "$P")
 cp "$P" "$D/usb/autoexec.bin"
@@ -640,7 +644,7 @@ def record(args, episode, raw):
     emu = start.Emulator(os.environ.get("DJS_WSL_DISTRO"), 7310, env=ENV)
     if emu.running():
         sys.exit("An emulator is running: stop it first (start.py stop).")
-    prepare(emu, args.patch)
+    prepare(emu, args.patch, getattr(episode, "KIT", False))
     os.environ["DJS_CAPTURE_CRF"] = "12"
     emu.start()
     deck = None
