@@ -168,10 +168,13 @@ def hero_filters(i, fps, dur):
     return [(HERO_BACKGROUND + "[b%d_0];") % (W, H, fps, dur, i)]
 
 
-def window():
-    """The layouts for --shape window: the deck's window as it is, the size it was recorded at, in every scene."""
-    whole = [((0, 0, DECK_W, DECK_H), (0, 0, DECK_W, DECK_H))]
-    return {"play": whole, "play-device": whole, "end": whole}
+WINDOW_H = 1060                                # the height of the deck's window when it opens on a desktop that has room (virtual_djs.py)
+
+
+def composite_window(raw, out, fps):
+    """The window of the deck as it is: the recording, to an even size, whatever the scenes are."""
+    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-i", os.path.abspath(raw), "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
+                           "-c:v", "libx264", "-preset", "medium", "-crf", "14", "-pix_fmt", "yuv420p", "-r", str(fps), os.path.abspath(out)])
 
 
 def set_shape(shape):
@@ -180,8 +183,7 @@ def set_shape(shape):
     global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y, CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE
     CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE = "(w-text_w)/2", None, "0x3a3c42", 5, shape
     if shape == "window":
-        W, H = DECK_W, DECK_H
-        LAYOUTS = window()
+        LAYOUTS = {"play": [], "play-device": [], "end": []}               # nothing is laid out (see composite_window)
     elif shape == "site":
         W, H = SITE_SIZE
         LAYOUTS = site()
@@ -382,6 +384,8 @@ def layout_segments(tl, length):
 
 def composite(raw, work, tl, length, fps, out, top="screen"):
     """The window of the deck, cut up and stacked into 1080x1920 as each scene's layout says. No text."""
+    if SHAPE == "window":
+        return composite_window(raw, out, fps)
     raw_w, raw_h = probe(raw)
     k = raw_h / float(DECK_H)
     if SHAPE == "site":
@@ -607,7 +611,7 @@ def main():
     set_shape(args.shape)
     out_dir = os.path.abspath(os.path.join(args.out, episode.NAME))
     # The hero shape has the list of mods beside the unit, so the app's screen is not given a page of it: it is another recording
-    work = os.path.join(out_dir, "work-hero" if args.shape in ("hero", "site", "window") else "work")
+    work = os.path.join(out_dir, "work-window" if args.shape == "window" else "work-hero" if args.shape in ("hero", "site") else "work")
     os.makedirs(work, exist_ok=True)
     raw = os.path.join(work, "raw.mp4")
 
@@ -688,9 +692,11 @@ def record(args, episode, raw):
             open_internal_project(s, project_index(emu, args.project or getattr(episode, "PROJECT", "")))
         getattr(episode, "before", lambda s: None)(s)                       # off camera: what the first picture must already show
 
-        cmd = [sys.executable, os.path.join(REPO, "app", "virtual_djs.py"), "--port", str(emu.port), "--no-audio",
-               "--width", str(DECK_W), "--height", str(DECK_H), "--record", raw, "--fps", str(args.fps),
-               "--face", args.face or getattr(episode, "FACE", "real")]
+        cmd = [sys.executable, os.path.join(REPO, "app", "virtual_djs.py"), "--port", str(emu.port), "--mute",
+               "--record", raw, "--fps", str(args.fps), "--face", args.face or getattr(episode, "FACE", "real")]
+        # The size of the window: the layouts are measured on a big one (the app's screen is 800x480 in it), but the window shape
+        # is the deck as it opens, whose screen and list of mods are as they are and the face as high as a desktop has room for
+        cmd += ["--height", str(WINDOW_H)] if args.shape == "window" else ["--width", str(DECK_W), "--height", str(DECK_H)]
         # The unit's input: silence, or the simulated decks' sound when the episode records from them (INPUT = True, with deckbench)
         cmd += ["--input-tcp", "127.0.0.1:%d" % start.AUDIO_PORT] if bench and getattr(episode, "INPUT", False) else ["--no-input"]
         usb, modlist = emu.usb(), emu.modlist()

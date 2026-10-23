@@ -920,6 +920,8 @@ def main():
     ap.add_argument("--height", type=int, default=0, help="window height in pixels")
     ap.add_argument("--audio", metavar="NAME", help="play on the device whose name has NAME in it")
     ap.add_argument("--no-audio", action="store_true", help="do not play the app's sound")
+    ap.add_argument("--mute", action="store_true",
+                    help="play nothing, but show the MASTER / PHONES switch as if a sound device were there (for a recording)")
     ap.add_argument("--listen", choices=("master", "phones"), default="master",
                     help="the output the main device plays at start (Tab switches)")
     ap.add_argument("--headphones", metavar="NAME",
@@ -956,7 +958,7 @@ def main():
         print("Playback:\n  " + "\n  ".join(audio.devices()))
         print("Recording:\n  " + "\n  ".join(audio.devices(True)))
         return
-    master = None if args.no_audio else audio.Player(audio.pick(args.audio))
+    master = audio.Silent() if args.mute else None if args.no_audio else audio.Player(audio.pick(args.audio))
     phones = audio.Player(audio.pick(args.headphones)) if args.headphones else None
     outputs = (master, phones)
 

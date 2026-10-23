@@ -118,6 +118,23 @@ class StreamRecorder:
         self.closed = True
 
 
+class Silent:
+    """A main device that plays nothing: the deck shows its MASTER / PHONES switch as it does for a real one (--mute, for a recording)."""
+
+    def __init__(self):
+        self.name = "no sound card (recording)"
+        self.closed = False
+
+    def feed(self, data):
+        pass
+
+    def reset(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
 class Player:
     def __init__(self, device=None):
         self.name = device or "default device"
