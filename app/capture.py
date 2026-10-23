@@ -11,7 +11,9 @@ A script that drives the app while this records talks to the deck through files 
     FILE.stop    when this file exists, the deck ends the recording and closes
     FILE.cmd     lines appended to it are run as they come: `hover MOD` (the mod's text under the list), `toggle MOD`,
                  `page mods` (the face's small screen shows the list of mods as a page of the unit) and `page off`,
-                 `knob NAME DELTA` (turns a knob of the face, as the mouse wheel does: fx_level, knob_1 to knob_6 ...)
+                 `knob NAME DELTA` (turns a knob of the face, as the mouse wheel does: fx_level, knob_1 to knob_6 ...),
+                 `slider POS` (the tempo slider, 0 at the top to 1 at the foot, 0.5 the centre) and `key NAME 1|0` (a key of the face
+                 down or up, as the mouse holds it: shift, mute, nudge_plus ...)
 """
 import os
 import subprocess

@@ -136,6 +136,7 @@ class Deck:
         self.down_at = 0                 # when it took it, ms
         self.later = []                  # (when, line): releases held back, see release()
         self.keys_down = {}              # keyboard key -> bit held
+        self.held_keys = set()           # the keys a recording script holds down (`key NAME 1`), by their index in L.KEYS
         self.knob_step = [knob.at for knob in L.KNOBS]
         self.slider = 0.5                # the tempo slider: 0 top (-) to 1 bottom (+)
         self.strip = None                # where the strip is touched, 0-127
@@ -561,7 +562,7 @@ class Deck:
             rgb = L.rgb_lamp(self.lamps, key.rgb) if key.rgb is not None else None
             if rgb and not any(rgb):
                 rgb = None
-            down = i == held or (key.bit in held_bits and key.bit is not None)
+            down = i == held or i in self.held_keys or (key.bit in held_bits and key.bit is not None)
             if level or rgb or down:
                 surf, x, y = self.sprite(art.key_sprite, i, self.scale, level, rgb, down)
                 win.blit(surf, (x, y))
@@ -1039,6 +1040,18 @@ def main():
                     deck.mods.toggle(command[1].strip())
                 elif command[0] == "page" and len(command) > 1:
                     deck.mod_page = command[1].strip() == "mods"
+                elif command[0] == "slider" and len(command) > 1:      # `slider POS`: the tempo slider, 0 at the top to 1 at the foot
+                    deck.slider = min(1.0, max(0.0, float(command[1])))
+                    deck.link.send(f"word {L.SLIDER_WORD} {deck.slider_value()}")
+                elif command[0] == "key" and len(command) > 1:         # `key NAME 1|0`: a key held down or let go, as the mouse does
+                    name, _, state = command[1].partition(" ")
+                    for i, key in enumerate(L.KEYS):
+                        if key.name == name and key.bit:
+                            if state.strip() == "1":
+                                deck.held_keys.add(i)
+                            else:
+                                deck.held_keys.discard(i)
+                            deck.link.send(f"bit {key.bit[0]} {key.bit[1]} {1 if state.strip() == '1' else 0}")
                 elif command[0] == "knob" and len(command) > 1:        # `knob NAME DELTA`: turns a knob, and the picture of it, as the mouse wheel does
                     name, _, delta = command[1].partition(" ")
                     for i, knob in enumerate(L.KNOBS):
