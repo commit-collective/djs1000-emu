@@ -8,7 +8,7 @@ Newest first. A release is a tagged commit.
 - `tools/reel.py` makes short vertical videos (1080x1920) of the emulator from an episode, a script of scenes. `example.py` is the one to
   start from, your own go in `demo/episodes` (git ignores it) and `--check` looks at an episode without a unit.
   `--shape landscape` makes the 1920x1080 picture from the same recording, and `--shape hero` the same in the look of the
-  website's picture.
+  website's picture. `--shape site` and `tools/reels/hero.py` make that picture itself, playing.
 - The virtual deck draws the face as the unit looks (`--face real`, now the default): black gloss plastic with raised rails down the sides, a
   bevelled screen housing with framed PROJECT, SAMPLING and FX buttons and a knurled encoder in a chrome ring, a chrome frame
   round the pads, transport keys of brushed metal right through with their lamp shining in the middle, a grained FX strip, dull

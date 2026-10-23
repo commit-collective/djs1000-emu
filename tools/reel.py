@@ -72,7 +72,8 @@ PORTRAIT = {
 }
 LAYOUTS = PORTRAIT
 CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 52, 1920 - 58, 66, 34, 560
-CAPTION_X, BACKGROUND = "(w-text_w)/2", None
+SHAPE = "portrait"
+CAPTION_X, BACKGROUND = "(w-text_w)/2", None            # BACKGROUND: None (black), or a function (i, fps, seconds) -> its filter lines
 
 
 def landscape():
@@ -129,17 +130,59 @@ def hero():
     return {"play": play, "play-device": play, "end": []}, screen_at[0]
 
 
+# --shape site: the website's own picture (tools/hero.py), exactly: its dark grid, its two titles and the places of its three cards.
+# The picture itself is the background (without the unit, which hero.clear_background takes out), and the cards go over where
+# the last version had them. The window is cut as hero.py cuts it.
+SITE_SIZE = (2168, 1442)                       # the picture is 2167x1442, and a video needs an even width
+SITE_UNIT_AT = (110, 110, 976, 1221)
+SITE_SCREEN_AT = (1176, 154, 882, 531)
+SITE_MODS_AT = (1176, 785, 882, 547)
+
+
+def site():
+    """The layouts for the video made like the website's picture (--shape site)."""
+    play = [(Cut(UNIT_FROM), SITE_UNIT_AT), (Cut(SCREEN, "round-%dx%d.png" % SITE_SCREEN_AT[2:]), SITE_SCREEN_AT), ("frame", SITE_SCREEN_AT),
+            (Cut(MODS_FROM, "round-%dx%d.png" % SITE_MODS_AT[2:]), SITE_MODS_AT), ("frame", SITE_MODS_AT)]
+    return {"play": play, "play-device": play, "end": play}
+
+
+def site_background(work):
+    """work/site-bg.png: the website's picture with the unit taken out and a column added at the right (an even width)."""
+    import hero
+    from PIL import Image
+    base = Image.open(hero.SITE_HERO).convert("RGB")
+    hero.clear_background(base, hero.DECK_AT)
+    out = Image.new("RGB", SITE_SIZE)
+    out.paste(base, (0, 0))
+    out.paste(base.crop((base.width - 1, 0, base.width, base.height)), (base.width, 0))
+    out.save(os.path.join(work, "site-bg.png"))
+
+
+def site_filters(i, fps, dur):
+    return ["color=c=black:s=%dx%d:r=%d:d=%.3f,format=yuv420p[k%d];" % (W, H, fps, dur, i),
+            "movie=site-bg.png,format=yuv420p[g%d];" % i,
+            "[k%d][g%d]overlay=0:0:eof_action=repeat[b%d_0];" % (i, i, i)]
+
+
+def hero_filters(i, fps, dur):
+    return [(HERO_BACKGROUND + "[b%d_0];") % (W, H, fps, dur, i)]
+
+
 def set_shape(shape):
     """Portrait (1080x1920, the default), landscape (1920x1080) or hero (1920x1080 as the website's picture): the size, the layouts
     and where the text goes."""
-    global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y, CAPTION_X, BACKGROUND, LINE
-    CAPTION_X, BACKGROUND, LINE = "(w-text_w)/2", None, "0x3a3c42"
-    if shape == "hero":
+    global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y, CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE
+    CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE = "(w-text_w)/2", None, "0x3a3c42", 5, shape
+    if shape == "site":
+        W, H = SITE_SIZE
+        LAYOUTS = site()
+        CARD_RADIUS, BACKGROUND = 6, site_filters
+    elif shape == "hero":
         W, H = 1920, 1080
         LAYOUTS, left = hero()
         CAPTION_X = str(left)
         CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 40, 94, 40, 26, 330
-        BACKGROUND, LINE = HERO_BACKGROUND, "0x2e2e2e"
+        BACKGROUND, LINE = hero_filters, "0x2e2e2e"
     elif shape == "landscape":
         W, H = 1920, 1080
         LAYOUTS = landscape()
@@ -328,6 +371,8 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
     """The window of the deck, cut up and stacked into 1080x1920 as each scene's layout says. No text."""
     raw_w, raw_h = probe(raw)
     k = raw_h / float(DECK_H)
+    if SHAPE == "site":
+        site_background(work)
     if any(isinstance(src, Cut) and src.mask == "unit-mask.png" for regions in LAYOUTS.values() for src, _ in regions):
         unit_mask(raw, work, k)
     for regions in LAYOUTS.values():
@@ -339,7 +384,7 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
         regions = LAYOUTS[layout_named(name, top)]
         dur = t1 - t0
         if BACKGROUND:
-            lines.append((BACKGROUND + "[b%d_0];") % (W, H, fps, dur, i))
+            lines.extend(BACKGROUND(i, fps, dur))
         else:
             lines.append("color=c=black:s=%dx%d:r=%d:d=%.3f,format=yuv420p[b%d_0];" % (W, H, fps, dur, i))
         # A region is (source, where): a rectangle of the window, or None for a black box, or "box" for a thin line around where.
@@ -518,9 +563,10 @@ def main():
                          "small screen, the mods composited inside it (device). Default: TOP in the episode, else screen")
     ap.add_argument("--project", help="the project to open from the unit's internal storage (default: PROJECT in the episode, else the first)")
     ap.add_argument("--check", action="store_true", help="only look at the episode's scenes, no recording (needs no unit)")
-    ap.add_argument("--shape", choices=("portrait", "landscape", "hero"), default="portrait",
+    ap.add_argument("--shape", choices=("portrait", "landscape", "hero", "site"), default=None,
                     help="portrait is 1080x1920 (Reels, Shorts, TikTok), landscape 1920x1080 (Reddit, YouTube). It is made from the "
-                         "same recording, so --from-raw changes it. hero is landscape in the look of the website's picture")
+                         "same recording, so --from-raw changes it. hero is landscape in the look of the website's picture, site is that picture "
+                         "itself, to the pixel, made to move (2168x1442). Default: SHAPE in the episode, else portrait")
     ap.add_argument("--no-link", action="store_true", help="no simulated decks (deckbench)")
     ap.add_argument("--from-raw", action="store_true", help="do not record again: make the picture from the last recording")
     args = ap.parse_args()
@@ -533,10 +579,11 @@ def main():
         sys.exit(1 if faults else 0)
     if getattr(episode, "PATCH", False) and not args.patch and not args.from_raw:
         sys.exit("this episode shows the mods: give the mods' autoexec.bin with --patch")
+    args.shape = args.shape or getattr(episode, "SHAPE", "portrait")
     set_shape(args.shape)
     out_dir = os.path.abspath(os.path.join(args.out, episode.NAME))
     # The hero shape has the list of mods beside the unit, so the app's screen is not given a page of it: it is another recording
-    work = os.path.join(out_dir, "work-hero" if args.shape == "hero" else "work")
+    work = os.path.join(out_dir, "work-hero" if args.shape in ("hero", "site") else "work")
     os.makedirs(work, exist_ok=True)
     raw = os.path.join(work, "raw.mp4")
 
@@ -546,12 +593,15 @@ def main():
     length = plan["length"]
     tl = plan["timeline"]
     top = args.top or getattr(episode, "TOP", "screen")
-    tag = "hero" if args.shape == "hero" else top + ("-wide" if args.shape == "landscape" else "")        # the files of the landscape picture have -wide after the look
+    tag = args.shape if args.shape in ("hero", "site") else top + ("-wide" if args.shape == "landscape" else "")        # the files of the landscape picture have -wide after the look
     composite(raw, work, tl, length, args.fps, os.path.join(work, "clean-video.mp4"), top)
     master_sound(raw, work, os.path.join(work, "sound.m4a"))
     mux(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s.mp4" % tag))
     chain = captions(tl, length, episode, work) + end_card(episode, tl, length)
-    burn(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), work, chain, os.path.join(out_dir, "reel-%s.mp4" % tag), args.fps)
+    if chain:
+        burn(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), work, chain, os.path.join(out_dir, "reel-%s.mp4" % tag), args.fps)
+    else:                                                  # no text anywhere (the site shape): the one picture is both
+        shutil.copyfile(os.path.join(out_dir, "reel-clean-%s.mp4" % tag), os.path.join(out_dir, "reel-%s.mp4" % tag))
     write_srt(tl, length, os.path.join(out_dir, "reel.srt"))
     thumb = float(getattr(episode, "THUMB", 6.0))
     subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-ss", "%.2f" % thumb, "-i", os.path.join(out_dir, "reel-%s.mp4" % tag),
@@ -606,7 +656,10 @@ def record(args, episode, raw):
         s.wait_usb()
         if args.patch:
             regress.wait_patch(emu, s)
-        open_internal_project(s, project_index(emu, args.project or getattr(episode, "PROJECT", "")))
+        if getattr(episode, "KIT", False):                    # the generated kit (a project made from the test samples), not a factory one
+            demo.load_kit(s)
+        else:
+            open_internal_project(s, project_index(emu, args.project or getattr(episode, "PROJECT", "")))
         getattr(episode, "before", lambda s: None)(s)                       # off camera: what the first picture must already show
 
         cmd = [sys.executable, os.path.join(REPO, "app", "virtual_djs.py"), "--port", str(emu.port), "--no-audio",
@@ -631,7 +684,7 @@ def record(args, episode, raw):
         script = demo.Script(s, float(open(raw + ".start").read()))
         script.commands = raw + ".cmd"
         tl = Timeline(script)
-        ctx = Context(s, tl, bench, pages=args.shape != "hero")
+        ctx = Context(s, tl, bench, pages=args.shape not in ("hero", "site"))
         for scene in episode.SCENES:
             began = tl.now()
             tl.layout(scene["layout"])
