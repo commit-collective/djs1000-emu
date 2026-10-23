@@ -177,8 +177,9 @@ class Timeline:
 class Context:
     """What an episode's scenes work with."""
 
-    def __init__(self, s, tl, bench):
+    def __init__(self, s, tl, bench, pages=True):
         self.s, self.tl, self.bench = s, tl, bench
+        self.pages = pages                       # False: `page mods` is not sent and the screen keeps the app (--shape hero)
 
     # The panel, without waiting for the screen to hold still afterwards (Session.press and touch do, and a project that plays
     # never lets it: each call would take 10 seconds).
@@ -194,7 +195,8 @@ class Context:
         self.tl.wait(seconds)
 
     def say(self, line):
-        self.tl.say(line)
+        if self.pages or not line.startswith("page "):
+            self.tl.say(line)
 
 
 def episode_path(name):
@@ -504,7 +506,8 @@ def main():
         sys.exit("this episode shows the mods: give the mods' autoexec.bin with --patch")
     set_shape(args.shape)
     out_dir = os.path.abspath(os.path.join(args.out, episode.NAME))
-    work = os.path.join(out_dir, "work")
+    # The hero shape has the list of mods beside the unit, so the app's screen is not given a page of it: it is another recording
+    work = os.path.join(out_dir, "work-hero" if args.shape == "hero" else "work")
     os.makedirs(work, exist_ok=True)
     raw = os.path.join(work, "raw.mp4")
 
@@ -599,7 +602,7 @@ def record(args, episode, raw):
         script = demo.Script(s, float(open(raw + ".start").read()))
         script.commands = raw + ".cmd"
         tl = Timeline(script)
-        ctx = Context(s, tl, bench)
+        ctx = Context(s, tl, bench, pages=args.shape != "hero")
         for scene in episode.SCENES:
             began = tl.now()
             tl.layout(scene["layout"])
