@@ -95,13 +95,21 @@ def landscape():
 
 
 class Cut(tuple):
-    """A rectangle of the deck's window that is shown without what is round the unit: the picture has its dark grid behind it."""
+    """A rectangle of the deck's window that is shown through a mask (a file of the work folder): the unit without what is round it,
+    so that the picture's dark grid shows there, or a card with rounded corners (a name that starts with round-)."""
+
+    def __new__(cls, rect, mask="unit-mask.png"):
+        cut = super().__new__(cls, rect)
+        cut.mask = mask
+        return cut
 
 
 # The shape of the website's picture of the emulator (tools/hero.py): the unit on a dark grid with nothing round it, and on its right
 # the app's screen above the list of mods, each in a thin frame. The caption is over the cards instead of over the picture.
 UNIT_FROM = (0, 25, 1358, 1742)                # the unit, from the top of the housing to the foot of the case
 MODS_FROM = (1380, 515, 800, 500)              # the list of mods and the text of the one pointed at
+CARD_RADIUS = 5                                # the website's picture has 6 on a card 882 wide, this is the same on 710
+CARD_FRAME = (46, 46, 46)                      # its frame: one dim line
 HERO_BACKGROUND = "color=c=0x0d0d0f:s=%dx%d:r=%d:d=%.3f,drawgrid=width=64:height=64:thickness=1:color=white@0.03,format=yuv420p"
 
 
@@ -116,8 +124,8 @@ def hero():
     unit_at = (x, 40, unit_w, unit_h)
     screen_at = (x + unit_w + 60, 150, card_w, screen_h)
     mods_at = (screen_at[0], screen_at[1] + screen_h + 20, card_w, mods_h)
-    play = [(Cut(UNIT_FROM), unit_at), (SCREEN, screen_at), ("box", screen_at), ((MODS_FROM[0], MODS_FROM[1], MODS_FROM[2], MODS_FROM[3]), mods_at),
-            ("box", mods_at)]
+    play = [(Cut(UNIT_FROM), unit_at), (Cut(SCREEN, "round-%dx%d.png" % screen_at[2:]), screen_at), ("frame", screen_at),
+            (Cut(MODS_FROM, "round-%dx%d.png" % mods_at[2:]), mods_at), ("frame", mods_at)]
     return {"play": play, "play-device": play, "end": []}, screen_at[0]
 
 
@@ -320,8 +328,12 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
     """The window of the deck, cut up and stacked into 1080x1920 as each scene's layout says. No text."""
     raw_w, raw_h = probe(raw)
     k = raw_h / float(DECK_H)
-    if any(isinstance(src, Cut) for regions in LAYOUTS.values() for src, _ in regions):
+    if any(isinstance(src, Cut) and src.mask == "unit-mask.png" for regions in LAYOUTS.values() for src, _ in regions):
         unit_mask(raw, work, k)
+    for regions in LAYOUTS.values():
+        for src, (_, _, dw, dh) in regions:
+            if isinstance(src, Cut) and src.mask.startswith("round-"):
+                round_card(work, dw, dh)
     lines, labels = [], []
     for i, (t0, t1, name) in enumerate(layout_segments(tl, length)):
         regions = LAYOUTS[layout_named(name, top)]
@@ -336,6 +348,10 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
             outs = "".join("[s%d_%d]" % (i, j) for j in cut)
             lines.append("[0:v]trim=start=%.3f:end=%.3f,setpts=PTS-STARTPTS,split=%d%s;" % (t0, t1, len(cut), outs))
         for j, (src, (dx, dy, dw, dh)) in enumerate(regions):
+            if src == "frame":                       # the thin rounded line round a card, a picture with nothing else in it
+                lines.append("movie=frame-%dx%d.png,format=rgba[f%d_%d];[b%d_%d][f%d_%d]overlay=%d:%d[b%d_%d];" % (
+                    dw, dh, i, j, i, j, i, j, dx, dy, i, j + 1))
+                continue
             if src == "box":
                 lines.append("[b%d_%d]drawbox=x=%d:y=%d:w=%d:h=%d:color=%s:t=1[b%d_%d];" % (i, j, dx - 1, dy - 1, dw + 2, dh + 2, LINE, i, j + 1))
                 continue
@@ -345,8 +361,8 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
                 sx, sy, sw, sh = src
                 lines.append("[s%d_%d]crop=%d:%d:%d:%d,scale=%d:%d:flags=lanczos,setsar=1[c%d_%d];" % (
                     i, j, even(sw * k), even(sh * k), even(sx * k), even(sy * k), dw, dh, i, j))
-                if isinstance(src, Cut):                  # the black round the unit is left out: the mask is 255 where the unit is
-                    lines.append("movie=unit-mask.png,scale=%d:%d,format=gray[m%d_%d];" % (dw, dh, i, j))
+                if isinstance(src, Cut):                  # a mask, 255 where the picture shows: only the unit, or a card with rounded corners
+                    lines.append("movie=%s,scale=%d:%d,format=gray[m%d_%d];" % (src.mask, dw, dh, i, j))
                     lines.append("[c%d_%d]format=rgba[r%d_%d];[r%d_%d][m%d_%d]alphamerge[c%d_%d];" % (i, j, i, j, i, j, i, j, i, j))
             lines.append("[b%d_%d][c%d_%d]overlay=%d:%d[b%d_%d];" % (i, j, i, j, dx, dy, i, j + 1))
         lines.append("[b%d_%d]fps=%d,setsar=1[seg%d];" % (i, len(regions), fps, i))
@@ -370,6 +386,19 @@ def unit_mask(raw, work, k):
     sx, sy, sw, sh = UNIT_FROM
     crop = Image.open(frame).convert("RGB").crop((int(sx * k), int(sy * k), int((sx + sw) * k), int((sy + sh) * k)))
     ImageOps.invert(hero.outside(crop)).save(os.path.join(work, "unit-mask.png"))
+
+
+def round_card(work, w, h):
+    """work/round-WxH.png (white inside a rounded rectangle) and work/frame-WxH.png (its outline, on nothing), drawn at four times the
+    size and brought down so that the corners are smooth."""
+    from PIL import Image, ImageDraw
+    n = 4
+    mask = Image.new("L", (w * n, h * n), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w * n - 1, h * n - 1), radius=CARD_RADIUS * n, fill=255)
+    mask.resize((w, h), Image.LANCZOS).save(os.path.join(work, "round-%dx%d.png" % (w, h)))
+    line = Image.new("RGBA", (w * n, h * n), (0, 0, 0, 0))
+    ImageDraw.Draw(line).rounded_rectangle((0, 0, w * n - 1, h * n - 1), radius=CARD_RADIUS * n, outline=CARD_FRAME + (255,), width=n)
+    line.resize((w, h), Image.LANCZOS).save(os.path.join(work, "frame-%dx%d.png" % (w, h)))
 
 
 def cue_list(tl):
