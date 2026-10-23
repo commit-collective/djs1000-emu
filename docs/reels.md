@@ -11,7 +11,7 @@ demonstration video as well), and git ignores it: videos are not committed, and 
 
 | file | what |
 |---|---|
-| `reel-clean-LOOK.mp4` | the picture and the sound with no text, for editing (LOOK is the top of the picture, see below: `screen` or `device`) |
+| `reel-clean-LOOK.mp4` | the picture and the sound with no text, for editing (LOOK is the top of the picture, see below: `screen` or `device`, with `-wide` after it for `--shape landscape`) |
 | `reel-LOOK.mp4` | the same with the text of the scenes burned in |
 | `reel.srt` | the text of the scenes, for a subtitle track |
 | `thumb-LOOK.png` | a frame, for a cover |
@@ -19,6 +19,10 @@ demonstration video as well), and git ignores it: videos are not committed, and 
 The picture is 30 frames a second, h264, with the sound at -14 LUFS and its peaks under -1.5 dB. `--fps 60` makes it 60. `--from-raw`
 makes the picture again from the last recording, which takes a minute where the recording takes four: use it to try a layout or a
 caption.
+
+`--shape landscape` makes a 1920x1080 picture (Reddit, YouTube) from the same recording: the face on the left and the app's screen on
+the right, in both looks (in `device`, the unit as it is, with its small screen, and the big screen as large as the room allows). Its
+files have `-wide` after the look (`reel-screen-wide.mp4`), so both shapes sit in the one folder.
 
 ## An episode
 

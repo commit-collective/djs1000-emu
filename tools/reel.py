@@ -3,6 +3,7 @@
 """Makes a short vertical video (a reel) of the emulator: a script plays the unit and the virtual deck records it.
 
     reel.py EPISODE [--patch autoexec.bin] [--out DIR] [--fps 30] [--top screen|device] [--no-link] [--project NAME]
+             [--shape portrait|landscape]
     reel.py EPISODE --check
 
 EPISODE is a file with the scenes, the text of each and what is played in it: a path to a .py file, or a name, looked up in
@@ -64,11 +65,45 @@ PANEL_AT = (MARGIN, TOP + SCREEN_H + GAP, CARD, PANEL_H)
 # the recording, see app/virtual_djs.py).
 #   screen  two framed cards: the app's big screen, and the face under its bezel. The page of mods is in the big screen.
 #   device  the unit as it is, its top and its small screen kept. The page of mods is in its small screen.
-LAYOUTS = {
+PORTRAIT = {
     "play": [(SCREEN, SCREEN_AT), ("box", SCREEN_AT), (PANEL, PANEL_AT), ("box", PANEL_AT)],
     "play-device": [(DEVICE, (0, TOP + 126, 1080, 1382))],
     "end": [],
 }
+LAYOUTS = PORTRAIT
+CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 52, 1920 - 58, 66, 34, 560
+
+
+def landscape():
+    """The pictures for a 1920x1080 video (--shape landscape): the same cards, side by side. The caption is above them and the small
+    text below. In `play` the face is on the left at the height that is left and the app's screen is on the right, in the middle of it.
+    In `play-device` the unit as it is is on the left and the app's screen is as big as the room right of it allows."""
+    top, foot = 110, 70
+    room = 1080 - top - foot
+    panel_w = int(round(PANEL[2] * room / float(PANEL[3])))
+    device_w = int(round(DEVICE[2] * room / float(DEVICE[3])))
+    layouts = {"end": []}
+    for name, face, face_w in (("play", PANEL, panel_w), ("play-device", DEVICE, device_w)):
+        x = MARGIN + face_w + GAP
+        w = 1920 - MARGIN - x
+        h = int(round(SCREEN[3] * w / float(SCREEN[2])))
+        screen_at = (x, top + (room - h) // 2, w, h)
+        face_at = (MARGIN, top, face_w, room)
+        layouts[name] = [(SCREEN, screen_at), ("box", screen_at), (face, face_at), ("box", face_at)]
+    return layouts
+
+
+def set_shape(shape):
+    """Portrait (1080x1920, the default) or landscape (1920x1080): the size, the layouts and where the text goes."""
+    global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y
+    if shape == "landscape":
+        W, H = 1920, 1080
+        LAYOUTS = landscape()
+        CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 28, H - 52, 58, 32, 330
+    else:
+        W, H = 1080, 1920
+        LAYOUTS = PORTRAIT
+        CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 52, H - 58, 66, 34, 560
 
 
 def layout_named(name, top):
@@ -293,7 +328,7 @@ def captions(tl, length, episode, work):
     cues = cue_list(tl)
     for i, (t, caption, sub) in enumerate(cues):
         end = cues[i + 1][0] if i + 1 < len(cues) else length
-        for kind, text, size, y, colour in (("c", caption, 66, 52, "white"), ("s", sub, 34, H - 58, "0xb4b4b4")):
+        for kind, text, size, y, colour in (("c", caption, CAPTION_SIZE, CAPTION_Y, "white"), ("s", sub, SUB_SIZE, SUB_Y, "0xb4b4b4")):
             if not text:
                 continue
             name = "text%d%s.txt" % (i, kind)
@@ -396,6 +431,9 @@ def main():
                          "small screen, the mods composited inside it (device). Default: TOP in the episode, else screen")
     ap.add_argument("--project", help="the project to open from the unit's internal storage (default: PROJECT in the episode, else the first)")
     ap.add_argument("--check", action="store_true", help="only look at the episode's scenes, no recording (needs no unit)")
+    ap.add_argument("--shape", choices=("portrait", "landscape"), default="portrait",
+                    help="portrait is 1080x1920 (Reels, Shorts, TikTok), landscape 1920x1080 (Reddit, YouTube). It is made from the "
+                         "same recording, so --from-raw changes it")
     ap.add_argument("--no-link", action="store_true", help="no simulated decks (deckbench)")
     ap.add_argument("--from-raw", action="store_true", help="do not record again: make the picture from the last recording")
     args = ap.parse_args()
@@ -408,6 +446,7 @@ def main():
         sys.exit(1 if faults else 0)
     if getattr(episode, "PATCH", False) and not args.patch and not args.from_raw:
         sys.exit("this episode shows the mods: give the mods' autoexec.bin with --patch")
+    set_shape(args.shape)
     out_dir = os.path.abspath(os.path.join(args.out, episode.NAME))
     work = os.path.join(out_dir, "work")
     os.makedirs(work, exist_ok=True)
@@ -419,16 +458,17 @@ def main():
     length = plan["length"]
     tl = plan["timeline"]
     top = args.top or getattr(episode, "TOP", "screen")
+    tag = top + ("-wide" if args.shape == "landscape" else "")        # the files of the landscape picture have -wide after the look
     composite(raw, work, tl, length, args.fps, os.path.join(work, "clean-video.mp4"), top)
     master_sound(raw, work, os.path.join(work, "sound.m4a"))
-    mux(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s.mp4" % top))
+    mux(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s.mp4" % tag))
     chain = captions(tl, length, episode, work) + end_card(episode, tl, length)
-    burn(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), work, chain, os.path.join(out_dir, "reel-%s.mp4" % top), args.fps)
+    burn(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), work, chain, os.path.join(out_dir, "reel-%s.mp4" % tag), args.fps)
     write_srt(tl, length, os.path.join(out_dir, "reel.srt"))
     thumb = float(getattr(episode, "THUMB", 6.0))
-    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-ss", "%.2f" % thumb, "-i", os.path.join(out_dir, "reel-%s.mp4" % top),
-                           "-frames:v", "1", os.path.join(out_dir, "thumb-%s.png" % top)])
-    print("wrote %s (%.0f s)" % (os.path.join(out_dir, "reel-%s.mp4" % top), length))
+    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-ss", "%.2f" % thumb, "-i", os.path.join(out_dir, "reel-%s.mp4" % tag),
+                           "-frames:v", "1", os.path.join(out_dir, "thumb-%s.png" % tag)])
+    print("wrote %s (%.0f s)" % (os.path.join(out_dir, "reel-%s.mp4" % tag), length))
 
 
 def end_card(episode, tl, length):
@@ -438,7 +478,7 @@ def end_card(episode, tl, length):
         return []
     t0, t1, _ = segs[0]
     card = getattr(episode, "END", [])
-    chain, y = [], 560
+    chain, y = [], END_Y
     for text, size, colour in card:
         chain.append("drawtext=fontfile=font.ttf:text='%s':x=(w-text_w)/2:y=%d:fontsize=%d:fontcolor=%s:enable='between(t,%.2f,%.2f)'"
                      % (text.replace("'", "’").replace(":", "\\:"), y, size, colour, t0 + 0.2, t1))
