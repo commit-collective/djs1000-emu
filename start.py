@@ -30,6 +30,7 @@ import sys
 import time
 
 REPO = os.path.dirname(os.path.abspath(__file__))
+AUDIO_PORT = 7320                       # where deckbench serves its decks' sound (the deck's --input-tcp takes it)
 WINDOWS = os.name == "nt"
 # Several emulators can run at once, each in a slot (DJS_SLOT=N in the environment of whatever starts them, as the
 # tests' runner does): the slot has a home of its own, ~/djs-sN (made from ~/djs the first time), a deck link port of
@@ -145,18 +146,18 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
 RUN="${DJS_HOME:-$HOME/djs}/run"
 mkdir -p "$RUN"
 B='%s'
-# A bench older than its source (it was changed since) is a stale one: replaced.
+# A bench older than its source (it was changed since), or without the decks' sound on a port, is a stale one: replaced.
 PID=$(pgrep -f '[d]eckbench --numbers' | head -1)
-if [ -n "$PID" ] && [ -n "$(find "$B/deckbench" -name '*.py' -newer "/proc/$PID" | head -1)" ]; then
+if [ -n "$PID" ] && { [ -n "$(find "$B/deckbench" -name '*.py' -newer "/proc/$PID" | head -1)" ] ||         ! pgrep -f '[d]eckbench --numbers 1,2,3,4 --audio-port' > /dev/null; }; then
     pkill -f '[d]eckbench --numbers'
     sleep 0.5
 fi
 if ! pgrep -f '[d]eckbench --numbers' > /dev/null; then
-    cd "$B" && setsid nohup python3 -m deckbench --numbers 1,2,3,4 > "$RUN/deckbench.log" 2>&1 < /dev/null &
+    cd "$B" && setsid nohup python3 -m deckbench --numbers 1,2,3,4 --audio-port %d > "$RUN/deckbench.log" 2>&1 < /dev/null &
     sleep 1
 fi
 pgrep -f '[d]eckbench --numbers' > /dev/null && echo http://localhost:8750/
-""" % there)
+""" % (there, AUDIO_PORT))
         if code or not out.startswith("http"):
             self.bench_why = "deckbench did not start (see deckbench.log in the emulator's run folder)."
             return None

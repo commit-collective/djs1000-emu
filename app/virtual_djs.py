@@ -965,8 +965,8 @@ def main():
     capture = []
 
     def play(which, data):
-        if capture and which == 0:
-            capture[0].sound(data)
+        if capture:
+            capture[0].sound(data, which)
         if master and which == listen[0]:
             master.feed(data)
         if phones and which == 1:

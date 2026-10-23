@@ -524,9 +524,17 @@ def master_sound(raw, work, out):
     n = declick(os.path.abspath(raw) + ".f32", clean)
     if n:
         print("declicked %d hard stop(s)" % n)
-    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-f", "f32le", "-ar", "44100", "-ac", "2", "-i", clean,
-                           "-af", "afade=t=in:d=0.02,loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.89:level=0",
-                           "-c:a", "aac", "-b:a", "192k", os.path.abspath(out)], cwd=work)
+    # What the unit's input monitor plays comes out of its headphones, not the master: it is mixed in (it is silent otherwise)
+    phones = os.path.abspath(raw) + ".f32p"
+    mix = os.path.exists(phones) and os.path.getsize(phones) > 0
+    levels = "afade=t=in:d=0.02,loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.89:level=0"
+    raw_in = ["-f", "f32le", "-ar", "44100", "-ac", "2"]
+    if mix:
+        sound = (raw_in + ["-i", clean] + raw_in + ["-i", phones] +
+                 ["-filter_complex", "[0:a][1:a]amix=inputs=2:normalize=0:duration=first," + levels + "[a]", "-map", "[a]"])
+    else:
+        sound = raw_in + ["-i", clean, "-af", levels]
+    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error"] + sound + ["-c:a", "aac", "-b:a", "192k", os.path.abspath(out)], cwd=work)
 
 
 def mux(video, audio, out):
@@ -667,14 +675,16 @@ def record(args, episode, raw):
         getattr(episode, "before", lambda s: None)(s)                       # off camera: what the first picture must already show
 
         cmd = [sys.executable, os.path.join(REPO, "app", "virtual_djs.py"), "--port", str(emu.port), "--no-audio",
-               "--no-input", "--width", str(DECK_W), "--height", str(DECK_H), "--record", raw, "--fps", str(args.fps),
+               "--width", str(DECK_W), "--height", str(DECK_H), "--record", raw, "--fps", str(args.fps),
                "--face", args.face or getattr(episode, "FACE", "real")]
+        # The unit's input: silence, or the simulated decks' sound when the episode records from them (INPUT = True, with deckbench)
+        cmd += ["--input-tcp", "127.0.0.1:%d" % start.AUDIO_PORT] if bench and getattr(episode, "INPUT", False) else ["--no-input"]
         usb, modlist = emu.usb(), emu.modlist()
         if usb and args.patch:
             cmd += ["--usb", usb]
         if modlist and args.patch:
             cmd += ["--modlist", modlist]
-        for suffix in (".start", ".stop", ".cmd", ".f32"):
+        for suffix in (".start", ".stop", ".cmd", ".f32", ".f32p"):
             if os.path.exists(raw + suffix):
                 os.remove(raw + suffix)
         env = dict(os.environ, SDL_VIDEODRIVER="dummy", PYGAME_HIDE_SUPPORT_PROMPT="1")

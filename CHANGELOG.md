@@ -4,6 +4,10 @@ Newest first. A release is a tagged commit.
 
 ## Not yet released
 
+- A recording script's commands could be run again, or late, on Windows: the file of commands has two bytes at the end of a line there,
+  and the deck counted one. It reads the file in bytes now.
+- A reel can record from the simulated decks (`INPUT = True`): `start.py` starts deckbench with its audio port, and the headphones, which
+  carry what the input monitor plays, are mixed into the reel's sound.
 - The virtual deck no longer shows the app's bright last column and row along the right and bottom of its screen (the bezel is black there).
 - `tools/reel.py` makes short vertical videos (1080x1920) of the emulator from an episode, a script of scenes. `example.py` is the one to
   start from, your own go in `demo/episodes` (git ignores it) and `--check` looks at an episode without a unit.

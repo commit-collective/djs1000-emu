@@ -35,6 +35,7 @@ class Capture:
              "-preset", "ultrafast", "-crf", os.environ.get("DJS_CAPTURE_CRF", "20"), "-pix_fmt", "yuv420p", path],
             stdin=subprocess.PIPE)
         self.audio = open(path + ".f32", "wb")
+        self.audio_phones = open(path + ".f32p", "wb")     # the headphones, which carry what the input monitor plays
         self.began = None                # time.perf_counter() of the first frame
         self.next = None
         self.frames = 0
@@ -58,10 +59,10 @@ class Capture:
             self.next += 1.0 / self.fps
             self.frames += 1
 
-    def sound(self, data):
-        """The master's frames (stereo float32), from the moment the first picture was taken."""
+    def sound(self, data, which=0):
+        """The master's frames (stereo float32, which 0) or the headphones' (1), from the moment the first picture was taken."""
         if self.began is not None:
-            self.audio.write(data)
+            (self.audio_phones if which else self.audio).write(data)
 
     def stopped(self):
         return os.path.exists(self.path + ".stop")
@@ -69,14 +70,14 @@ class Capture:
     def commands(self):
         """The new lines of FILE.cmd."""
         try:
-            with open(self.path + ".cmd", encoding="utf-8") as f:
+            with open(self.path + ".cmd", "rb") as f:     # in bytes: a text file written on Windows has two for each line end
                 f.seek(self._cmd_read)
-                text = f.read()
+                data = f.read()
         except OSError:
             return []
-        end = text.rfind("\n") + 1
-        self._cmd_read += len(text[:end].encode("utf-8"))
-        return [line.split(None, 1) for line in text[:end].splitlines() if line.strip()]
+        end = data.rfind(b"\n") + 1
+        self._cmd_read += end
+        return [line.split(None, 1) for line in data[:end].decode("utf-8").splitlines() if line.strip()]
 
     def close(self):
         try:
@@ -85,3 +86,4 @@ class Capture:
             pass
         self.proc.wait()
         self.audio.close()
+        self.audio_phones.close()

@@ -16,6 +16,11 @@ demonstration video as well), and git ignores it: videos are not committed, and 
 | `reel.srt` | the text of the scenes, for a subtitle track |
 | `thumb-LOOK.png` | a frame, for a cover |
 
+An episode can record from the simulated decks: `INPUT = True` (with `LINK = True`) feeds the unit's input with their sound (deckbench's
+audio port, which `start.py` now starts the bench with), so a scene can do live sampling: the IN meter moves, a pad hit records a take
+of the deck, and the pad plays it back. The input monitor plays in the unit's headphones, not on the master, so a reel mixes the
+headphones into its sound (they are silent otherwise).
+
 The picture is 30 frames a second, h264, with the sound at -14 LUFS and its peaks under -1.5 dB. `--fps 60` makes it 60. `--from-raw`
 makes the picture again from the last recording, which takes a minute where the recording takes four: use it to try a layout or a
 caption.
