@@ -4,6 +4,7 @@ Newest first. A release is a tagged commit.
 
 ## Not yet released
 
+- The virtual deck no longer shows the app's bright last column and row along the right and bottom of its screen (the bezel is black there).
 - `tools/reel.py` makes short vertical videos (1080x1920) of the emulator from an episode, a script of scenes. `example.py` is the one to
   start from, your own go in `demo/episodes` (git ignores it) and `--check` looks at an episode without a unit.
   `--shape landscape` makes the 1920x1080 picture from the same recording, and `--shape hero` the same in the look of the

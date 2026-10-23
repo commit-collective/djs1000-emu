@@ -513,6 +513,10 @@ class Deck:
                 _, y, rows, width, data = item
                 strip = pygame.image.frombuffer(data, (width, rows), "BGRA")
                 self.screen.blit(strip, (-L.LCD_ORIGIN[0], y - L.LCD_ORIGIN[1]))
+                # The app's frame has its last column and row in light grey, where nothing else on the screen has an edge: a bright line
+                # along two sides. The bezel is black there.
+                self.screen.fill((0, 0, 0), (L.LCD_W - 1, 0, 1, L.LCD_H))
+                self.screen.fill((0, 0, 0), (0, L.LCD_H - 1, L.LCD_W, 1))
             elif item[0] == "lamps":
                 self.lamps = item[1]
             elif item[0] == "up":
