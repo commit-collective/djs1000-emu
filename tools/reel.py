@@ -137,8 +137,9 @@ SITE_SIZE = (2168, 1442)                       # the picture is 2167x1442, and a
 SITE_UNIT_AT = (110, 110, 976, 1221)
 SITE_SCREEN_AT = (1176, 154, 882, 531)
 SITE_MODS_AT = (1176, 785, 882, 547)
-STATUS_FROM = (0, DECK_H - 26, 560, 26)        # the deck's status line (state, the MASTER / PHONES switch, the sound devices), of the window
-SITE_STATUS_AT = (110, 1355, 840, 39)          # a piece of its own under the unit, in the foot of the picture where it has nothing
+STATUS_FROM = (0, DECK_H - 26, 650, 26)        # the deck's status line (state, the MASTER / PHONES switch, the sound devices), of the window:
+#                                              650 wide, so that it is 840 wide as high as the unit's card is (976) at the same scale
+SITE_STATUS_AT = (110, 1355, 976, 39)          # a piece of its own under the unit, as wide as the unit, in the foot of the picture where it has nothing
 
 
 def site():

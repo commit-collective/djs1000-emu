@@ -79,6 +79,7 @@ Sound, all at 44.1 kHz stereo:
   name contains NAME) plays the master output or the headphone output. The
   MASTER / PHONES switch in the status line, or Tab, chooses (`--listen
   phones` starts on the headphones). `--no-audio` plays nothing
+  and shows no switch, `--mute` plays nothing too but shows the switch as if a sound device were there (for a recording)
 - `--headphones NAME` names a second device that plays the headphone output
   all the time
 - the app's input (LIVE SAMPLING, and whatever monitors the input) is fed
@@ -150,7 +151,8 @@ Page Up and Page Down by five, Enter or Right push it, Left is BACK.
 output as `demo.mp4.f32` (raw stereo float32) until a file `demo.mp4.stop` exists. A frame is repeated when the drawing was late, so
 the video keeps the real time. The window is the full layout whatever the size of the desktop, so it can run with
 `SDL_VIDEODRIVER=dummy`, and the controls' reminder is folded to leave the room to the list of mods. While it records, the deck also
-runs the lines that a script appends to `demo.mp4.cmd` (`hover MOD`, `toggle MOD`) and writes the time it began to
+runs the lines that a script appends to `demo.mp4.cmd` (`hover MOD`, `toggle MOD`, `page mods|off`, `knob NAME DELTA`, `slider POS`,
+`key NAME 1|0`) and writes the time it began to
 `demo.mp4.start`. `tools/demo.py` uses all of this to make a demonstration video (see [tools.md](tools.md)).
 
 The deck sends a pad's two readings as the same value, 460–860 by where
