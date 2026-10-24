@@ -4,43 +4,65 @@ Newest first. A release is a tagged commit.
 
 ## v0.2.0
 
-Tried on WSL2 with Ubuntu 24.04. The regression session comes out identical to the reference, and the deck's self-test passes.
+Tested on WSL2 with Ubuntu 24.04. The regression session comes out identical to the reference, and the deck's self-test passes.
 
-- The virtual deck draws the face as the unit looks (`--face real`, now the default): black gloss plastic with raised rails down the sides, a
-  bevelled screen housing with framed PROJECT, SAMPLING and FX buttons and a knurled encoder in a chrome ring, a chrome frame
-  round the pads, transport keys of brushed metal right through with their lamp shining in the middle, a grained FX strip, dull
-  translucent grey pads (rubber) and step keys (hard plastic, flat) while their lamps are off, shade under the
-  controls. It costs nothing per frame. `--face flat` is the first look, and stays available.
-- The virtual deck no longer shows the app's bright last column and row along the right and bottom of its screen (the bezel is black there).
-- `--mute` plays nothing but shows the MASTER / PHONES switch as if a sound device were there, for a recording.
+### The virtual deck
+
+- The face now looks like the unit (`--face real`, the default): black gloss plastic, a bevelled screen housing, a chrome frame round the pads, brushed metal transport keys with their lamps shining through, grey rubber pads and flat step keys. `--face flat` is the first look.
+- The bright last column and row along the right and bottom of the screen are gone. The bezel is black there.
+- `--mute` plays nothing but still shows the MASTER / PHONES switch, for recordings.
+
+### Docs
+
 - The README says where `autoexec.bin` goes to try the mods: the top of the USB folder, then start the emulator again.
-- `tools/reel.py` makes short videos of the emulator from an episode, a script of scenes: 1080x1920 for Reels and Shorts, or 1920x1080,
-  in the look of the website's picture, or the deck's window as it opens (`--shape`). `tools/reels/example.py` is the one to start from,
-  your own episodes go in `demo/episodes` (git ignores it) and `--check` looks at an episode without a unit. `tools/reels/hero.py` makes
-  the website's picture itself, playing.
-- A reel can record from the simulated decks (`INPUT = True`) for live sampling: `start.py` starts deckbench with its audio port, and the
-  headphones, which carry what the input monitor plays, are mixed into the reel's sound.
-- A recording script can move the tempo slider and hold a key down (`slider`, `key`). Its commands could run again, or late, on Windows:
-  the file of commands has two bytes at the end of a line there and the deck counted one. It reads the file in bytes now.
+- The README describes scripted use.
+
+### Videos
+
+- `tools/reel.py` makes short videos of the emulator from an episode, a script of scenes. Shapes (`--shape`): 1080x1920 for Reels and Shorts, 1920x1080, the website's picture, or the deck's window as it opens.
+- `tools/reels/example.py` is the one to start from. `tools/reels/hero.py` makes the website's picture, playing. Your own episodes go in `demo/episodes`, which git ignores.
+- `--check` looks at an episode without a unit.
+- A reel can record from the simulated decks (`INPUT = True`) for live sampling. The headphones, which carry the input monitor, are mixed into the reel's sound.
+- A recording script can move the tempo slider and hold a key down (`slider`, `key`).
+
+### Fixes
+
+- On Windows, commands in a recording script could run again or late. The deck read the file's two-byte line ends as one. It now reads the file in bytes.
 
 ## v0.1.0
 
-First release.
+First release. Tested on Windows 11 with WSL2 and Ubuntu 24.04.
 
-- The DJS-1000's own app (firmware 1.22) runs unmodified under `qemu-arm` user mode, in the unit's root filesystem,
-  with stand-ins for its devices: the panel, the touch strip, the backlight, the sound card.
-- A virtual deck draws the machine: the screen, every lamp, every control (buttons, pads, step keys, knobs, rotary
-  selector, tempo slider, touch strip), with the master and headphone outputs and a recording device as the input.
-- A USB drive is a host folder: samples load from it, and projects are saved, opened, deleted and rendered there.
-- An `autoexec.bin` on that folder runs as it does on a stick, which is how the mods are tried before a real unit.
-- Several emulators can run side by side. The guest runs in a chroot inside a user namespace (it needs no root, and `proot` is the
-  fallback, about three times slower to start the app), and each emulator's processes are told apart by their
-  mount namespace.
-- `tools/regress.py` records a fixed session and compares it with a reference. `tools/session.py` scripts the app.
-- The deck lists the mods of the patch on the drive, grouped as the mods' website groups them, with a switch for each. The
-  mouse on a row shows the mod's text.
-- Pro DJ Link works with simulated decks. The unit announces itself as player 1 and sees the decks, so SYNC and MASTER work
-  and so do the mods that read the decks. The decks are deckbench's, a separate project that `start.py` runs.
-- Settings of the mods are read from `djs1000-mods.txt` on the drive.
+### The emulator
 
-Tried on Windows 11 with WSL2 and Ubuntu 24.04. Not yet: MIDI, and real decks on a physical network (WSL2's default networking does not see them). macOS is not supported.
+- The DJS-1000's own app (firmware 1.22) runs unmodified under `qemu-arm` user mode, in the unit's root filesystem. Its devices are stand-ins: the panel, the touch strip, the backlight and the sound card.
+- Several emulators can run side by side.
+- The guest runs in a chroot inside a user namespace, so it needs no root. `proot` is the fallback, about three times slower to start the app.
+
+### The virtual deck
+
+- Draws the machine: the screen, every lamp, and every control (buttons, pads, step keys, knobs, rotary selector, tempo slider, touch strip).
+- Master and headphone outputs, and a recording device as the input.
+- Lists the mods of the patch on the drive, grouped as on the mods' website, with a switch for each. Hover a row to read the mod's text.
+
+### USB drive and mods
+
+- A USB drive is a host folder. Samples load from it, and projects are saved, opened, deleted and rendered there.
+- An `autoexec.bin` in that folder runs as it does on a stick, which is how the mods are tried before a real unit.
+- The mods' settings are read from `djs1000-mods.txt` on the drive.
+
+### Pro DJ Link
+
+- Works with simulated decks. The unit announces itself as player 1 and sees the decks, so SYNC, MASTER and the mods that read the decks all work.
+- The decks are deckbench's, a separate project that `start.py` runs.
+
+### Tools
+
+- `tools/regress.py` records a fixed session and compares it with a reference.
+- `tools/session.py` scripts the app.
+
+### Not yet
+
+- MIDI.
+- Real decks on a physical network. WSL2's default networking does not see them.
+- macOS.
