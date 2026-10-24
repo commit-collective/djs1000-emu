@@ -42,7 +42,7 @@ page on the screen, and the window is a size of its own, so it is recorded on it
 `--shape site` is that picture itself, to the pixel (2168x1442, as the picture is 2167 wide): the website's `hero.png` is the background
 with the unit taken out, so its titles, grid and frames are exactly the website's, and the unit, the app's screen and the list of
 mods are put where the picture has them, with the same rounded corners. There is no text. `tools/reels/hero.py` is the episode for it
-(`python tools/reel.py hero --patch ...`): the generated test kit of the picture, with a pattern that plays for 12 seconds while the list of mods is gone through and switches go off and on. It needs the
+(`python tools/reel.py hero --patch ...`): the generated test kit of the picture, with a pattern that plays for 12 seconds while a few mods are switched off and on in turn. It needs the
 website's repository beside this one (`SITE_HERO` in `tools/hero.py`).
 
 ## An episode
