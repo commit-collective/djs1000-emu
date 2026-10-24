@@ -101,6 +101,25 @@ The app runs in a chroot inside a user namespace of its own (`unshare -rm`), whi
 system does not allow user namespaces (some hardened kernels and containers), the launcher falls back to `proot`
 (install it with `sudo apt install proot`), which is about three times slower to start the app. `DJS_PROOT=1` forces it.
 
+## Trying the mods
+
+The emulator treats a folder on your computer as the USB stick, and runs the `autoexec.bin` it finds in it the way the unit
+does. So to try [the mods](https://commitcollective.cc/djs1000/mods/):
+
+1. **Get an `autoexec.bin`**: download one from the mods page, or build one from the djs1000-mods project's source. It is
+   encrypted with the unit's key, which the emulator already has: `setup.sh` kept it as `~/djs/aes256.key`.
+2. **Put it at the top of the USB folder**, `~/djs/usb` (in WSL on Windows). It goes beside the `PIONEER DJ SAMPLER` folder
+   and not inside it. From Windows that folder is `\\wsl.localhost\Ubuntu\home\<you>\djs\usb` (use your distribution's name),
+   and `DJS_USB=/some/folder` points the emulator at another one. The folder is made the first time the emulator starts.
+3. **Start the emulator again** (`python start.py stop`, then `python start.py`). The patch is opened when the emulator
+   starts, as on a unit switched on with the stick in. The mods load about half a minute after the app does, and the app
+   restarts once when they do.
+
+The virtual deck then shows an "Installed mods (USB)" list beside the unit, with a switch for each mod, and a
+`djs1000-mods.txt` appears in the USB folder with a line for each. A click on a switch rewrites its line, and the mods read the
+file again as the app runs. `djs1000-mods.log` in the same folder says what the patch did, and a patch built for another
+firmware than 1.22 leaves the app alone. To go back to the stock unit, take `autoexec.bin` out of the folder and start again.
+
 ## What works
 
 - the app starts in about half a minute and runs for as long as you leave it
