@@ -102,6 +102,12 @@ def surface(img):
 
 
 class Deck:
+    @staticmethod
+    def icon():
+        """The window's icon (see art.icon), as a pygame surface."""
+        im = art.icon(64)
+        return pygame.image.fromstring(im.tobytes(), im.size, "RGBA")
+
     def __init__(self, link, size, players=(None, None), recorder=None, listen=None, mods=None):
         self.link = link
         self.mods = mods or Mods(None)   # what a patch on the USB drive carries
@@ -125,6 +131,7 @@ class Deck:
         self.big = pygame.font.SysFont("arial", 22, bold=True)
         self.listen = listen if listen is not None else [0]   # the output the main device plays
         self.listen_rect = pygame.Rect(0, 0, 0, 0)
+        pygame.display.set_icon(self.icon())
         self.win = pygame.display.set_mode(size, pygame.RESIZABLE)
         pygame.display.set_caption(TITLE)
         self.font = pygame.font.SysFont("arial", 14)

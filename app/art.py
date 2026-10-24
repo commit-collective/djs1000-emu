@@ -588,3 +588,24 @@ def face(scale):
     for key in L.KEYS:
         _draw_key(c, key, 0, None, False)
     return c.done().convert("RGB")
+
+
+def icon(size=256):
+    """The app's icon: the unit seen from above, a screen over a grid of sixteen pads, a few lit. Drawn like the rest, at four
+    times the size and scaled down; returns a Pillow RGBA image."""
+    k = 4
+    n = size * k
+    img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    u = n / 256.0
+    d.rounded_rectangle((0, 0, n - 1, n - 1), radius=int(54 * u), fill=BODY_EDGE)
+    d.rounded_rectangle((6 * u, 6 * u, n - 1 - 6 * u, n - 1 - 6 * u), radius=int(48 * u), fill=GLOSS)
+    d.rounded_rectangle((24 * u, 24 * u, 232 * u, 96 * u), radius=int(12 * u), fill=(3, 4, 6), outline=(70, 72, 78), width=max(1, int(3 * u)))
+    wave = [(36, 62), (62, 62), (74, 40), (88, 84), (102, 48), (116, 76), (130, 62), (150, 62), (162, 44), (176, 80), (190, 62), (220, 62)]
+    d.line([(x * u, y * u) for x, y in wave], fill=(235, 62, 48), width=max(1, int(5 * u)), joint="curve")
+    lit = {0: (235, 62, 48), 3: (235, 62, 48), 5: (46, 120, 235), 9: (46, 120, 235), 10: (242, 176, 48), 12: (235, 62, 48), 15: (235, 62, 48)}
+    for i in range(16):
+        col, row = i % 4, i // 4
+        x0, y0 = (24 + col * 54) * u, (112 + row * 34) * u
+        d.rounded_rectangle((x0, y0, x0 + 46 * u, y0 + 28 * u), radius=int(7 * u), fill=lit.get(i, UNLIT_PAD))
+    return img.resize((size, size), Image.LANCZOS)
