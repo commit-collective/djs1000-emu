@@ -178,8 +178,8 @@ def composite_window(raw, out, fps):
 
 
 def set_shape(shape):
-    """Portrait (1080x1920, the default), landscape (1920x1080) or hero (1920x1080 as the website's picture): the size, the layouts
-    and where the text goes."""
+    """Portrait (1080x1920, the default), landscape (1920x1080), hero (1920x1080 in the look of the website's picture), site (that
+    picture itself, 2168x1442) or window (the deck's window as it opens): the size, the layouts and where the text goes."""
     global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y, CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE
     CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE = "(w-text_w)/2", None, "0x3a3c42", 5, shape
     if shape == "window":
@@ -593,8 +593,8 @@ def main():
     ap.add_argument("--shape", choices=("portrait", "landscape", "hero", "site", "window"), default=None,
                     help="portrait is 1080x1920 (Reels, Shorts, TikTok), landscape 1920x1080 (Reddit, YouTube). It is made from the "
                          "same recording, so --from-raw changes it. hero is landscape in the look of the website's picture, site is that picture "
-                         "itself, to the pixel, made to move (2168x1442), window is the deck's whole window as it is, at its own size "
-                         "(2196x1800), with no layout and no text. Default: SHAPE in the episode, else portrait")
+                         "itself, to the pixel, made to move (2168x1442), window is the deck's window as it opens (about 1626x1060), "
+                         "with no layout and no text. Default: SHAPE in the episode, else portrait")
     ap.add_argument("--no-link", action="store_true", help="no simulated decks (deckbench)")
     ap.add_argument("--from-raw", action="store_true", help="do not record again: make the picture from the last recording")
     args = ap.parse_args()
