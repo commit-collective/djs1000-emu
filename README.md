@@ -90,8 +90,10 @@ Linux virtual machine (a patch that does that is welcome).
 5. **Run it**:
 
    ```sh
-   python start.py          # or start.cmd / ./start.sh
+   python start.py
    ```
+
+   (`start.cmd` on Windows and `./start.sh` on Linux do the same.)
 
 That starts the emulator (in WSL on Windows), opens the virtual deck when it answers, and stops the emulator when the
 deck is closed. The app is ready on its PROJECT menu about half a minute later. `python start.py --help` lists the
@@ -119,6 +121,35 @@ The virtual deck then shows an "Installed mods (USB)" list beside the unit, with
 `djs1000-mods.txt` appears in the USB folder with a line for each. A click on a switch rewrites its line, and the mods read the
 file again as the app runs. `djs1000-mods.log` in the same folder says what the patch did, and a patch built for another
 firmware than 1.22 leaves the app alone. To go back to the stock unit, take `autoexec.bin` out of the folder and start again.
+
+## Scripted use
+
+The emulator does not need the deck. `python start.py --no-deck` starts it alone and leaves it running, `python start.py status`
+says whether it is, and `python start.py stop` ends it. A script then drives it and watches it, with no window:
+
+- **Over TCP.** The emulator listens on `127.0.0.1:7310` (`--port`, or `DJSDEV_PORT`) and serves up to four clients at once, each
+  sent everything: the screen, the lamps and the sound of the master and headphone outputs. A client sends one-line commands
+  (`tap`, `bit`, `pad`, `enc`, `touch`, `word`, `strip`, `usb` ...) as the deck does. It is the protocol the virtual deck speaks, written down
+  in [docs/virtual-deck.md](docs/virtual-deck.md) and [docs/tools.md](docs/tools.md). It is not a stable API, and it can change between versions.
+- **From Python.** `tools/session.py` is a small client for it: press a button, hit a pad, touch the screen, wait for the screen to settle,
+  take a screenshot, record what the outputs play.
+
+  ```python
+  import sys
+  sys.path.insert(0, "tools")
+  from session import Session
+
+  s = Session()            # connects to 127.0.0.1:7310
+  s.wait_screen()          # the app has drawn its first screen
+  s.press((1, 3))          # HOME
+  s.shot("home.png")
+  ```
+
+- **From a shell.** `python tools/shot.py home.png "tap 1 3"` sends commands to the emulator's panel pipe and saves a screenshot.
+
+`tools/regress.py` (a fixed session compared with a reference), `tools/demo.py` and `tools/reel.py` (videos) are written this way.
+The deck can run with no window too: with `SDL_VIDEODRIVER=dummy` and `--record` it records the video, as the Recording
+section of [docs/virtual-deck.md](docs/virtual-deck.md) describes.
 
 ## What works
 
