@@ -137,16 +137,12 @@ SITE_SIZE = (2168, 1442)                       # the picture is 2167x1442, and a
 SITE_UNIT_AT = (110, 110, 976, 1221)
 SITE_SCREEN_AT = (1176, 154, 882, 531)
 SITE_MODS_AT = (1176, 785, 882, 547)
-STATUS_FROM = (0, DECK_H - 26, 650, 26)        # the deck's status line (state, the MASTER / PHONES switch, the sound devices), of the window:
-#                                              650 wide, so that it is 840 wide as high as the unit's card is (976) at the same scale
-SITE_STATUS_AT = (110, 1355, 976, 39)          # a piece of its own under the unit, as wide as the unit, in the foot of the picture where it has nothing
 
 
 def site():
     """The layouts for the video made like the website's picture (--shape site)."""
     play = [(Cut(UNIT_FROM), SITE_UNIT_AT), (Cut(SCREEN, "round-%dx%d.png" % SITE_SCREEN_AT[2:]), SITE_SCREEN_AT), ("frame", SITE_SCREEN_AT),
-            (Cut(MODS_FROM, "round-%dx%d.png" % SITE_MODS_AT[2:]), SITE_MODS_AT), ("frame", SITE_MODS_AT),
-            (Cut(STATUS_FROM, "round-%dx%d.png" % SITE_STATUS_AT[2:]), SITE_STATUS_AT), ("frame", SITE_STATUS_AT)]
+            (Cut(MODS_FROM, "round-%dx%d.png" % SITE_MODS_AT[2:]), SITE_MODS_AT), ("frame", SITE_MODS_AT)]
     return {"play": play, "play-device": play, "end": play}
 
 
