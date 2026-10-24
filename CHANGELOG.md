@@ -2,23 +2,26 @@
 
 Newest first. A release is a tagged commit.
 
-## Not yet released
+## v0.2.0
 
-- A recording script's commands could be run again, or late, on Windows: the file of commands has two bytes at the end of a line there,
-  and the deck counted one. It reads the file in bytes now.
-- A reel can record from the simulated decks (`INPUT = True`): `start.py` starts deckbench with its audio port, and the headphones, which
-  carry what the input monitor plays, are mixed into the reel's sound.
-- The virtual deck no longer shows the app's bright last column and row along the right and bottom of its screen (the bezel is black there).
-- `tools/reel.py` makes short vertical videos (1080x1920) of the emulator from an episode, a script of scenes. `example.py` is the one to
-  start from, your own go in `demo/episodes` (git ignores it) and `--check` looks at an episode without a unit.
-  `--shape landscape` makes the 1920x1080 picture from the same recording, and `--shape hero` the same in the look of the
-  website's picture. `--shape site` and `tools/reels/hero.py` make that picture itself, playing. `--shape window` is the deck's whole
-  window as it is, with no layout.
+Tried on WSL2 with Ubuntu 24.04. The regression session comes out identical to the reference, and the deck's self-test passes.
+
 - The virtual deck draws the face as the unit looks (`--face real`, now the default): black gloss plastic with raised rails down the sides, a
   bevelled screen housing with framed PROJECT, SAMPLING and FX buttons and a knurled encoder in a chrome ring, a chrome frame
   round the pads, transport keys of brushed metal right through with their lamp shining in the middle, a grained FX strip, dull
   translucent grey pads (rubber) and step keys (hard plastic, flat) while their lamps are off, shade under the
   controls. It costs nothing per frame. `--face flat` is the first look, and stays available.
+- The virtual deck no longer shows the app's bright last column and row along the right and bottom of its screen (the bezel is black there).
+- `--mute` plays nothing but shows the MASTER / PHONES switch as if a sound device were there, for a recording.
+- The README says where `autoexec.bin` goes to try the mods: the top of the USB folder, then start the emulator again.
+- `tools/reel.py` makes short videos of the emulator from an episode, a script of scenes: 1080x1920 for Reels and Shorts, or 1920x1080,
+  in the look of the website's picture, or the deck's window as it opens (`--shape`). `tools/reels/example.py` is the one to start from,
+  your own episodes go in `demo/episodes` (git ignores it) and `--check` looks at an episode without a unit. `tools/reels/hero.py` makes
+  the website's picture itself, playing.
+- A reel can record from the simulated decks (`INPUT = True`) for live sampling: `start.py` starts deckbench with its audio port, and the
+  headphones, which carry what the input monitor plays, are mixed into the reel's sound.
+- A recording script can move the tempo slider and hold a key down (`slider`, `key`). Its commands could run again, or late, on Windows:
+  the file of commands has two bytes at the end of a line there and the deck counted one. It reads the file in bytes now.
 
 ## v0.1.0
 
