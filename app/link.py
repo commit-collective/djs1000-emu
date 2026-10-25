@@ -26,6 +26,7 @@ class Link:
         self._lock = threading.Lock()
         self._out = threading.Lock()     # one sender at a time: lines and sound
         self._in = []
+        self.log = None                   # a callable(line), told of every command line that is sent (REC keeps them as steps)
         self._stop = False
         threading.Thread(target=self._run, daemon=True).start()
 
@@ -40,7 +41,9 @@ class Link:
             with self._out:
                 sock.sendall(line.encode() + b"\n")
         except OSError:
-            pass
+            return
+        if self.log:
+            self.log(line)
 
     def send_input(self, data):
         """Sound for the app's input: stereo 16-bit frames at 44.1 kHz."""

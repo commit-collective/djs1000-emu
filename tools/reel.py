@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import time
+import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -333,7 +334,7 @@ class Context:
 
 def episode_path(name):
     """A path to an episode, or the name of one: demo/episodes (private, git ignores it) before tools/reels."""
-    if name.endswith(".py") or os.sep in name or "/" in name:
+    if name.endswith((".py", ".steps")) or os.sep in name or "/" in name:
         return os.path.abspath(name)
     for folder in (os.path.join(REPO, "demo", "episodes"), os.path.join(HERE, "reels")):
         path = os.path.join(folder, name + ".py")
@@ -347,7 +348,9 @@ def load_episode(name):
     if not os.path.exists(path):
         sys.exit("no episode %s: it would be %s" % (name, path))
     base = os.path.splitext(os.path.basename(path))[0]
-    spec = importlib.util.spec_from_file_location("episode_" + base, path)
+    if path.endswith(".steps"):
+        return steps_episode(path, base)
+    spec =importlib.util.spec_from_file_location("episode_" + base, path)
     module = importlib.util.module_from_spec(spec)
     sys.path.insert(0, os.path.dirname(path))
     try:
@@ -356,6 +359,32 @@ def load_episode(name):
         sys.path.pop(0)
     module.NAME = base
     return module
+
+
+def steps_episode(path, base):
+    """An episode made of a REC's NAME.steps (app/virtual_djs.py): one scene in which every command the deck sent is sent again, at
+    the same second. It starts from the unit as a reel starts (the project of --project, or the first), so a recording made to be
+    played back begins the same way."""
+    steps = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                at, _, command = line.partition(" ")
+                steps.append((float(at), command))
+    if not steps:
+        sys.exit("%s has no steps" % path)
+
+    def do_steps(ctx):
+        began = ctx.tl.now()
+        for at, command in steps:
+            late = began + at - ctx.tl.now()
+            if late > 0:
+                ctx.wait(late)
+            ctx.s.send(command)
+
+    scenes = [{"layout": "play", "seconds": steps[-1][0] + 3.0, "do": "steps"}]
+    return types.SimpleNamespace(NAME=base, SCENES=scenes, do_steps=do_steps)
 
 
 def check_episode(episode):

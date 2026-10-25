@@ -82,6 +82,13 @@ app's screen is 800x480 in it. The regions are measured on that window. A scene'
 end card, `END` in the episode): `play` and `mods` are the same picture, so the unit never moves between them, and the name is for the
 episode's own use.
 
+## Playing a REC again
+
+A REC in the virtual deck (see [virtual-deck.md](virtual-deck.md)) leaves a `.steps` file beside its video: every command the deck sent, with
+the second it was sent. `reel.py demo/captures/deck-DATE-TIME.steps` treats it as an episode of one scene, starts a fresh unit and sends
+the same commands at the same seconds, so the reel shows what you did. It starts as every reel does, with the project of `--project` (or the
+first), so begin a REC from that same point. The video is the reel's own, so `--shape`, `--res` and `--bg` apply, and it has no captions.
+
 ## The top of the picture
 
 The picture of every scene but the end card is one layout, which depends on a setting, `--top` (or `TOP` in the episode, `screen` if

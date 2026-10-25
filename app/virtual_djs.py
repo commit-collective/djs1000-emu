@@ -219,8 +219,8 @@ class BenchWatch:
 class Recording:
     """REC: the window (without its status line and the menu) as video, and the sound as you hear it (the output the MASTER / PHONES switch
     has chosen, not the two added: the headphones carry an attenuated, partly inverted copy of the program, which would thin it), in a
-    folder. The video is app/capture.py's, the same as --record; when it ends the sound is fitted to it and joined: NAME.mp4 (video and
-    sound) and NAME.wav (the sound alone, 24 bits, for an editor)."""
+    folder. The video is app/capture.py's, the same as --record; when it ends the sound is joined to it: NAME.mp4 (video and sound),
+    NAME.wav (the sound alone, 24 bits, for an editor) and NAME.steps (what was pressed, for tools/reel.py)."""
 
     def __init__(self, folder, size, fps):
         os.makedirs(folder, exist_ok=True)
@@ -230,6 +230,15 @@ class Recording:
         self.size, self.fps = size, fps
         self.capture = Capture(self.video, size, fps)
         self.began = time.time()
+        # NAME.steps: every command the deck sends the app, as "seconds command" lines, which tools/reel.py plays back
+        self.steps = open(self.base + ".steps", "w", encoding="utf-8", buffering=1)
+        self.steps.write("# djs1000 deck steps: seconds into the recording, then the command line\n")
+
+    def step(self, line):
+        try:
+            self.steps.write("%.3f %s\n" % (time.time() - self.began, line))
+        except (OSError, ValueError):
+            pass
 
     def frame(self, surf):
         if surf.get_size() != self.size:             # the window was resized: the file keeps the size it began with
@@ -245,6 +254,7 @@ class Recording:
     def finish(self, done, wait=False):
         """Ends the video and, in the background, joins it with the sound. done(text) says where the file is, or what went wrong."""
         self.capture.close()
+        self.steps.close()
         worker = threading.Thread(target=self._join, args=(done,), daemon=True)
         worker.start()
         if wait:
@@ -1637,6 +1647,7 @@ def main():
         deck.fold["help"] = True              # the list of mods gets the room the controls' reminder takes
     deck.meter = meter
     decks.append(deck)
+    link.log = lambda line: decks[0].rec.step(line) if decks[0].rec else None
     deck.captures = args.captures
     deck.rec_fps = args.fps or 30
     deck.rec_ok = not args.record
