@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Makes a short vertical video (a reel) of the emulator: a script plays the unit and the virtual deck records it.
+"""Makes a short video (a reel) of the emulator, vertical unless --shape says another: a script plays the unit and the virtual deck records it.
 
     reel.py EPISODE [--patch autoexec.bin] [--out DIR] [--fps 30] [--top screen|device] [--no-link] [--project NAME]
-             [--shape portrait|landscape|hero|site|window]
+             [--shape portrait|landscape|hero|site|window] [--res hd|2k|4k] [--grid] [--bg dark|black|green|transparent]
     reel.py EPISODE --check
 
 EPISODE is a file with the scenes, the text of each and what is played in it: a path to a .py file, or a name, looked up in
@@ -111,7 +111,8 @@ UNIT_FROM = (0, 25, 1358, 1742)                # the unit, from the top of the h
 MODS_FROM = (1380, 515, 800, 500)              # the list of mods and the text of the one pointed at
 CARD_RADIUS = 5                                # the website's picture has 6 on a card 882 wide, this is the same on 710
 CARD_FRAME = (46, 46, 46)                      # its frame: one dim line
-HERO_BACKGROUND = "color=c=0x0d0d0f:s=%dx%d:r=%d:d=%.3f,drawgrid=width=64:height=64:thickness=1:color=white@0.03,format=yuv420p"
+HERO_BACKGROUND = "color=c=%s:s=%dx%d:r=%d:d=%.3f,%sformat=%s"
+HERO_GRID = "drawgrid=width=%d:height=%d:thickness=%d:color=white@0.03,"      # --grid: the website's lines, every 64 pixels
 
 
 def hero():
@@ -133,7 +134,8 @@ def hero():
 # --shape site: the website's own picture (tools/hero.py), exactly: its dark grid, its two titles and the places of its three cards.
 # The picture itself is the background (without the unit, which hero.clear_background takes out), and the cards go over where
 # the last version had them. The window is cut as hero.py cuts it.
-SITE_SIZE = (2168, 1442)                       # the picture is 2167x1442, and a video needs an even width
+SITE_BASE = (2168, 1442)                       # the picture is 2167x1442, and a video needs an even width
+SITE_SIZE = SITE_BASE                          # the same at the --res
 SITE_UNIT_AT = (110, 110, 976, 1221)
 SITE_SCREEN_AT = (1176, 154, 882, 531)
 SITE_MODS_AT = (1176, 785, 882, 547)
@@ -146,29 +148,61 @@ def site():
     return {"play": play, "play-device": play, "end": play}
 
 
+def remove_grid(img):
+    """Takes the picture's grid (a line of one pixel every 64 pixels, a little brighter) out: a pixel on a line gets the mean of its two
+    neighbours across the line where they agree, so a title that crosses a line is left alone."""
+    px = img.load()
+    w, h = img.size
+    for x in range(64, w - 1, 64):
+        for y in range(h):
+            a, b = px[x - 1, y], px[x + 1, y]
+            if max(abs(a[c] - b[c]) for c in range(3)) <= 2:
+                px[x, y] = tuple((a[c] + b[c] + 1) // 2 for c in range(3))
+    for y in range(64, h - 1, 64):
+        for x in range(w):
+            a, b = px[x, y - 1], px[x, y + 1]
+            if max(abs(a[c] - b[c]) for c in range(3)) <= 2:
+                px[x, y] = tuple((a[c] + b[c] + 1) // 2 for c in range(3))
+
+
 def site_background(work):
-    """work/site-bg.png: the website's picture with the unit taken out and a column added at the right (an even width)."""
+    """work/site-bg.png: the website's picture with the unit taken out and a column added at the right (an even width), without its
+    grid unless --grid, at the size of the video."""
     import hero
     from PIL import Image
     base = Image.open(hero.SITE_HERO).convert("RGB")
     hero.clear_background(base, hero.DECK_AT)
-    out = Image.new("RGB", SITE_SIZE)
+    out = Image.new("RGB", SITE_BASE)
     out.paste(base, (0, 0))
     out.paste(base.crop((base.width - 1, 0, base.width, base.height)), (base.width, 0))
+    if not GRID:
+        remove_grid(out)
+    if out.size != SITE_SIZE:
+        out = out.resize(SITE_SIZE, Image.LANCZOS)
     out.save(os.path.join(work, "site-bg.png"))
 
 
 def site_filters(i, fps, dur):
+    if BG != "dark":                                   # no picture behind: its titles go too
+        return hero_filters(i, fps, dur)
     return ["color=c=black:s=%dx%d:r=%d:d=%.3f,format=yuv420p[k%d];" % (W, H, fps, dur, i),
             "movie=site-bg.png,format=yuv420p[g%d];" % i,
             "[k%d][g%d]overlay=0:0:eof_action=repeat[b%d_0];" % (i, i, i)]
 
 
 def hero_filters(i, fps, dur):
-    return [(HERO_BACKGROUND + "[b%d_0];") % (W, H, fps, dur, i)]
+    grid = HERO_GRID % (even(64 * SCALE), even(64 * SCALE), BOX_T) if GRID else ""
+    return [(HERO_BACKGROUND + "[b%d_0];") % (BG_COLOUR[BG], W, H, fps, dur, grid, PIX_FMT, i)]
 
 
 WINDOW_H = 1060                                # the height of the deck's window when it opens on a desktop that has room (virtual_djs.py)
+
+
+def encoder(fps, preset, crf):
+    """The video codec: H.264, or ProRes 4444 with its alpha for --bg transparent (the file is a .mov)."""
+    if PIX_FMT == "yuva444p":
+        return ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-r", str(fps)]
+    return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p", "-r", str(fps)]
 
 
 def composite_window(raw, out, fps):
@@ -177,21 +211,50 @@ def composite_window(raw, out, fps):
                            "-c:v", "libx264", "-preset", "medium", "-crf", "14", "-pix_fmt", "yuv420p", "-r", str(fps), os.path.abspath(out)])
 
 
-def set_shape(shape):
+RESOLUTIONS = {"hd": 1.0, "2k": 4 / 3.0, "4k": 2.0}      # 1080 on the short side of the picture, 1440, 2160
+SCALE, BOX_T, GRID = 1.0, 1, False
+BG, BG_COLOUR = "dark", {"dark": "0x0d0d0f", "black": "black", "green": "0x00ff00", "transparent": "black@0"}
+LIFT = 0                                               # --bg black: the unit and the cards never go below this level (of 255), so that
+#                                                        the background is the only pure black and a luma key takes it out
+PIX_FMT, OVERLAY, EXT = "yuv420p", "", ".mp4"          # --bg transparent: yuva444p, format=auto on each overlay, a ProRes 4444 .mov
+
+
+def scaled_layouts(layouts, f):
+    """The layouts with where each region goes (not where it is cut from) multiplied by f."""
+    out = {}
+    for name, regions in layouts.items():
+        out[name] = []
+        for src, at in regions:
+            at = tuple(int(round(v * f)) for v in at)
+            if isinstance(src, Cut) and src.mask.startswith("round-"):      # its mask is made for the size it is shown at
+                src = Cut(tuple(src), "round-%dx%d.png" % at[2:])
+            out[name].append((src, at))
+    return out
+
+
+def set_shape(shape, res="hd", grid=False, bg="dark"):
     """Portrait (1080x1920, the default), landscape (1920x1080), hero (1920x1080 in the look of the website's picture), site (that
-    picture itself, 2168x1442) or window (the deck's window as it opens): the size, the layouts and where the text goes."""
+    picture itself, 2168x1442) or window (the deck's window as it opens): the size, the layouts and where the text goes. res makes the
+    picture 1.33 (2k) or 2 (4k) times as big, every layout, text and line with it (the window shape is the recording as it is)."""
     global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y, CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE
+    global SCALE, BOX_T, GRID, SITE_SIZE, BG, PIX_FMT, OVERLAY, EXT, LIFT
+    BG = bg if shape in ("hero", "site") else "dark"       # the other shapes have no background of their own
+    LIFT = 4 if BG == "black" else 0
+    PIX_FMT, OVERLAY, EXT = ("yuva444p", ":format=auto", ".mov") if BG == "transparent" else ("yuv420p", "", ".mp4")
     CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE = "(w-text_w)/2", None, "0x3a3c42", 5, shape
+    SCALE = 1.0 if shape == "window" else RESOLUTIONS[res]
+    BOX_T, GRID = max(1, int(round(SCALE))), grid
+    SITE_SIZE = (even(SITE_BASE[0] * SCALE), even(SITE_BASE[1] * SCALE))
+    left = 0
     if shape == "window":
         LAYOUTS = {"play": [], "play-device": [], "end": []}               # nothing is laid out (see composite_window)
     elif shape == "site":
         W, H = SITE_SIZE
-        LAYOUTS = site()
+        LAYOUTS = scaled_layouts(site(), SCALE)
         CARD_RADIUS, BACKGROUND = 6, site_filters
     elif shape == "hero":
         W, H = 1920, 1080
         LAYOUTS, left = hero()
-        CAPTION_X = str(left)
         CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 40, 94, 40, 26, 330
         BACKGROUND, LINE = hero_filters, "0x2e2e2e"
     elif shape == "landscape":
@@ -202,6 +265,13 @@ def set_shape(shape):
         W, H = 1080, 1920
         LAYOUTS = PORTRAIT
         CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 52, H - 58, 66, 34, 560
+    if shape not in ("window", "site"):
+        W, H = even(W * SCALE), even(H * SCALE)
+        LAYOUTS = scaled_layouts(LAYOUTS, SCALE)
+        CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = (int(round(v * SCALE)) for v in (CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y))
+        if shape == "hero":
+            CAPTION_X = str(int(round(left * SCALE)))
+    CARD_RADIUS = CARD_RADIUS * SCALE
 
 
 def layout_named(name, top):
@@ -305,9 +375,10 @@ def check_episode(episode):
     return faults
 
 
-def prepare(emu, patch, kit=False):
-    """A fresh unit: empty stick (or with the generated test kit on it, for an episode that loads it) and settings, and the internal
-    storage as hard links to the copy of the factory one (instant, and the app's writes go to the folders that are copies: projects,
+def prepare(emu, patch, kit=False, usb_project="", mod_settings=None):
+    """A fresh unit: empty stick (or with the generated test kit on it, for an episode that loads it, or with a project of your own
+    copied from the stick in $DJS_USB_SRC, default ~/djs/usb, with its samples, and the mods' settings the episode gives) and settings,
+    and the internal storage as hard links to the copy of the factory one (instant, and the app's writes go to the folders that are copies: projects,
     scenes and system)."""
     cmd = '''
 D="${DJS_HOME:-$HOME/djs}/reel"
@@ -323,6 +394,16 @@ done
     if kit:
         cmd += '''python3 '%s/tools/make_test_kit.py' "$D/usb/PIONEER DJ SAMPLER/Samples/Test Kit"
 ''' % emu.repo()
+    if usb_project:
+        cmd += '''U="${DJS_USB_SRC:-$HOME/djs/usb}/PIONEER DJ SAMPLER"; N='%s'
+[ -f "$U/Projects/$N.prj" ] || { echo "no project $N on the stick in $U"; exit 1; }
+mkdir -p "$D/usb/PIONEER DJ SAMPLER/Projects" "$D/usb/PIONEER DJ SAMPLER/Samples"
+cp -a "$U/Projects/$N.prj" "$D/usb/PIONEER DJ SAMPLER/Projects/" || exit 1
+[ -d "$U/Samples/$N" ] && { cp -a "$U/Samples/$N" "$D/usb/PIONEER DJ SAMPLER/Samples/" || exit 1; }
+''' % usb_project
+    if mod_settings:                          # what the mods read from the stick: `key = value` lines, the rest is as they start
+        text = "".join("%s = %s\n" % (k, v) for k, v in mod_settings.items())
+        cmd += "cat > \"$D/usb/djs1000-mods.txt\" << 'MODS_EOF'\n" + text + "MODS_EOF\n"
     if patch:
         cmd += '''P='%s'; command -v wslpath > /dev/null && P=$(wslpath -a "$P")
 cp "$P" "$D/usb/autoexec.bin"
@@ -352,6 +433,25 @@ def open_internal_project(s, row):
     s.turn(2)
     s.settle()
     s.push()                               # Internal
+    s.settle(quiet=1.5, timeout=25)
+    s.turn(row)
+    s.settle()
+    s.push()                               # the project: any unsaved progress will be lost
+    s.settle()
+    s.touch(*regress.OK)
+    s.settle(quiet=1.5, timeout=60)
+    s.pump(5.0)
+    s.settle(quiet=1.5, timeout=60)
+
+
+def open_usb_project(s, row=0):
+    """From the Project menu: OPEN, USB, the project (the stick holds the episode's USB_PROJECT, which is the first row unless
+    there are others before it), OK."""
+    s.turn(1)
+    s.settle()
+    s.push()                               # OPEN
+    s.settle()
+    s.push()                               # USB
     s.settle(quiet=1.5, timeout=25)
     s.turn(row)
     s.settle()
@@ -411,22 +511,24 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
             lines.append("[0:v]trim=start=%.3f:end=%.3f,setpts=PTS-STARTPTS,split=%d%s;" % (t0, t1, len(cut), outs))
         for j, (src, (dx, dy, dw, dh)) in enumerate(regions):
             if src == "frame":                       # the thin rounded line round a card, a picture with nothing else in it
-                lines.append("movie=frame-%dx%d.png,format=rgba[f%d_%d];[b%d_%d][f%d_%d]overlay=%d:%d[b%d_%d];" % (
-                    dw, dh, i, j, i, j, i, j, dx, dy, i, j + 1))
+                lines.append("movie=frame-%dx%d.png,format=rgba[f%d_%d];[b%d_%d][f%d_%d]overlay=%d:%d%s[b%d_%d];" % (
+                    dw, dh, i, j, i, j, i, j, dx, dy, OVERLAY, i, j + 1))
                 continue
             if src == "box":
-                lines.append("[b%d_%d]drawbox=x=%d:y=%d:w=%d:h=%d:color=%s:t=1[b%d_%d];" % (i, j, dx - 1, dy - 1, dw + 2, dh + 2, LINE, i, j + 1))
+                lines.append("[b%d_%d]drawbox=x=%d:y=%d:w=%d:h=%d:color=%s:t=%d[b%d_%d];" % (
+                    i, j, dx - BOX_T, dy - BOX_T, dw + 2 * BOX_T, dh + 2 * BOX_T, LINE, BOX_T, i, j + 1))
                 continue
             if src is None:
                 lines.append("color=c=black:s=%dx%d:r=%d:d=%.3f,format=yuv420p[c%d_%d];" % (dw, dh, fps, dur, i, j))
             else:
                 sx, sy, sw, sh = src
-                lines.append("[s%d_%d]crop=%d:%d:%d:%d,scale=%d:%d:flags=lanczos,setsar=1[c%d_%d];" % (
-                    i, j, even(sw * k), even(sh * k), even(sx * k), even(sy * k), dw, dh, i, j))
+                lift = ",lutrgb=r='max(val\\,%d)':g='max(val\\,%d)':b='max(val\\,%d)'" % (LIFT, LIFT, LIFT) if LIFT else ""
+                lines.append("[s%d_%d]crop=%d:%d:%d:%d,scale=%d:%d:flags=lanczos,setsar=1%s[c%d_%d];" % (
+                    i, j, even(sw * k), even(sh * k), even(sx * k), even(sy * k), dw, dh, lift, i, j))
                 if isinstance(src, Cut):                  # a mask, 255 where the picture shows: only the unit, or a card with rounded corners
                     lines.append("movie=%s,scale=%d:%d,format=gray[m%d_%d];" % (src.mask, dw, dh, i, j))
                     lines.append("[c%d_%d]format=rgba[r%d_%d];[r%d_%d][m%d_%d]alphamerge[c%d_%d];" % (i, j, i, j, i, j, i, j, i, j))
-            lines.append("[b%d_%d][c%d_%d]overlay=%d:%d[b%d_%d];" % (i, j, i, j, dx, dy, i, j + 1))
+            lines.append("[b%d_%d][c%d_%d]overlay=%d:%d%s[b%d_%d];" % (i, j, i, j, dx, dy, OVERLAY, i, j + 1))
         lines.append("[b%d_%d]fps=%d,setsar=1[seg%d];" % (i, len(regions), fps, i))
         labels.append("[seg%d]" % i)
     lines.append("%sconcat=n=%d:v=1:a=0[outv]" % ("".join(labels), len(labels)))
@@ -434,8 +536,7 @@ def composite(raw, work, tl, length, fps, out, top="screen"):
     with open(script, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-i", os.path.abspath(raw), "-filter_complex_script", "composite.txt",
-                           "-map", "[outv]", "-c:v", "libx264", "-preset", "medium", "-crf", "14", "-pix_fmt", "yuv420p", "-r", str(fps),
-                           os.path.abspath(out)], cwd=work)
+                           "-map", "[outv]"] + encoder(fps, "medium", 14) + [os.path.abspath(out)], cwd=work)
 
 
 def unit_mask(raw, work, k):
@@ -456,10 +557,10 @@ def round_card(work, w, h):
     from PIL import Image, ImageDraw
     n = 4
     mask = Image.new("L", (w * n, h * n), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w * n - 1, h * n - 1), radius=CARD_RADIUS * n, fill=255)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w * n - 1, h * n - 1), radius=int(round(CARD_RADIUS * n)), fill=255)
     mask.resize((w, h), Image.LANCZOS).save(os.path.join(work, "round-%dx%d.png" % (w, h)))
     line = Image.new("RGBA", (w * n, h * n), (0, 0, 0, 0))
-    ImageDraw.Draw(line).rounded_rectangle((0, 0, w * n - 1, h * n - 1), radius=CARD_RADIUS * n, outline=CARD_FRAME + (255,), width=n)
+    ImageDraw.Draw(line).rounded_rectangle((0, 0, w * n - 1, h * n - 1), radius=int(round(CARD_RADIUS * n)), outline=CARD_FRAME + (255,), width=n * BOX_T)
     line.resize((w, h), Image.LANCZOS).save(os.path.join(work, "frame-%dx%d.png" % (w, h)))
 
 
@@ -479,14 +580,16 @@ def captions(tl, length, episode, work):
     cues = cue_list(tl)
     for i, (t, caption, sub) in enumerate(cues):
         end = cues[i + 1][0] if i + 1 < len(cues) else length
+        if SHAPE in ("landscape", "hero"):                       # wide enough for one line, and a second one would run into the small text
+            caption = caption.replace(chr(10), " ")
         for kind, text, size, y, colour in (("c", caption, CAPTION_SIZE, CAPTION_Y, "white"), ("s", sub, SUB_SIZE, SUB_Y, "0xb4b4b4")):
             if not text:
                 continue
             name = "text%d%s.txt" % (i, kind)
             with open(os.path.join(work, name), "w", encoding="utf-8") as f:
                 f.write(text)
-            chain.append("drawtext=fontfile=font.ttf:textfile=%s:x=%s:y=%d:fontsize=%d:fontcolor=%s:line_spacing=12:"
-                         "enable='between(t,%.2f,%.2f)'" % (name, CAPTION_X, y, size, colour, t + 0.15, end - 0.1))
+            chain.append("drawtext=fontfile=font.ttf:textfile=%s:x=%s:y=%d:fontsize=%d:fontcolor=%s:line_spacing=%d:"
+                         "enable='between(t,%.2f,%.2f)'" % (name, CAPTION_X, y, size, colour, int(round(12 * SCALE)), t + 0.15, end - 0.1))
     return chain
 
 
@@ -494,8 +597,7 @@ def burn(video, audio, work, chain, out, fps):
     with open(os.path.join(work, "burn.txt"), "w", encoding="utf-8") as f:
         f.write(",".join(chain))
     subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-i", os.path.abspath(video), "-i", os.path.abspath(audio),
-                           "-filter_script:v", "burn.txt", "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "slow",
-                           "-crf", "17", "-pix_fmt", "yuv420p", "-r", str(fps), "-c:a", "copy", "-movflags", "+faststart",
+                           "-filter_script:v", "burn.txt", "-map", "0:v", "-map", "1:a"] + encoder(fps, "slow", 17) + ["-c:a", "copy", "-movflags", "+faststart",
                            os.path.abspath(out)], cwd=work)
 
 
@@ -543,12 +645,27 @@ def master_sound(raw, work, out):
     phones = os.path.abspath(raw) + ".f32p"
     mix = os.path.exists(phones) and os.path.getsize(phones) > 0
     levels = "afade=t=in:d=0.02,loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.89:level=0"
+    # The emulator's sound is a few percent longer than the picture it was recorded with (see app/capture.py), so the sound is sped up
+    # by the ratio the deck wrote, without a change of pitch, and each sound stays where its picture is
+    speed = ""
+    rate = os.path.abspath(raw) + ".rate"
+    ratio = 1.0
+    if os.path.exists(rate):
+        ratio = float(open(rate).read())
+    elif os.path.exists(os.path.abspath(raw) + ".f32"):             # a recording from before the deck wrote it: the lengths say
+        seconds = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                                 os.path.abspath(raw)], text=True))
+        ratio = os.path.getsize(os.path.abspath(raw) + ".f32") / 8.0 / 44100 / seconds
+    if abs(ratio - 1.0) > 0.002:
+        speed = "asetrate=%d,aresample=44100," % round(44100 * ratio)     # resampled: atempo smears the bass
+        print("sound sped up %.2f%% to match the picture" % ((ratio - 1.0) * 100))
     raw_in = ["-f", "f32le", "-ar", "44100", "-ac", "2"]
     if mix:
         sound = (raw_in + ["-i", clean] + raw_in + ["-i", phones] +
-                 ["-filter_complex", "[0:a][1:a]amix=inputs=2:normalize=0:duration=first," + levels + "[a]", "-map", "[a]"])
+                 ["-filter_complex", "[0:a]%s[m];[1:a]%s[p];[m][p]amix=inputs=2:normalize=0:duration=first,%s[a]" % (
+                     speed.rstrip(",") or "anull", speed.rstrip(",") or "anull", levels), "-map", "[a]"])
     else:
-        sound = raw_in + ["-i", clean, "-af", levels]
+        sound = raw_in + ["-i", clean, "-af", speed + levels]
     subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error"] + sound + ["-c:a", "aac", "-b:a", "192k", os.path.abspath(out)], cwd=work)
 
 
@@ -595,6 +712,18 @@ def main():
                          "same recording, so --from-raw changes it. hero is landscape in the look of the website's picture, site is that picture "
                          "itself, to the pixel, made to move (2168x1442), window is the deck's window as it opens (about 1626x1060), "
                          "with no layout and no text. Default: SHAPE in the episode, else portrait")
+    ap.add_argument("--res", choices=tuple(RESOLUTIONS), default="hd",
+                    help="the size of the picture: hd is as the shape says (1080 on its short side), 2k is 1440 and 4k is 2160, with every "
+                         "layout and text made bigger. Like --shape, it is made from the same recording (--from-raw). The deck's window is "
+                         "recorded at one size, so the app's screen (800x480) is scaled up. The files have -2k or -4k after the shape")
+    ap.add_argument("--grid", action="store_true",
+                    help="the website's grid of lines behind the unit (--shape hero and site), left out by default")
+    ap.add_argument("--bg", choices=("dark", "black", "green", "transparent"), default="dark",
+                    help="what is behind the unit and the cards (--shape hero and site): the dark of the website's picture (dark), "
+                         "to composite over something else in an editor: black (the background is pure black and the unit and cards are "
+                         "lifted by 4 levels (of 255), so a luma key takes only the background out), green (0x00ff00, for a chroma key, but "
+                         "the unit has green pads), or transparent (a ProRes 4444 .mov with an alpha channel, very large). The site "
+                         "shape's titles are in its picture, so these have none. The files have -black, -green or -alpha after the shape")
     ap.add_argument("--no-link", action="store_true", help="no simulated decks (deckbench)")
     ap.add_argument("--from-raw", action="store_true", help="do not record again: make the picture from the last recording")
     args = ap.parse_args()
@@ -608,7 +737,7 @@ def main():
     if getattr(episode, "PATCH", False) and not args.patch and not args.from_raw:
         sys.exit("this episode shows the mods: give the mods' autoexec.bin with --patch")
     args.shape = args.shape or getattr(episode, "SHAPE", "portrait")
-    set_shape(args.shape)
+    set_shape(args.shape, args.res, args.grid, args.bg)
     out_dir = os.path.abspath(os.path.join(args.out, episode.NAME))
     # The hero shape has the list of mods beside the unit, so the app's screen is not given a page of it: it is another recording
     work = os.path.join(out_dir, "work-window" if args.shape == "window" else "work-hero" if args.shape in ("hero", "site") else "work")
@@ -622,19 +751,23 @@ def main():
     tl = plan["timeline"]
     top = args.top or getattr(episode, "TOP", "screen")
     tag = args.shape if args.shape in ("hero", "site", "window") else top + ("-wide" if args.shape == "landscape" else "")        # the files of the landscape picture have -wide after the look
-    composite(raw, work, tl, length, args.fps, os.path.join(work, "clean-video.mp4"), top)
+    if args.res != "hd" and args.shape != "window":
+        tag += "-" + args.res                              # reel-hero-2k.mp4 beside reel-hero.mp4
+    if BG != "dark":
+        tag += "-" + {"transparent": "alpha"}.get(BG, BG)
+    composite(raw, work, tl, length, args.fps, os.path.join(work, "clean-video" + EXT), top)
     master_sound(raw, work, os.path.join(work, "sound.m4a"))
-    mux(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s.mp4" % tag))
+    mux(os.path.join(work, "clean-video" + EXT), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s%s" % (tag, EXT)))
     chain = captions(tl, length, episode, work) + end_card(episode, tl, length)
     if chain:
-        burn(os.path.join(work, "clean-video.mp4"), os.path.join(work, "sound.m4a"), work, chain, os.path.join(out_dir, "reel-%s.mp4" % tag), args.fps)
+        burn(os.path.join(work, "clean-video" + EXT), os.path.join(work, "sound.m4a"), work, chain, os.path.join(out_dir, "reel-%s%s" % (tag, EXT)), args.fps)
     else:                                                  # no text anywhere (the site shape): the one picture is both
-        shutil.copyfile(os.path.join(out_dir, "reel-clean-%s.mp4" % tag), os.path.join(out_dir, "reel-%s.mp4" % tag))
+        shutil.copyfile(os.path.join(out_dir, "reel-clean-%s%s" % (tag, EXT)), os.path.join(out_dir, "reel-%s%s" % (tag, EXT)))
     write_srt(tl, length, os.path.join(out_dir, "reel.srt"))
     thumb = float(getattr(episode, "THUMB", 6.0))
-    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-ss", "%.2f" % thumb, "-i", os.path.join(out_dir, "reel-%s.mp4" % tag),
+    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-ss", "%.2f" % thumb, "-i", os.path.join(out_dir, "reel-%s%s" % (tag, EXT)),
                            "-frames:v", "1", os.path.join(out_dir, "thumb-%s.png" % tag)])
-    print("wrote %s (%.0f s)" % (os.path.join(out_dir, "reel-%s.mp4" % tag), length))
+    print("wrote %s (%.0f s)" % (os.path.join(out_dir, "reel-%s%s" % (tag, EXT)), length))
 
 
 def end_card(episode, tl, length):
@@ -649,8 +782,8 @@ def end_card(episode, tl, length):
     chain, y = [], END_Y
     for text, size, colour in card:
         chain.append("drawtext=fontfile=font.ttf:text='%s':x=(w-text_w)/2:y=%d:fontsize=%d:fontcolor=%s:enable='between(t,%.2f,%.2f)'"
-                     % (text.replace("'", "’").replace(":", "\\:"), y, size, colour, t0 + 0.2, t1))
-        y += int(size * 1.5)
+                     % (text.replace("'", "’").replace(":", "\\:"), y, int(round(size * SCALE)), colour, t0 + 0.2, t1))
+        y += int(round(size * SCALE * 1.5))
     return chain
 
 
@@ -670,7 +803,7 @@ def record(args, episode, raw):
     emu = start.Emulator(os.environ.get("DJS_WSL_DISTRO"), 7310, env=ENV)
     if emu.running():
         sys.exit("An emulator is running: stop it first (start.py stop).")
-    prepare(emu, args.patch, getattr(episode, "KIT", False))
+    prepare(emu, args.patch, getattr(episode, "KIT", False), getattr(episode, "USB_PROJECT", ""), getattr(episode, "MOD_SETTINGS", None))
     os.environ["DJS_CAPTURE_CRF"] = "12"
     emu.start()
     deck = None
@@ -688,6 +821,8 @@ def record(args, episode, raw):
             regress.wait_patch(emu, s)
         if getattr(episode, "KIT", False):                    # the generated kit (a project made from the test samples), not a factory one
             demo.load_kit(s)
+        elif getattr(episode, "USB_PROJECT", ""):             # a project of your own, copied to the stick (see prepare)
+            open_usb_project(s)
         else:
             open_internal_project(s, project_index(emu, args.project or getattr(episode, "PROJECT", "")))
         getattr(episode, "before", lambda s: None)(s)                       # off camera: what the first picture must already show
@@ -704,7 +839,7 @@ def record(args, episode, raw):
             cmd += ["--usb", usb]
         if modlist and args.patch:
             cmd += ["--modlist", modlist]
-        for suffix in (".start", ".stop", ".cmd", ".f32", ".f32p"):
+        for suffix in (".start", ".stop", ".cmd", ".f32", ".f32p", ".rate"):
             if os.path.exists(raw + suffix):
                 os.remove(raw + suffix)
         env = dict(os.environ, SDL_VIDEODRIVER="dummy", PYGAME_HIDE_SUPPORT_PROMPT="1")

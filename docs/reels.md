@@ -1,6 +1,6 @@
-# Reels: short vertical videos of the emulator
+# Reels: short videos of the emulator
 
-`tools/reel.py` makes a short video in 1080x1920 (for Reddit, Shorts, Reels and TikTok) the way `tools/demo.py` makes the long one:
+`tools/reel.py` makes a short video, 1080x1920 by default (for Reddit, Shorts, Reels and TikTok) the way `tools/demo.py` makes the long one:
 a script plays the unit and the virtual deck records it. Run it on the host, like `start.py`.
 
     python tools/reel.py example
@@ -29,7 +29,7 @@ caption.
 the right, in both looks (in `device`, the unit as it is, with its small screen, and the big screen as large as the room allows). Its
 files have `-wide` after the look (`reel-screen-wide.mp4`), so both shapes sit in the one folder.
 
-`--shape hero` is 1920x1080 in the look of the website's picture (`tools/hero.py`): the unit on a dark grid with nothing round it, and
+`--shape hero` is 1920x1080 in the look of the website's picture (`tools/hero.py`): the unit on a dark background with nothing round it, and
 on its right the app's screen above the list of mods, each in a thin frame with rounded corners as in that picture, with the caption over the cards. It ignores `--top` and
 writes `reel-hero.mp4`. The list of mods is beside the unit, so the app's screen is not given a page of it (`page` commands are
 not sent) and it is recorded on its own, in `work-hero`.
@@ -40,10 +40,21 @@ shows the switch). There is no layout, no caption and no end card, and it writes
 page on the screen, and the window is a size of its own, so it is recorded on its own (`work-window`).
 
 `--shape site` is that picture itself, to the pixel (2168x1442, as the picture is 2167 wide): the website's `hero.png` is the background
-with the unit taken out, so its titles, grid and frames are exactly the website's, and the unit, the app's screen and the list of
+with the unit taken out, so its titles and frames are exactly the website's (its grid is left out), and the unit, the app's screen and the list of
 mods are put where the picture has them, with the same rounded corners. There is no text. `tools/reels/hero.py` is the episode for it
 (`python tools/reel.py hero --patch ...`): the generated test kit of the picture, with a pattern that plays for 12 seconds while a few mods are switched off and on in turn. It needs the
 website's repository beside this one (`SITE_HERO` in `tools/hero.py`).
+
+`--grid` puts the website's grid of faint lines back behind the unit, in `hero` and `site`. They have none by default.
+
+`--bg black`, `green` or `transparent` takes the dark background away (`hero` and `site`), to composite the video over something else in an editor. `black` is pure black, with the unit and the cards lifted by 4 levels (of 255), so a luma key with a low threshold takes out the background and nothing else. `green` is 0x00ff00 for a chroma key (the unit has green pads, so `black` is the safer one). `transparent` is a ProRes 4444 `.mov` with an alpha channel, which is very large (about 2.8 GB for a minute at 2k). The files have `-black`, `-green` or `-alpha` after the shape. The `site` shape's titles are part of its picture, so they go with it.
+
+`--res 2k` or `--res 4k` makes the picture bigger (1440 or 2160 on its short side: 2560x1440 for `hero`, 1440x2560 for `portrait`),
+with every layout, line and text scaled to match. It is made from the same recording, so `--from-raw` can make it. The files have the
+size after the shape (`reel-hero-2k.mp4`). The deck's window is recorded at one size and the app's screen is 800x480 in it, so that
+part is scaled up. `--shape window` ignores it.
+
+The emulator makes its sound about 2% faster than real time (a little slower than it, on a project that is heavy for it), which a player never notices because it drops what it cannot play. A recording keeps every sample, so the sound would drift from the picture. The deck writes the ratio beside the recording (`raw.mp4.rate`) and `reel.py` and `demo.py` change the speed of the sound by it, keeping its pitch. A recording from before this has the ratio worked out from the two lengths. The deck's `--audio-block` and `--audio-buffer` are for playing live and do not matter here (a recording is made with the deck muted).
 
 ## An episode
 
@@ -57,6 +68,10 @@ An episode names the project to open and the scenes. A scene has a layout, a cap
 and the least time it lasts:
 
     {"layout": "play", "caption": "Pads, knobs, touch strip", "sub": "all of it works", "do": "pads", "seconds": 7.0}
+
+An episode can use a project of your own from the stick (`~/djs/usb`, or `$DJS_USB_SRC`) instead of one of the unit's: `USB_PROJECT = "Rodeo"`
+copies that project and its samples (`Samples/Rodeo`) to the reel's stick and opens it from USB. `MOD_SETTINGS = {"track-echo": "on"}`
+writes lines of the mods' `djs1000-mods.txt` on that stick, for a mod that starts off or a setting the project needs.
 
 `do` names a function `do_pads(ctx)` in the same file. It plays the panel through `ctx` (`press`, `touch`, `wait`, `say`, and
 `ctx.s`, the session). Use `ctx.press` and `ctx.touch` while a project plays: the session's own waits for the screen to hold still,

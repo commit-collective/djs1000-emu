@@ -9,6 +9,9 @@ A script that drives the app while this records talks to the deck through files 
 
     FILE.start   written when the first frame is taken: the time (time.time()) it began
     FILE.stop    when this file exists, the deck ends the recording and closes
+    FILE.rate    written at the end: the sound's length over the video's. The emulator makes its sound a little faster than real
+                 time (about 3%, which a player never notices, as it drops what it cannot play) and every sample is kept here, so
+                 the sound drifts later than the picture by that much. A tool that joins them speeds it up by this (resampling it, as atempo smears the bass)
     FILE.cmd     lines appended to it are run as they come: `hover MOD` (the mod's text under the list), `toggle MOD`,
                  `page mods` (the face's small screen shows the list of mods as a page of the unit) and `page off`,
                  `knob NAME DELTA` (turns a knob of the face, as the mouse wheel does: fx_level, knob_1 to knob_6 ...),
@@ -39,8 +42,9 @@ class Capture:
         self.began = None                # time.perf_counter() of the first frame
         self.next = None
         self.frames = 0
+        self.samples = 0                 # frames of the master's sound written
         self._cmd_read = 0
-        for suffix in (".start", ".stop", ".cmd"):
+        for suffix in (".start", ".stop", ".cmd", ".rate"):
             if os.path.exists(path + suffix):
                 os.remove(path + suffix)
 
@@ -62,6 +66,8 @@ class Capture:
     def sound(self, data, which=0):
         """The master's frames (stereo float32, which 0) or the headphones' (1), from the moment the first picture was taken."""
         if self.began is not None:
+            if not which:
+                self.samples += len(data) // 8
             (self.audio_phones if which else self.audio).write(data)
 
     def stopped(self):
@@ -85,5 +91,8 @@ class Capture:
         except OSError:
             pass
         self.proc.wait()
+        if self.frames:
+            with open(self.path + ".rate", "w") as f:
+                f.write("%.6f" % (self.samples / float(RATE) / (self.frames / float(self.fps))))
         self.audio.close()
         self.audio_phones.close()

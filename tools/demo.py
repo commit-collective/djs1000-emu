@@ -187,8 +187,13 @@ def finish(video, final, marks, length, gif, work):
         chain.append("drawtext=fontfile=font.ttf:textfile=%s:x=(w-text_w)/2:y=h-86:fontsize=34:fontcolor=white:"
                      "box=1:boxcolor=black@0.65:boxborderw=16:enable='between(t,%.2f,%.2f)'" % (name, t + 0.2, end - 0.2))
     video = os.path.abspath(video)
+    speed = ""                                       # the sound is a little longer than the picture, see app/capture.py
+    if os.path.exists(video + ".rate"):
+        ratio = float(open(video + ".rate").read())
+        if abs(ratio - 1.0) > 0.002:
+            speed = "asetrate=%d,aresample=44100," % round(44100 * ratio)     # resampled: atempo smears the bass
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-f", "f32le", "-ar", "44100", "-ac", "2", "-i",
-           video + ".f32", "-vf", ",".join(["scale=1920:-2"] + chain), "-af", "alimiter=limit=0.89:level=0", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+           video + ".f32", "-vf", ",".join(["scale=1920:-2"] + chain), "-af", speed + "alimiter=limit=0.89:level=0", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart",
            os.path.abspath(final)]
     subprocess.check_call(cmd, cwd=work)
@@ -241,7 +246,7 @@ def main():
             cmd += ["--usb", usb]
         if modlist and args.patch:
             cmd += ["--modlist", modlist]
-        for suffix in (".start", ".stop", ".cmd", ".f32"):      # the files of an earlier take are not this one
+        for suffix in (".start", ".stop", ".cmd", ".f32", ".rate"):      # the files of an earlier take are not this one
             if os.path.exists(raw + suffix):
                 os.remove(raw + suffix)
         env = dict(os.environ, SDL_VIDEODRIVER="dummy", PYGAME_HIDE_SUPPORT_PROMPT="1")
