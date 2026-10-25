@@ -106,7 +106,7 @@ class Deck:
     def icon():
         """The window's icon (see art.icon), as a pygame surface."""
         im = art.icon(64)
-        return pygame.image.fromstring(im.tobytes(), im.size, "RGBA")
+        return pygame.image.frombytes(im.tobytes(), im.size, "RGBA")
 
     def __init__(self, link, size, players=(None, None), recorder=None, listen=None, mods=None):
         self.link = link
