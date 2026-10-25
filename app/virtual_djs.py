@@ -933,6 +933,9 @@ def main():
     ap.add_argument("--audio-buffer", type=int, default=audio.BUFFER_MS, metavar="MS",
                     help="sound to have waiting before playing starts, in milliseconds (default %d): more is steadier and later"
                          % audio.BUFFER_MS)
+    ap.add_argument("--audio-block", type=int, default=audio.PERIOD, metavar="FRAMES",
+                    help="frames the sound card is given at a time (default %d): a bigger one rides out the deck being busy "
+                         "(the `late` count), at as much more delay (8192 is 186 ms)" % audio.PERIOD)
     ap.add_argument("--mute", action="store_true",
                     help="play nothing, but show the MASTER / PHONES switch as if a sound device were there (for a recording)")
     ap.add_argument("--listen", choices=("master", "phones"), default="master",
@@ -971,8 +974,8 @@ def main():
         print("Playback:\n  " + "\n  ".join(audio.devices()))
         print("Recording:\n  " + "\n  ".join(audio.devices(True)))
         return
-    master = audio.Silent() if args.mute else None if args.no_audio else audio.Player(audio.pick(args.audio), args.audio_buffer)
-    phones = audio.Player(audio.pick(args.headphones), args.audio_buffer) if args.headphones else None
+    master = audio.Silent() if args.mute else None if args.no_audio else audio.Player(audio.pick(args.audio), args.audio_buffer, args.audio_block)
+    phones = audio.Player(audio.pick(args.headphones), args.audio_buffer, args.audio_block) if args.headphones else None
     outputs = (master, phones)
 
     listen = [1 if args.listen == "phones" else 0]

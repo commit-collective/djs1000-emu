@@ -85,6 +85,8 @@ Sound, all at 44.1 kHz stereo:
 - `--audio-buffer MS` (default 150) is how much sound waits before playing starts. The app is emulated and gives its sound
   in bursts: when it is late, the deck runs dry and the sound cuts for a moment while it fills up again. More is steadier and later.
   The status line counts the times: `dry` is the app being late with its sound, `late` is the deck being busy when the sound card asked
+  for it. `--audio-block FRAMES` (default 2048) is the block the sound card is given at a time: a bigger one (8192) rides out the deck
+  being busy, at as much more delay.
 - the app's input (LIVE SAMPLING, and whatever monitors the input) is fed
   from the system's default recording device, or `--input NAME`,
   `--no-input` feeds silence. With a microphone and speakers, monitoring the

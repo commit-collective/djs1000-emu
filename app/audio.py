@@ -22,7 +22,7 @@ from pygame._sdl2 import audio as sdl_audio
 RATE = 44100
 FRAME = 8                                # bytes: two float32
 BUFFER_MS = 150                          # sound waiting before playing starts (the cost is that much delay)
-PERIOD = 2048                            # frames SDL asks for at a time: 46 ms. Small ones (11 ms) are missed when the deck draws
+PERIOD = 2048                            # frames SDL asks for at a time (46 ms). Small ones (11 ms) are missed when the deck draws; --audio-block
 
 
 def devices(capture=False):
@@ -138,7 +138,7 @@ class Silent:
 
 
 class Player:
-    def __init__(self, device=None, buffer_ms=BUFFER_MS):
+    def __init__(self, device=None, buffer_ms=BUFFER_MS, block=PERIOD):
         self.name = device or "default device"
         self.closed = False
         self._buf = bytearray()
@@ -147,9 +147,10 @@ class Player:
         self._start = RATE * FRAME * max(20, buffer_ms) // 1000      # waiting before playing starts
         self._most = self._start * 3 + RATE * FRAME * 100 // 1000    # more than this waiting: drop the oldest
         self._last = 0.0
+        self._period = block / RATE
         self.dry = 0                     # times the sound ran out while playing (the app was late)
         self.late = 0                    # times SDL's thread was called more than twice its period late (the deck was busy)
-        self._dev = sdl_audio.AudioDevice(device, 0, RATE, sdl_audio.AUDIO_F32, 2, PERIOD, 0,
+        self._dev = sdl_audio.AudioDevice(device, 0, RATE, sdl_audio.AUDIO_F32, 2, block, 0,
                                           self._fill)
         self._dev.pause(0)
 
@@ -168,7 +169,7 @@ class Player:
         view = memoryview(view).cast("B")   # SDL's buffer, to be filled
         want = len(view)
         now = time.monotonic()
-        if self._last and now - self._last > 2.0 * PERIOD / RATE and self._playing:
+        if self._last and now - self._last > 2.0 * self._period and self._playing:
             self.late += 1
         self._last = now
         with self._lock:
