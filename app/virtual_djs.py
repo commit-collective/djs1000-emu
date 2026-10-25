@@ -568,8 +568,10 @@ class Deck:
                     new.gain = self.knob_step[i] / L.POT_STEPS
 
     def open_bench(self):
-        if self.bench:
+        if self.bench and self.bench.up:
             webbrowser.open(self.bench.url)
+        elif self.bench:
+            self.say("deckbench is not running (start.py starts it beside the emulator, or deckbench --http-port 8750)")
 
     def step_velocity(self, direction):
         """The pad velocity of a mouse hit: less or more, by tens of a hundred, and past 100 by where on the pad it is hit."""
@@ -596,7 +598,7 @@ class Deck:
             items += [("Sound in: this computer", "check", lambda: self.input_kind == "system", lambda: self.set_input("system")),
                       ("Sound in: deckbench", "check", lambda: self.input_kind == "bench", lambda: self.set_input("bench")),
                       ("Sound in: nothing", "check", lambda: self.input_kind == "none", lambda: self.set_input("none"))]
-        if self.bench and self.bench.up:
+        if self.bench:
             items += [("Open deckbench's page", "action", None, self.open_bench)]
         if hasattr(self.master, "set_wait"):
             items += [("Sound waits 50 ms less", "action", None, lambda: self.wait_more(-50)),
@@ -704,6 +706,8 @@ class Deck:
         if what[0] == "toolbg":
             return ""
         if what[0] == "bench":
+            if self.bench and not self.bench.up:
+                return "deckbench is not running  \u00b7  start.py starts it beside the emulator"
             return "deckbench's decks  \u00b7  click to open its page"
         if what[0] == "copy":
             return ""
@@ -1545,8 +1549,8 @@ class Deck:
             places += [("level", 72), ("speed", self.font.size("\u00d70.00")[0])]
             if waiting:
                 places.append(("waits", self.font.size("waits 1000 of 1000 ms")[0]))
-        if self.bench and self.bench.up:
-            places.append(("bench", self.font.size(self.bench.text())[0]))      # the last, so that its words changing moves nothing else
+        if self.bench:                                  # always there: a button, which opens deckbench's page, and what its decks do
+            places.append(("bench", self.small.size("DECKBENCH")[0] + 14 + 8 + self.font.size(self.bench.text() if self.bench.up else "not running")[0]))
         for kind, width in places:
             if x - width <= left + 260:
                 break
@@ -1575,9 +1579,16 @@ class Deck:
                 t = self.font.render(f"waits {waiting()} of {self.master.wait_ms} ms", True, (150, 152, 158))
                 win.blit(t, (place.right - t.get_width(), bar.top + 5))
             elif kind == "bench":
-                t = self.font.render(self.bench.text(), True, (150, 220, 120) if self.bench.on else (150, 152, 158))
-                win.blit(t, (place.left, bar.top + 5))               # from the left: its words change in length
-                self.bench_rect = pygame.Rect(place.left, bar.top, min(t.get_width(), width), STATUS_H)
+                up = self.bench.up
+                over_it = self.bench_rect.collidepoint(pygame.mouse.get_pos())
+                label = self.small.render("DECKBENCH", True, (225, 228, 232) if up else (150, 152, 158))
+                r = pygame.Rect(place.left, bar.top + 4, label.get_width() + 14, STATUS_H - 8)
+                pygame.draw.rect(win, (62, 64, 70) if over_it else (40, 41, 45), r, border_radius=4)
+                win.blit(label, label.get_rect(center=r.center))
+                words = self.bench.text() if up else "not running"
+                t = self.font.render(words, True, (150, 220, 120) if up and self.bench.on else (150, 152, 158))
+                win.blit(t, (r.right + 8, bar.top + 5))              # from the left: its words change in length
+                self.bench_rect = pygame.Rect(place.left, bar.top, min(r.width + 8 + t.get_width(), width), STATUS_H)
             x = place.left - 14
         # What is under the mouse, or when nothing is, the last thing done (a click copies it)
         room = pygame.Rect(left, bar.top, max(0, x - left), STATUS_H)

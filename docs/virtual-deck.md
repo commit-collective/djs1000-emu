@@ -60,9 +60,9 @@ is drawn pressed, with an amber ring round it. A pad is hit as hard as where on 
 **Pad velocity** says a share of full velocity (10 to 100 %: a click on the left half of the row is less and on the right half more, and
 past 100 it goes back to by position), which a held pad uses too.
 
-When deckbench's page answers (`--bench URL`, `http://127.0.0.1:8750/` by default, where `start.py` starts it) the status line says how
-many of its decks are on and playing, which is the master and how many play a file of their own (deckbench's `--track`), and a click on it
-opens the page.
+The status line always has a DECKBENCH button (`--bench URL`, `http://127.0.0.1:8750/` by default, where `start.py` starts it, and the tools
+menu has the same). A click opens deckbench's page. Beside it the line says how many of the decks are on and playing, which is the master and
+how many play a file of their own (deckbench's `--track`), or "not running" when the page does not answer, and a click then says how to start it.
 
 When the patch on the USB folder carries mods (`autoexec.bin` from the
 djs1000-mods project), the panel lists them above the reminder, grouped as the
