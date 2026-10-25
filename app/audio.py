@@ -165,6 +165,22 @@ class Player:
             self._buf.clear()
             self._playing = False
 
+    def waiting_ms(self):
+        """Sound waiting to be played, in milliseconds."""
+        return len(self._buf) * 1000 // (RATE * FRAME)
+
+    @property
+    def wait_ms(self):
+        """How much sound waits before playing starts (--audio-buffer)."""
+        return self._start * 1000 // (RATE * FRAME)
+
+    def set_wait(self, ms):
+        """Changes it while playing: more is steadier and later."""
+        ms = max(20, min(2000, int(ms)))
+        with self._lock:
+            self._start = RATE * FRAME * ms // 1000
+            self._most = self._start * 3 + RATE * FRAME * 100 // 1000
+
     def _fill(self, dev, view):
         view = memoryview(view).cast("B")   # SDL's buffer, to be filled
         want = len(view)

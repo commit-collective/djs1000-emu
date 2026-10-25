@@ -73,12 +73,12 @@ def deck_checks(link):
         deck = virtual_djs.Deck(link, size, (FakePlayer(), None), None, [0])
         deck.pump()
         deck.draw()
-        k = deck.scale
-        points = [((key.bounds()[0] + key.bounds()[2]) / 2 * k, (key.bounds()[1] + key.bounds()[3]) / 2 * k)
+        k, ox = deck.scale, deck.ox                      # the unit begins ox from the window's edge
+        points = [((key.bounds()[0] + key.bounds()[2]) / 2 * k + ox, (key.bounds()[1] + key.bounds()[3]) / 2 * k)
                   for key in L.KEYS]
-        points += [(knob.circle[0] * k, knob.circle[1] * k) for knob in L.KNOBS]
-        points += [(L.SLIDER[0] * k, (L.SLIDER[1] + 40) * k), deck.listen_rect.center,
-                   deck.lcd_rect.center, ((L.STRIP[0] + 50) * k, (L.STRIP[1] + 100) * k)]
+        points += [(knob.circle[0] * k + ox, knob.circle[1] * k) for knob in L.KNOBS]
+        points += [(L.SLIDER[0] * k + ox, (L.SLIDER[1] + 40) * k), deck.listen_rect.center,
+                   deck.lcd_rect.center, ((L.STRIP[0] + 50) * k + ox, (L.STRIP[1] + 100) * k)]
         if deck.dock:
             points.append(deck.dock.center)
         points += [(x, y) for x in range(0, size[0], 53) for y in range(0, size[1], 47)]

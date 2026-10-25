@@ -491,14 +491,28 @@ def set_style(name):
     if name not in ("flat", "real"):
         raise ValueError("no such face: %s" % name)
     STYLE = name
-    for fn in (face, _key_sprite, _knob_sprite, slider_cap):
+    for fn in (face, face_alpha, _key_sprite, _knob_sprite, slider_cap):
         fn.cache_clear()
 
 
 @lru_cache(maxsize=4)
 def face(scale):
     """The whole panel with every control unlit, as an RGB image."""
-    c = _Canvas(0, 0, L.W, L.H, scale, fill=(*bg(), 255))
+    return _face(scale, bg())
+
+
+@lru_cache(maxsize=4)
+def face_alpha(scale):
+    """Where the unit is in face(scale): 255 on the housing, 0 round it (grey on the edge, as the edge is drawn). Found by drawing
+    the face on black and on white: only what is round it differs."""
+    from PIL import ImageChops
+    black = face(scale).split()[1]
+    white = _face(scale, (255, 255, 255)).split()[1]
+    return ImageChops.subtract(Image.new("L", black.size, 255), ImageChops.subtract(white, black))
+
+
+def _face(scale, background):
+    c = _Canvas(0, 0, L.W, L.H, scale, fill=(*background, 255))
     real = STYLE == "real"
     if real:
         _real_body(c)

@@ -17,7 +17,12 @@ and again after a restart. Until the app has drawn, which takes about half a
 minute from a cold start, its screen says so with a progress bar.
 
 Beside the face is the app's screen at full size, the easier one to touch,
-and under it a reminder of what the mouse and the keys do. F10 hides that
+and under it the list of installed mods and a reminder of what the mouse and the keys do, each in a box closed by a thin line (`--no-outline`
+leaves the lines out, and a recording leaves them out too, as the reels frame their cards themselves). For a screen recording that is keyed on
+its brightness, the window is black only where nothing is, round the unit and between the boxes, and every pixel of the unit and of the
+boxes is at least 4 of 255 bright (the way the black reels are made), so a luma key of a few points takes out the background alone. That is
+how it starts (`--key 6` for a lift of 6, `--no-key` for the blacks as they are, and a `--record` is made without it). The status line at the
+foot is not kept off black: crop it, or hide it (F9). F10 hides that
 panel and narrows the window to the face (`--compact` starts that way). F12
 swaps the reminder for the lamp diagnostics: every two-level lamp by id, as
 the app sets it. The face is drawn as the unit looks (`--face real`, the default): black gloss plastic with a lit rim and raised
@@ -29,6 +34,34 @@ plays harder the lower you press it), turn knobs with the wheel or by
 dragging, click the selector to push it, and use the mouse as a finger on
 the screen. The status line names the control under the mouse and its
 keyboard key.
+
+The right of the status line has some readings, and a TOOLS button (F8) with a menu. The readings are the master's level (a bar with a
+held peak, and a red mark for a sample at full scale), how fast the sound arrives (`×1.00` is real time: the emulator runs a little
+fast or slow, and below about 0.97 it is not keeping up, which is when the sound drops out), and how much sound waits to be played
+against how much is asked (`waits 118 of 150 ms`, see `--audio-buffer`). With the mouse over nothing, the line shows the last thing
+you did as a line for a script (`ctx.touch(487, 333)`, `ctx.press((2, 3))  # play`) and a click on it copies it. The menu has: the
+keyable background (`--key`), the side panel outline, the status line (F9), always on top, the velocity of a pad hit by the mouse, a larger or smaller window, unplugging
+and plugging in the USB stick, where the app's sound input comes from (this computer's recording device, deckbench's decks or nothing:
+the same as `--input` and `--input-tcp 127.0.0.1:7320`, changed as it runs), the time the sound waits (50 ms at a time, while it plays) and
+a way to deckbench's page. With the status line hidden, the TOOLS button comes up when the mouse goes to the foot of the window, so that
+the line and the menu can always be reached.
+
+**REC** (the first row of the menu, or F7) records the window to `demo/captures` (`--captures DIR`, 30 frames a second, `--fps`): a video of the
+window as it is, with the keyable background, but without its status line or the menu, so that nothing has to be cropped, and the sound as
+you hear it: the output the MASTER / PHONES switch has chosen (not the two added, which would thin it: the headphones carry a quieter, partly
+inverted copy of the program). When it ends (REC again, or closing the window) the picture is retimed by a
+percent or two to follow the sound (the emulator's sound runs a little fast or slow against the clock, and the sound keeps its pitch), and two files are made: `deck-DATE-TIME.mp4` and `deck-DATE-TIME.wav` (the
+sound alone, 24 bits). It needs `ffmpeg` on the path. The status line shows a red REC and the time. A window that is resized while it
+records is scaled to the size it began with. `--record` is the scripted capture of the reels and has no REC.
+
+A right click on a pad or a step key holds it down until it is clicked again (left or right click, or its keyboard key for a step key): it
+is drawn pressed, with an amber ring round it. A pad is hit as hard as where on it the mouse is (harder towards the bottom) unless the menu's
+**Pad velocity** says a share of full velocity (10 to 100 %: a click on the left half of the row is less and on the right half more, and
+past 100 it goes back to by position), which a held pad uses too.
+
+When deckbench's page answers (`--bench URL`, `http://127.0.0.1:8750/` by default, where `start.py` starts it) the status line says how
+many of its decks are on and playing, which is the master and how many play a file of their own (deckbench's `--track`), and a click on it
+opens the page.
 
 When the patch on the USB folder carries mods (`autoexec.bin` from the
 djs1000-mods project), the panel lists them above the reminder, grouped as the

@@ -2,9 +2,19 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The virtual DJS-1000: the running app drawn as the machine, in one window.
 
-    python app/virtual_djs.py [--host 127.0.0.1] [--port 7310]
-                              [--audio NAME | --no-audio] [--headphones NAME]
-                              [--input NAME | --no-input] [--list-audio]
+    python app/virtual_djs.py [options]       (--help lists them all)
+
+    --host, --port        where the emulator is (127.0.0.1, 7310)
+    --audio, --no-audio, --mute, --listen, --headphones, --list-audio, --audio-buffer, --audio-block
+                          the sound out (docs/virtual-deck.md)
+    --input, --input-tcp, --no-input
+                          the sound in
+    --compact, --height, --width, --face, --no-outline, --key
+                          how the window looks (--key: black round it, for keying a recording)
+    --usb, --modlist, --hover
+                          the list of mods
+    --record, --fps, --snapshot
+                          a video or a picture of the window
 
 Start the app first (scripts/run.sh). The window shows it as soon as it is
 there, and again after a restart. The face's screen is the app's own, its
@@ -33,8 +43,16 @@ Needs pygame-ce and Pillow (requirements.txt).
 """
 
 import argparse
+import array
+import math
 import os
+import shutil
+import subprocess
 import sys
+import threading
+import time
+import webbrowser
+from collections import deque
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 os.environ.setdefault("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2")
@@ -51,10 +69,17 @@ from link import Link  # noqa: E402
 from mods import Mods  # noqa: E402
 from capture import Capture  # noqa: E402
 
+CAPTURES = os.path.join(os.path.dirname(HERE), "demo", "captures")      # where REC puts its files (demo/ is git-ignored: media is never committed)
+
 TITLE = "Virtual DJS-1000"
 BG = (5, 5, 5)
 DOCK_PAD = 16
+SECTION_GAP = 18                         # between the large screen and the mods, and between the sections of the side panel (a recording keeps 8)
 STATUS_H = 26
+MENU_ROW, MENU_W = 24, 252              # the tools menu: a row, and its width
+VELOCITIES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, None]      # the pad velocity setting: a share, or None for by where on the pad
+BENCH_URL = "http://127.0.0.1:8750/"     # where deckbench's page is (start.py starts it there)
+BENCH_AUDIO = "127.0.0.1:7320"           # and its decks' sound (--input-tcp, and the menu's "Sound in: deckbench")
 ROW = 26                                 # a row of the side panel's lists
 HEAD = 28                                # a section's header
 DETAIL_H = 18 * 5 + 12                   # what the mods' list shows of the mod the mouse is on: its page text
@@ -63,7 +88,7 @@ MIN_HOLD = 120                           # ms a clicked key or pad stays down at
 BOOT_S = 24                              # about how long the app takes to draw its first screen
 HELP = (                                 # the side panel's reminder: (keys, what they do)
     ("Mouse", "press keys and pads, drag or wheel knobs, touch the screen"),
-    ("Right-click", "strip: leave a finger on it   \u00b7   tempo slider: centre"),
+    ("Right-click", "pad, step key: hold it down (click to let go)   \u00b7   strip: leave a finger on it   \u00b7   tempo slider: centre"),
     ("Space  B  N", "PLAY/PAUSE   STOP   REC"),
     ("\u2191 \u2193   Enter   \u2190", "selector: turn, push   \u00b7   BACK (also Esc)"),
     ("F1 \u2013 F6", "the six knobs (Right Shift: the other way)"),
@@ -72,6 +97,7 @@ HELP = (                                 # the side panel's reminder: (keys, wha
     ("Left Shift", "SHIFT"),
     ("Tab", "main sound device: MASTER / PHONES"),
     ("F10   F12", "hide this panel   \u00b7   lamp diagnostics"),
+    ("F7   F8   F9", "record the window   \u00b7   tools menu   \u00b7   hide or show the status line"),
 )
 DRAG_PX = 7                              # mouse travel for one encoder step
 
@@ -93,6 +119,170 @@ KEYCAPS = {"Esc": pygame.K_ESCAPE, "-": pygame.K_MINUS, "Space": pygame.K_SPACE,
            "Left Shift": pygame.K_LSHIFT}
 
 
+def edge(h):
+    """The room the window has under the unit, which is its margin on the other three sides too (not in a recording, whose regions are
+    measured from the window's edge): what is left between the foot of the unit's body and the status line."""
+    scale = max(0.2, (h - STATUS_H) / L.H)
+    return max(2, h - STATUS_H - int(L.BODY[3] * scale) - 1)
+
+
+class Meter:
+    """What the master's sound is doing, for the status line: how loud it is and how fast it arrives (1.0 is real time: the emulator
+    is a little faster or slower than that, which is why a recording's sound has to be fitted to its picture). feed() is called from
+    the link's thread, the rest from the window's."""
+
+    def __init__(self):
+        self.peak = 0.0                  # the loudest sample since it was last read
+        self.shown = 0.0                 # what the bar shows: it falls slowly
+        self.hold, self.hold_at = 0.0, 0.0
+        self.clip_at = -9.0              # when a sample last reached full scale
+        self.frames = 0
+        self.marks = deque(maxlen=2000)  # (time, frames so far)
+
+    def feed(self, data):
+        n = len(data) // 8
+        if not n:
+            return
+        a = array.array("f")
+        a.frombytes(data[:n * 8])
+        p = max(max(a), -min(a))
+        if p > self.peak:
+            self.peak = p
+        if p >= 0.99:
+            self.clip_at = time.perf_counter()
+        self.frames += n
+        self.marks.append((time.perf_counter(), self.frames))
+
+    def speed(self):
+        """Frames that arrived a second, over the last five seconds, over 44100: None if there is not enough sound to say."""
+        try:
+            marks = list(self.marks)
+        except RuntimeError:
+            return None
+        now = time.perf_counter()
+        marks = [m for m in marks if now - m[0] <= 5.0]
+        if len(marks) < 2 or now - marks[-1][0] > 2.0 or marks[-1][0] - marks[0][0] < 1.5:
+            return None
+        return (marks[-1][1] - marks[0][1]) / 44100.0 / (marks[-1][0] - marks[0][0])
+
+    def level(self):
+        """(the bar, the held peak, whether it clipped lately), each 0 to 1 on a scale of -60 dB to 0."""
+        now = time.perf_counter()
+        p, self.peak = self.peak, 0.0
+        self.shown = max(p, self.shown * 0.9)
+        if p >= self.hold or now - self.hold_at > 1.5:
+            self.hold, self.hold_at = max(p, self.shown), now
+
+        def scale(v):
+            return min(1.0, max(0.0, (20 * math.log10(max(v, 1e-6)) + 60) / 60))
+        return scale(self.shown), scale(self.hold), now - self.clip_at < 1.0
+
+
+class BenchWatch:
+    """What deckbench says of its decks, asked for in the background every two seconds, for the status line."""
+
+    def __init__(self, url):
+        self.url = url.rstrip("/") + "/"
+        self.up = False
+        self.on = self.playing = self.with_file = 0
+        self.master = None
+        self.closed = False
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        import json
+        import urllib.request
+        while not self.closed:
+            try:
+                with urllib.request.urlopen(self.url + "api/state", timeout=1.5) as reply:
+                    decks = json.load(reply)["decks"]
+                self.on = sum(1 for d in decks.values() if d.get("on"))
+                self.playing = sum(1 for d in decks.values() if d.get("on") and d.get("play"))
+                self.with_file = sum(1 for d in decks.values() if d.get("on") and d.get("audio"))
+                masters = [n for n, d in decks.items() if d.get("on") and d.get("master")]
+                self.master = masters[0] if masters else None
+                self.up = True
+            except (OSError, ValueError, KeyError, AttributeError):
+                self.up = False
+            time.sleep(2.0)
+
+    def text(self):
+        """The status line's words: how many decks are on, how many play, which is the master, how many play a file of their own."""
+        text = f"decks {self.on} on \u00b7 {self.playing} playing"
+        if self.master:
+            text += f" \u00b7 master {self.master}"
+        if self.with_file:
+            text += f" \u00b7 {self.with_file} with a file"
+        return text
+
+
+class Recording:
+    """REC: the window (without its status line and the menu) as video, and the sound as you hear it (the output the MASTER / PHONES switch
+    has chosen, not the two added: the headphones carry an attenuated, partly inverted copy of the program, which would thin it), in a
+    folder. The video is app/capture.py's, the same as --record; when it ends the sound is fitted to it and joined: NAME.mp4 (video and
+    sound) and NAME.wav (the sound alone, 24 bits, for an editor)."""
+
+    def __init__(self, folder, size, fps):
+        os.makedirs(folder, exist_ok=True)
+        self.name = "deck-" + time.strftime("%Y%m%d-%H%M%S")
+        self.base = os.path.join(folder, self.name)
+        self.video = self.base + ".video.mp4"
+        self.size, self.fps = size, fps
+        self.capture = Capture(self.video, size, fps)
+        self.began = time.time()
+
+    def frame(self, surf):
+        if surf.get_size() != self.size:             # the window was resized: the file keeps the size it began with
+            surf = pygame.transform.smoothscale(surf, self.size)
+        self.capture.frame(surf)
+
+    def sound(self, data, which):
+        self.capture.sound(data, which)
+
+    def seconds(self):
+        return time.time() - self.began
+
+    def finish(self, done, wait=False):
+        """Ends the video and, in the background, joins it with the sound. done(text) says where the file is, or what went wrong."""
+        self.capture.close()
+        worker = threading.Thread(target=self._join, args=(done,), daemon=True)
+        worker.start()
+        if wait:
+            worker.join()
+
+    def _join(self, done):
+        ffmpeg = shutil.which("ffmpeg")
+        try:
+            master, rate = self.video + ".f32", self.video + ".rate"
+            ratio = float(open(rate).read()) if os.path.exists(rate) else 1.0
+            # the emulator's sound runs a little fast or slow against the clock (capture.py). The sound is kept as it is, at its own pitch
+            # and pace, and the picture is retimed by that little to follow it
+            retime = "setpts=%.6f*PTS,fps=%d" % (ratio, self.fps) if abs(ratio - 1.0) > 0.002 else "null"
+            sound = os.path.exists(master) and os.path.getsize(master) > 0
+            final = self.base + ".mp4"
+            if sound:
+                raw = ["-f", "f32le", "-ar", "44100", "-ac", "2"]
+                wav = self.base + ".wav"
+                subprocess.check_call([ffmpeg, "-y", "-loglevel", "error"] + raw + ["-i", master, "-c:a", "pcm_s24le", wav])
+                video = ["-c:v", "copy"] if retime == "null" else ["-vf", retime, "-c:v", "libx264", "-preset", "fast", "-crf", "16", "-pix_fmt", "yuv420p"]
+                subprocess.check_call([ffmpeg, "-y", "-loglevel", "error", "-i", self.video, "-i", wav, "-map", "0:v", "-map", "1:a"] + video + [
+                                       "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", final])
+            else:
+                os.replace(self.video, final)
+            for suffix in ("", ".f32", ".f32p", ".rate", ".start", ".stop", ".cmd"):
+                try:
+                    os.remove(self.video + suffix)
+                except OSError:
+                    pass
+            try:
+                shown = os.path.relpath(final, os.path.dirname(HERE))      # from the repository, if it is on this drive
+            except ValueError:
+                shown = final
+            done("saved " + shown)
+        except (OSError, subprocess.CalledProcessError, ValueError) as e:
+            done("the recording was not joined: %s (the parts are %s.*)" % (e, self.video))
+
+
 def surface(img):
     mode = "RGBA" if img.mode == "RGBA" else "RGB"
     if img.mode not in ("RGB", "RGBA"):
@@ -108,8 +298,9 @@ class Deck:
         im = art.icon(64)
         return pygame.image.frombytes(im.tobytes(), im.size, "RGBA")
 
-    def __init__(self, link, size, players=(None, None), recorder=None, listen=None, mods=None):
+    def __init__(self, link, size, players=(None, None), recorder=None, listen=None, mods=None, tidy=True):
         self.link = link
+        self.tidy = tidy                 # the window's margin and spacing: not in a recording, which is cut up by places in the window
         self.mods = mods or Mods(None)   # what a patch on the USB drive carries
         self.mod_rects = []              # (where, name): the switches drawn in the side panel
         self.mod_hover = None            # the mod the mouse was last on in the list (its text shows under it)
@@ -123,6 +314,30 @@ class Deck:
         self.master, self.phones = players
         self.recorder = recorder
         self.show_dock = True            # the large screen beside the face (F10)
+        self.lift = 0                    # --key: nothing but what is round the unit is darker than this (of 255), see apply_key
+        self.key_rects = []              # the rectangles of the side panel that are kept off black too
+        self.lift_face = None
+        self.meter = Meter()             # the master's level and speed (main gives it the sound)
+        self.show_status = True          # the line at the foot (F9)
+        self.menu_open = False           # the tools menu (F8)
+        self.menu_items, self.menu_rects, self.menu_panel = [], [], pygame.Rect(0, 0, 0, 0)
+        self.tools_rect = pygame.Rect(0, 0, 0, 0)
+        self.copy_rect = pygame.Rect(0, 0, 0, 0)
+        self.last_action = ""            # the last thing done with the mouse, as a line for an episode script (a click copies it)
+        self.on_top = False
+        self.rec = None                  # a Recording, while REC is on
+        self.rec_ok = True               # False for a --record, which has its own capture
+        self.captures = CAPTURES
+        self.rec_fps = 30
+        self.notice = ("", 0)            # a message for the status line, and until when (ticks)
+        self.latched = {}                # the pads and step keys a right click holds down: key index -> the line that lets it go
+        self.velocity = None             # a pad hit by the mouse: a share (10 to 100) of full velocity, or None: by where it is hit
+        self.bench = None                # BenchWatch, if deckbench is looked at
+        self.bench_rect = pygame.Rect(0, 0, 0, 0)
+        self.input_makers = {}           # "system" and "bench": what makes the recorder that feeds the app's input
+        self.input_kind = "system" if recorder else "none"
+        self._system = recorder if recorder else None
+        self.outline = True              # a thin line closes each section of the side panel (not in a recording: the reel frames its cards)
         self.show_lamps = False          # under it, the lamps by id instead of the keys (F12)
         self.have_screen = False         # the app has drawn something
         self.mod_page = False            # the face's small screen shows the list of mods, drawn as a page of the unit (a recording's `page mods`)
@@ -174,31 +389,183 @@ class Deck:
         w, h = self.win.get_size()
         self.scale = max(0.2, (h - STATUS_H) / L.H)
         self.face_w = int(L.W * self.scale)
+        self.edge = edge(h) if self.tidy else None
+        self.ox = self.edge or 0                      # where the unit begins
         self.face = surface(art.face(self.scale))
+        self.lift_face = self.lift_layer(art.face_alpha(self.scale)) if self.lift else None
         self.cap = surface(art.slider_cap(self.scale))
         self.sprites.clear()
         x0, y0, x1, y1 = (int(v * self.scale) for v in L.LCD)
-        self.lcd_rect = pygame.Rect(x0, y0, x1 - x0, y1 - y0)
-        room = w - self.face_w - 2 * DOCK_PAD
+        self.lcd_rect = pygame.Rect(x0 + self.ox, y0, x1 - x0, y1 - y0)
+        right = self.edge + 1 if self.tidy else DOCK_PAD       # (the large screen's line is one outside it)
+        room = w - self.ox - self.face_w - DOCK_PAD - right
         self.dock = None
         self.grid = []
         self.lamp_cells = []
-        if self.show_dock and room >= 360:
+        shown = self.show_dock and room >= 360
+        if self.tidy:                                 # a window larger than the unit and its panels: they sit in the middle
+            used = self.face_w + (DOCK_PAD + int(L.LCD_W * min(1.0, room / L.LCD_W)) if shown else 0)
+            shift = max(0, (w - 2 * self.edge - used) // 2)
+            if shift:
+                self.ox += shift
+                self.lcd_rect.move_ip(shift, 0)
+        if shown:
             k = min(1.0, room / L.LCD_W)
-            self.dock = pygame.Rect(self.face_w + DOCK_PAD, DOCK_PAD, int(L.LCD_W * k),
+            self.dock = pygame.Rect(self.ox + self.face_w + DOCK_PAD, self.edge + 1 if self.tidy else DOCK_PAD, int(L.LCD_W * k),
                                     int(L.LCD_H * k))
             if self.show_lamps:
                 self._grid(self.dock.left, self.dock.bottom + 34, self.dock.width)
+
+    def lift_layer(self, alpha):
+        """A picture that is black round the unit and `lift` on it, which the window takes the larger of at each pixel (apply_key)."""
+        from PIL import Image
+        k = self.lift
+        return surface(Image.composite(Image.new("RGB", alpha.size, (k, k, k)), Image.new("RGB", alpha.size, (0, 0, 0)), alpha))
+
+    def apply_key(self):
+        """For a screen recording that is keyed on its brightness: the window is black only where nothing is (round the unit, between
+        the cards and in the corners), and every pixel of the unit and of the cards is at least `lift` bright, as the black reels are
+        made. Drawn last, over everything but the status line."""
+        win = self.win
+        if self.lift_face:
+            win.blit(self.lift_face, (self.ox, 0), special_flags=pygame.BLEND_RGB_MAX)
+        for r in self.key_rects:
+            win.fill((self.lift,) * 3, r, special_flags=pygame.BLEND_RGB_MAX)
+
+    def fit(self, h):
+        """The window's width for height h: the unit, and the side panel if it is shown."""
+        face_w = int(L.W * max(0.2, (h - STATUS_H) / L.H))
+        if self.tidy:
+            e = edge(h)
+            w = e + face_w + (L.LCD_W + DOCK_PAD + e + 1 if self.show_dock else e)
+        else:
+            w = face_w + (L.LCD_W + 2 * DOCK_PAD if self.show_dock else 0)
+        return min(w, pygame.display.get_desktop_sizes()[0][0] - 40)
 
     def toggle_dock(self):
         """Shows or hides the side panel, and sizes the window to what is left."""
         self.show_dock = not self.show_dock
         _, h = self.win.get_size()
-        face_w = int(L.W * max(0.2, (h - STATUS_H) / L.H))
-        w = face_w + (L.LCD_W + 2 * DOCK_PAD if self.show_dock else 0)
-        w = min(w, pygame.display.get_desktop_sizes()[0][0] - 40)
-        self.win = pygame.display.set_mode((w, h), pygame.RESIZABLE)
+        self.win = pygame.display.set_mode((self.fit(h), h), pygame.RESIZABLE)
         self.layout()
+        self.keep_on_top()
+
+    # ---- the tools menu and the status line's switches -------------------
+
+    def say(self, text):
+        """A message in the status line for a few seconds."""
+        self.notice = (text, pygame.time.get_ticks() + 8000)
+
+    def toggle_rec(self):
+        """REC: starts recording the window and the sound to demo/captures, or ends it."""
+        if self.rec:
+            rec, self.rec = self.rec, None
+            self.say("saving the recording...")
+            rec.finish(self.say)
+            return
+        if not shutil.which("ffmpeg"):
+            self.say("REC needs ffmpeg on the path")
+            return
+        w, h = self.win.get_size()
+        self.rec = Recording(self.captures, (w, h - STATUS_H), self.rec_fps)
+        self.say(f"recording to {self.rec.name}.mp4 (F7 ends it): the window without its status line")
+
+    def keep_on_top(self):
+        try:
+            pygame.Window.from_display_module().always_on_top = self.on_top
+        except (AttributeError, pygame.error):
+            self.on_top = False
+
+    def toggle_menu(self):
+        self.menu_open = not self.menu_open
+
+    def toggle_status(self):
+        self.show_status = not self.show_status
+
+    def toggle_key(self):
+        self.lift = 0 if self.lift else 4
+        self.layout()
+
+    def toggle_outline(self):
+        self.outline = not self.outline
+
+    def toggle_on_top(self):
+        self.on_top = not self.on_top
+        self.keep_on_top()
+
+    def resize(self, factor):
+        _, h = self.win.get_size()
+        h = int(min(pygame.display.get_desktop_sizes()[0][1] - 60, max(420, h * factor)))
+        self.win = pygame.display.set_mode((self.fit(h), h), pygame.RESIZABLE)
+        self.layout()
+        self.keep_on_top()
+
+    def set_input(self, kind):
+        """The app's input comes from this computer's recording device ("system"), from deckbench's stream ("bench") or nothing."""
+        if kind == self.input_kind:
+            return
+        if self.recorder:
+            self.recorder.closed = True          # (a device stays open, silent, for a return to it: SDL is not asked to close it)
+        new = None
+        try:
+            if kind == "system":
+                new = self._system or self.input_makers["system"]()
+                new.closed = False
+                self._system = new
+            elif kind == "bench":
+                new = self.input_makers["bench"]()
+        except Exception as e:                   # no recording device
+            print(f"no input: {e}", file=sys.stderr)
+            kind = "none"
+        self.recorder, self.input_kind = new, kind
+        if new:
+            for i, knob in enumerate(L.KNOBS):   # the INPUT LEVEL knob is where it was
+                if knob.gain:
+                    new.gain = self.knob_step[i] / L.POT_STEPS
+
+    def open_bench(self):
+        if self.bench:
+            webbrowser.open(self.bench.url)
+
+    def step_velocity(self, direction):
+        """The pad velocity of a mouse hit: less or more, by tens of a hundred, and past 100 by where on the pad it is hit."""
+        i = VELOCITIES.index(self.velocity) + direction
+        self.velocity = VELOCITIES[max(0, min(len(VELOCITIES) - 1, i))]
+
+    def wait_more(self, ms):
+        self.master.set_wait(self.master.wait_ms + ms)
+
+    def tool_items(self):
+        """The tools menu: (label, "check" or "action", the state of a check, what a click does)."""
+        items = [("Keyable background (luma key)", "check", lambda: bool(self.lift), self.toggle_key),
+                 ("Side panel outline", "check", lambda: self.outline, self.toggle_outline),
+                 ("Status line  (F9)", "check", lambda: self.show_status, self.toggle_status),
+                 ("Always on top", "check", lambda: self.on_top, self.toggle_on_top),
+                 (lambda: "Pad velocity  " + ("by position" if self.velocity is None else f"{self.velocity}%"), "stepper", None, self.step_velocity),
+                 ("Window larger", "action", None, lambda: self.resize(1.1)),
+                 ("Window smaller", "action", None, lambda: self.resize(1 / 1.1)),
+                 ("USB stick: unplug", "action", None, lambda: self.link.send("usb 0")),
+                 ("USB stick: plug in", "action", None, lambda: self.link.send("usb 1"))]
+        if self.rec_ok:
+            items.insert(0, ("Record the window  (F7)", "check", lambda: bool(self.rec), self.toggle_rec))
+        if self.input_makers:
+            items += [("Sound in: this computer", "check", lambda: self.input_kind == "system", lambda: self.set_input("system")),
+                      ("Sound in: deckbench", "check", lambda: self.input_kind == "bench", lambda: self.set_input("bench")),
+                      ("Sound in: nothing", "check", lambda: self.input_kind == "none", lambda: self.set_input("none"))]
+        if self.bench and self.bench.up:
+            items += [("Open deckbench's page", "action", None, self.open_bench)]
+        if hasattr(self.master, "set_wait"):
+            items += [("Sound waits 50 ms less", "action", None, lambda: self.wait_more(-50)),
+                      ("Sound waits 50 ms more", "action", None, lambda: self.wait_more(50))]
+        return items
+
+    def copy_last(self):
+        if self.last_action:
+            try:
+                pygame.scrap.init()
+                pygame.scrap.put_text(self.last_action)
+            except pygame.error:
+                pass
 
     def toggle_lamps(self):
         self.show_lamps = not self.show_lamps
@@ -222,7 +589,7 @@ class Deck:
             self.lamp_cells.append((r, lamp))
 
     def to_units(self, pos):
-        return pos[0] / self.scale, pos[1] / self.scale
+        return (pos[0] - self.ox) / self.scale, pos[1] / self.scale
 
     def lcd_point(self, pos):
         """The app-window point under the mouse, on either copy of the screen."""
@@ -236,6 +603,18 @@ class Deck:
     def find(self, pos):
         """What is under the mouse: ("lcd", x, y), ("knob", i), ("key", i),
         ("bit", (byte, bit)) or None."""
+        if self.menu_open:
+            for r, i in self.menu_rects:
+                if r.collidepoint(pos):
+                    return ("tool", i)
+            if self.menu_panel.collidepoint(pos):
+                return ("toolbg",)
+        if self.tools_rect.collidepoint(pos):
+            return ("tools",)
+        if self.bench_rect.collidepoint(pos):
+            return ("bench",)
+        if self.copy_rect.collidepoint(pos):
+            return ("copy",)
         p = self.lcd_point(pos)
         if p:
             return ("lcd", *p)
@@ -253,7 +632,7 @@ class Deck:
         for key, (track, thumb, _) in self.track_rects.items():
             if track.collidepoint(pos):
                 return ("thumb", key, pos[1] - thumb.top if thumb.collidepoint(pos) else -1)
-        if pos[0] >= self.face_w:
+        if pos[0] >= self.ox + self.face_w:
             return None
         x, y = self.to_units(pos)
         fx0, fy0, fx1, fy1 = L.SLIDER_FRAME
@@ -272,6 +651,17 @@ class Deck:
 
     def describe(self, what):
         if not what:
+            return ""
+        if what[0] == "tools":
+            return "tools: keyable background, lines, window size, USB stick, how long the sound waits  \u00b7  F8"
+        if what[0] == "tool":
+            label = self.menu_items[what[1]][0] if what[1] < len(self.menu_items) else ""
+            return label() if callable(label) else label
+        if what[0] == "toolbg":
+            return ""
+        if what[0] == "bench":
+            return "deckbench's decks  \u00b7  click to open its page"
+        if what[0] == "copy":
             return ""
         if what[0] == "lcd":
             return f"screen  {what[1] - 1}, {what[2] - 1}"
@@ -327,6 +717,7 @@ class Deck:
             if knob.gain and self.recorder:
                 self.recorder.gain = self.knob_step[i] / L.POT_STEPS
         if knob.enc is not None:
+            self.last_action = f"ctx.say('knob {knob.name} {delta}')"
             self.link.send(f"enc {knob.enc} {delta}")
 
     def analogue(self):
@@ -372,14 +763,75 @@ class Deck:
             self.listen[0] ^= 1
             self.master.reset()
 
+    def pad_velocity(self, key, pos):
+        """How hard, of 1023: a hit begins at the pad's calibration (336) and is at full velocity near 840. By default harder towards the
+        bottom of the pad, or a fixed share of that range (the tools menu)."""
+        if self.velocity is not None:
+            return int(336 + (840 - 336) * self.velocity / 100.0)
+        _, y = self.to_units(pos)
+        y0, y1 = key.box[1], key.box[3]
+        return int(460 + 400 * min(1.0, max(0.0, (y - y0) / (y1 - y0))))
+
+    def holdable(self, key):
+        """A performance button: a pad or a step key."""
+        return key.pad is not None or key.kind == "step"
+
+    def latch(self, pos):
+        """Right click on a pad or a step key: it is held down until it is clicked again (left or right) or its keyboard key is pressed."""
+        what = self.find(pos)
+        if not what or what[0] != "key" or not self.holdable(L.KEYS[what[1]]):
+            return
+        i = what[1]
+        if i in self.latched:
+            self.unlatch(i)
+            return
+        key = L.KEYS[i]
+        if key.pad is not None:
+            v = self.pad_velocity(key, pos)
+            self.link.send(f"pad {key.pad} {v} {v}")
+            self.latched[i] = f"pad {key.pad} 0 0"
+            self.last_action = f"ctx.s.send('pad {key.pad} {v} {v}')  # {key.name} held (pad {key.pad} 0 0 lets go)"
+        elif key.bit:
+            self.link.send(f"bit {key.bit[0]} {key.bit[1]} 1")
+            self.latched[i] = f"bit {key.bit[0]} {key.bit[1]} 0"
+            self.last_action = f"ctx.s.send('bit {key.bit[0]} {key.bit[1]} 1')  # {key.name} held (bit {key.bit[0]} {key.bit[1]} 0 lets go)"
+
+    def unlatch(self, i):
+        line = self.latched.pop(i, None)
+        if line:
+            self.link.send(line)
+
     def press(self, pos):
         what = self.find(pos)
+        if self.menu_open and (not what or what[0] not in ("tool", "toolbg", "tools")):
+            self.menu_open = False                    # a click away from the menu only closes it
+            return
         if not what:
+            return
+        if what[0] == "tools":
+            self.toggle_menu()
+            return
+        if what[0] == "toolbg":
+            return
+        if what[0] == "bench":
+            self.open_bench()
+            return
+        if what[0] == "tool":
+            if what[1] < len(self.menu_items):
+                label, kind, state, handler = self.menu_items[what[1]]
+                if kind == "stepper":                 # the left half of the row is less, the right half more
+                    handler(-1 if pos[0] < self.menu_rects[what[1]][0].centerx else 1)
+                else:
+                    handler()
+            return
+        if what[0] == "copy":
+            self.copy_last()
             return
         if what[0] == "listen":
             self.switch_output()
             return
         if what[0] == "mod":
+            self.last_action = f"ctx.say('toggle {what[1]}')"
             self.mods.toggle(what[1])
             return
         if what[0] == "fold":
@@ -392,6 +844,9 @@ class Deck:
             self.thumb = (what[1], grip)
             self.drag_thumb(pos[1])
             return
+        if what[0] == "key" and what[1] in self.latched:
+            self.unlatch(what[1])                     # a click on a key that is held lets it go, and is no press
+            return
         self.down = what
         self.down_at = pygame.time.get_ticks()
         self.flush(now=True)
@@ -400,6 +855,7 @@ class Deck:
         elif what[0] == "strip":
             self.stroke(pos)
         elif what[0] == "lcd":
+            self.last_action = f"ctx.touch({what[1] - 1}, {what[2] - 1})"
             self.link.send(f"touch 1 {what[1]} {what[2]}")
         elif what[0] == "bit":
             self.link.send(f"bit {what[1][0]} {what[1][1]} 1")
@@ -409,14 +865,11 @@ class Deck:
         elif what[0] == "key":
             key = L.KEYS[what[1]]
             if key.pad is not None:
-                # How hard, of 1023: a hit begins at the pad's calibration
-                # (336) and is at full velocity near 840. Harder towards the
-                # bottom of the pad.
-                _, y = self.to_units(pos)
-                y0, y1 = key.box[1], key.box[3]
-                v = int(460 + 400 * min(1.0, max(0.0, (y - y0) / (y1 - y0))))
+                v = self.pad_velocity(key, pos)
+                self.last_action = f"ctx.s.pad({key.pad})  # {key.name}" + (f", level {v}" if self.velocity is not None else "")
                 self.link.send(f"pad {key.pad} {v} {v}")
             elif key.bit:
+                self.last_action = f"ctx.press(({key.bit[0]}, {key.bit[1]}))  # {key.name}"
                 self.link.send(f"bit {key.bit[0]} {key.bit[1]} 1")
 
     def release(self, pos):
@@ -504,6 +957,9 @@ class Deck:
                 for i, knob in enumerate(L.KNOBS):
                     if knob.enc == arg[0]:
                         self.turn(i, delta)
+        elif down and any(L.KEYS[i].bit == arg for i in self.latched):
+            for i in [i for i in self.latched if L.KEYS[i].bit == arg]:
+                self.unlatch(i)                       # its keyboard key lets a held step key go
         elif down != (event.key in self.keys_down):
             if down:
                 self.keys_down[event.key] = arg
@@ -531,6 +987,7 @@ class Deck:
                 self.up_at = pygame.time.get_ticks()
                 self.analogue()
             elif item[0] == "down":
+                self.latched.clear()
                 self.have_screen = False
                 self.up_at = None
                 self.screen.fill((0, 0, 0))
@@ -551,7 +1008,7 @@ class Deck:
     def draw(self):
         win = self.win
         win.fill(art.bg())
-        win.blit(self.face, (0, 0))
+        win.blit(self.face, (self.ox, 0))
         if self.mod_page:
             win.blit(pygame.transform.smoothscale(self.render_mod_page(), self.lcd_rect.size), self.lcd_rect)
         elif self.have_screen:
@@ -569,30 +1026,42 @@ class Deck:
             rgb = L.rgb_lamp(self.lamps, key.rgb) if key.rgb is not None else None
             if rgb and not any(rgb):
                 rgb = None
-            down = i == held or i in self.held_keys or (key.bit in held_bits and key.bit is not None)
+            down = i == held or i in self.held_keys or i in self.latched or (key.bit in held_bits and key.bit is not None)
             if level or rgb or down:
                 surf, x, y = self.sprite(art.key_sprite, i, self.scale, level, rgb, down)
-                win.blit(surf, (x, y))
+                win.blit(surf, (x + self.ox, y))
+        for i in self.latched:                      # held by a right click: an amber ring, as the strip's pinned finger is amber
+            x0, y0, x1, y1 = L.KEYS[i].bounds()
+            ring = pygame.Rect(self.ox + int(x0 * self.scale), int(y0 * self.scale), int((x1 - x0) * self.scale), int((y1 - y0) * self.scale))
+            pygame.draw.rect(win, (255, 190, 60), ring.inflate(6, 6), 2, border_radius=7)
         for i, knob in enumerate(L.KNOBS):
             down = bool(self.down and self.down == ("knob", i)) or \
                 (knob.push in held_bits and knob.push is not None)
             if knob.look != "knob":
                 surf, x, y = self.sprite(art.knob_sprite, i, self.scale, self.knob_step[i], down)
-                win.blit(surf, (x, y))
+                win.blit(surf, (x + self.ox, y))
         if self.strip is not None:      # the finger on the strip
             sx0, sy0, _, sy1 = L.STRIP
             y = sy1 - 20 - (sy1 - sy0 - 40) * self.strip / 127
-            r = pygame.Rect(int((sx0 + 26) * self.scale), int((y - 5) * self.scale),
+            r = pygame.Rect(self.ox + int((sx0 + 26) * self.scale), int((y - 5) * self.scale),
                             int(58 * self.scale), max(3, int(10 * self.scale)))
             pygame.draw.rect(win, (255, 190, 60) if self.pinned else (150, 200, 255), r,
                              border_radius=3)
         cap = self.cap
         sx, st, sb = L.SLIDER
-        win.blit(cap, cap.get_rect(center=(int(sx * self.scale),
+        win.blit(cap, cap.get_rect(center=(self.ox + int(sx * self.scale),
                                            int((st + (sb - st) * self.slider) * self.scale))))
+        self.key_rects = []
         if self.dock:
             self.draw_dock()
+        if self.lift:
+            self.apply_key()
+        if self.rec:
+            w, h = win.get_size()
+            self.rec.frame(win.subsurface((0, 0, w, h - STATUS_H)))       # the window as it is, the status line and the menu not in it
         self.draw_status()
+        if self.menu_open:
+            self.draw_menu()
         pygame.display.flip()
 
     def draw_boot(self, rect):
@@ -634,12 +1103,13 @@ class Deck:
         else:
             win.blit(pygame.transform.smoothscale(shown, self.dock.size), self.dock)
         pygame.draw.rect(win, (46, 47, 51), self.dock.inflate(2, 2), 1)
+        self.key_rects.append(self.dock.inflate(2, 2))
         self.mod_rects = []
         if not self.show_lamps:
             self.fold_rects = []
             self.body_rects = {}
             self.track_rects = {}
-            self.draw_panel(self.dock.left, self.dock.bottom + 18)
+            self.draw_panel(self.dock.left, self.dock.bottom + (SECTION_GAP if self.tidy else 18))
             return
         held = self.down[1] if self.down and self.down[0] == "bit" else None
         if self.grid:
@@ -668,13 +1138,14 @@ class Deck:
         not fit: the two share the height there is."""
         win = self.win
         width = self.dock.width
-        bottom = win.get_size()[1] - STATUS_H - 8
+        bottom = int(L.BODY[3] * self.scale) - 1 if self.tidy else win.get_size()[1] - STATUS_H - 8     # level with the foot of the unit
+        gap = SECTION_GAP if self.tidy else 8
         sections = []
         if self.mods.items:
             sections.append(("mods", "Installed mods (USB)", "click a switch - takes effect as the app runs",
                              sum(h for _, _, h in self.mod_rows()) + DETAIL_H + 8, self.draw_mods_body))
         sections.append(("help", "Controls", "", len(HELP) * 24 + 4, self.draw_help_body))
-        free = bottom - y - HEAD * len(sections) - 8 * (len(sections) - 1)
+        free = bottom - y - HEAD * len(sections) - gap * (len(sections) - 1)
         views = {}
         open_ = [s for s in sections if not self.fold[s[0]]]
         if len(open_) == 1:
@@ -684,6 +1155,7 @@ class Deck:
             views[open_[0][0]] = max(0, first)
             views[open_[1][0]] = max(0, min(open_[1][3], free - first))
         for key, title, hint, content, body in sections:
+            top = y
             head = pygame.Rect(x, y, width, HEAD - 4)
             pygame.draw.rect(win, (26, 27, 30), head, border_radius=4)
             ax, ay = head.left + 12, head.centery        # a triangle: pointing right when folded, down when open
@@ -698,7 +1170,8 @@ class Deck:
             self.fold_rects.append((head, key))
             y += HEAD
             if self.fold[key]:
-                y += 8
+                self.frame_section(pygame.Rect(x, top, width, HEAD - 4))
+                y += gap
                 continue
             view = views.get(key, 0)
             extra = DETAIL_H + 8 if key == "mods" else 0     # the mods' list has the mod's text under it, not scrolled
@@ -721,7 +1194,14 @@ class Deck:
                 pygame.draw.rect(win, (110, 112, 120) if self.thumb and self.thumb[0] == key else (80, 82, 90), thumb,
                                  border_radius=4)
                 self.track_rects[key] = (track, thumb, most)
-            y += view_all + 8
+            self.frame_section(pygame.Rect(x, top, width, y + view_all - top))
+            y += view_all + gap
+
+    def frame_section(self, r):
+        """A thin line round a section of the side panel, closed, as the cards of the reels are (and the large screen above it)."""
+        if self.outline:
+            pygame.draw.rect(self.win, (46, 47, 51), r.inflate(2, 2), 1, border_radius=5)
+        self.key_rects.append(r.inflate(2, 2))
 
     def mod_rows(self):
         """The list's rows, top to bottom: ("group", the heading, height) where the group changes, ("mod", the mod, height)."""
@@ -905,8 +1385,62 @@ class Deck:
         return x + 8 + t.get_width()
 
 
+    def draw_menu(self):
+        """The tools menu, over the window's lower right corner."""
+        win = self.win
+        w, h = win.get_size()
+        self.menu_items = items = self.tool_items()
+        height = len(items) * MENU_ROW + 10
+        bottom = h - (STATUS_H if self.show_status else 0) - 4
+        self.menu_panel = panel = pygame.Rect(w - MENU_W - 8, bottom - height, MENU_W, height)
+        pygame.draw.rect(win, (24, 25, 28), panel, border_radius=6)
+        pygame.draw.rect(win, (70, 72, 80), panel, 1, border_radius=6)
+        mouse = pygame.mouse.get_pos()
+        self.menu_rects = []
+        for i, (label, kind, state, _) in enumerate(items):
+            r = pygame.Rect(panel.left + 4, panel.top + 5 + i * MENU_ROW, MENU_W - 8, MENU_ROW)
+            if r.collidepoint(mouse):
+                pygame.draw.rect(win, (44, 46, 52), r, border_radius=4)
+            x = r.left + 10
+            if kind == "check":
+                box = pygame.Rect(r.left + 8, r.centery - 6, 12, 12)
+                pygame.draw.rect(win, (150, 220, 120) if state() else (40, 41, 45), box, border_radius=3)
+                pygame.draw.rect(win, (110, 112, 120), box, 1, border_radius=3)
+                x = r.left + 30
+            if kind == "stepper":                    # a triangle at each end: a click on the left half is less, on the right more
+                mid = r.centery
+                pygame.draw.polygon(win, (150, 152, 158), [(r.left + 10, mid), (r.left + 17, mid - 5), (r.left + 17, mid + 5)])
+                pygame.draw.polygon(win, (150, 152, 158), [(r.right - 10, mid), (r.right - 17, mid - 5), (r.right - 17, mid + 5)])
+                x = r.left + 26
+            t = self.font.render(label() if callable(label) else label, True, (225, 228, 232))
+            win.blit(t, (x, r.centery - t.get_height() // 2))
+            self.menu_rects.append((r, i))
+
+    def draw_tools_button(self, right, top):
+        """The TOOLS button, its right edge at `right`. Returns where it is."""
+        win = self.win
+        t = self.small.render("TOOLS", True, (10, 10, 10) if self.menu_open else (200, 203, 208))
+        r = pygame.Rect(right - t.get_width() - 24, top + 4, t.get_width() + 24, STATUS_H - 8)
+        pygame.draw.rect(win, (150, 220, 120) if self.menu_open else (40, 41, 45), r, border_radius=4)
+        win.blit(t, (r.left + 8, r.centery - t.get_height() // 2))
+        tip = [(r.right - 14, r.centery + 2), (r.right - 6, r.centery + 2), (r.right - 10, r.centery - 3)]
+        pygame.draw.polygon(win, (10, 10, 10) if self.menu_open else (200, 203, 208), tip)
+        self.tools_rect = r
+        return r
+
     def draw_status(self):
         w, h = self.win.get_size()
+        over = self.copy_rect.collidepoint(pygame.mouse.get_pos())
+        self.bench_rect = pygame.Rect(0, 0, 0, 0)
+        self.tools_rect = pygame.Rect(0, 0, 0, 0)
+        self.copy_rect = pygame.Rect(0, 0, 0, 0)
+        if not self.show_status:
+            # Hidden: the TOOLS button alone comes up when the mouse goes to the foot of the window, so that the line (in the menu) and the
+            # menu can always be reached
+            x, y = pygame.mouse.get_pos()
+            if pygame.mouse.get_focused() and y >= h - STATUS_H:
+                self.draw_tools_button(w - 8, h - STATUS_H)
+            return
         bar = pygame.Rect(0, h - STATUS_H, w, STATUS_H)
         pygame.draw.rect(self.win, (18, 18, 20), bar)
         state = "Running" if self.link.connected and self.have_screen else \
@@ -919,8 +1453,71 @@ class Deck:
         if self.link.connected:
             x = self.draw_sound(x + 14, bar.top)
         self.status_w = x - 10
-        t = self.font.render(self.hover, True, (225, 228, 232))
-        self.win.blit(t, (max(self.face_w, 10 + self.status_w + 30), bar.top + 5))
+        left = max(self.ox + self.face_w, 10 + self.status_w + 30)
+        # From the right: the tools button, the level, how fast the sound comes, how much waits to be played, deckbench's decks. Each has a
+        # place of the width of the most it can say, so that what one says changing does not move the rest (what does not fit is left out)
+        win = self.win
+        x = self.draw_tools_button(w - 8, bar.top).left - 14
+        waiting = getattr(self.master, "waiting_ms", None)
+        places = []
+        if self.rec:
+            places.append(("rec", self.font.size("REC 00:00:00")[0] + 14))
+        if self.link.connected:
+            places += [("level", 72), ("speed", self.font.size("\u00d70.00")[0])]
+            if waiting:
+                places.append(("waits", self.font.size("waits 1000 of 1000 ms")[0]))
+        if self.bench and self.bench.up:
+            places.append(("bench", self.font.size(self.bench.text())[0]))      # the last, so that its words changing moves nothing else
+        for kind, width in places:
+            if x - width <= left + 260:
+                break
+            place = pygame.Rect(x - width, bar.top, width, STATUS_H)
+            if kind == "rec":
+                seconds = int(self.rec.seconds()) if self.rec else 0
+                pygame.draw.circle(win, (230, 80, 70), (place.left + 5, bar.top + STATUS_H // 2), 4)
+                t = self.font.render("REC %02d:%02d" % (seconds // 60, seconds % 60) if seconds < 3600 else "REC %d:%02d:%02d" % (seconds // 3600, seconds // 60 % 60, seconds % 60), True, (230, 80, 70))
+                win.blit(t, (place.left + 14, bar.top + 5))
+            elif kind == "level":
+                bar_rect = pygame.Rect(place.left, bar.top + 9, 64, 8)
+                level, hold, clipped = self.meter.level()
+                pygame.draw.rect(win, (40, 41, 45), bar_rect, border_radius=2)
+                fill = pygame.Rect(bar_rect.left, bar_rect.top, int(bar_rect.width * level), bar_rect.height)
+                colour = (230, 80, 70) if level > 0.95 else (240, 180, 70) if level > 0.85 else (150, 220, 120)
+                pygame.draw.rect(win, colour, fill, border_radius=2)
+                pygame.draw.rect(win, (225, 228, 232), (bar_rect.left + min(bar_rect.width - 2, int(bar_rect.width * hold)), bar_rect.top, 2, 8))
+                if clipped:
+                    pygame.draw.rect(win, (230, 80, 70), (bar_rect.right + 2, bar_rect.top, 4, 8))
+            elif kind == "speed":
+                speed = self.meter.speed()
+                if speed is not None:
+                    t = self.font.render("\u00d7%.2f" % speed, True, (150, 220, 120) if 0.97 <= speed <= 1.04 else (240, 180, 70))
+                    win.blit(t, (place.right - t.get_width(), bar.top + 5))
+            elif kind == "waits":
+                t = self.font.render(f"waits {waiting()} of {self.master.wait_ms} ms", True, (150, 152, 158))
+                win.blit(t, (place.right - t.get_width(), bar.top + 5))
+            elif kind == "bench":
+                t = self.font.render(self.bench.text(), True, (150, 220, 120) if self.bench.on else (150, 152, 158))
+                win.blit(t, (place.left, bar.top + 5))               # from the left: its words change in length
+                self.bench_rect = pygame.Rect(place.left, bar.top, min(t.get_width(), width), STATUS_H)
+            x = place.left - 14
+        # What is under the mouse, or when nothing is, the last thing done (a click copies it)
+        room = pygame.Rect(left, bar.top, max(0, x - left), STATUS_H)
+        if self.hover:
+            text, colour = self.hover, (225, 228, 232)
+        elif self.notice[0] and pygame.time.get_ticks() < self.notice[1]:
+            text, colour = self.notice[0], (240, 180, 70)
+        elif self.last_action:
+            text = f"last: {self.last_action}" + ("    click to copy" if over else "")
+            colour = (170, 172, 178) if over else (120, 122, 128)
+        else:
+            text, colour = "", (0, 0, 0)
+        if text and room.width > 40:
+            t = self.font.render(text, True, colour)
+            win.set_clip(room)
+            win.blit(t, (left, bar.top + 5))
+            win.set_clip(None)
+            if not self.hover:
+                self.copy_rect = pygame.Rect(left, bar.top, min(t.get_width(), room.width), STATUS_H)
 
 
 def main():
@@ -936,6 +1533,15 @@ def main():
     ap.add_argument("--audio-block", type=int, default=audio.PERIOD, metavar="FRAMES",
                     help="frames the sound card is given at a time (default %d): a bigger one rides out the deck being busy "
                          "(the `late` count), at as much more delay (8192 is 186 ms)" % audio.PERIOD)
+    ap.add_argument("--key", nargs="?", const=4, type=int, metavar="LEVEL",
+                    help="the background is black and the unit and the cards of the side panel are at least LEVEL (of 255, 4 by default, "
+                         "and on unless this is a recording) bright, so that a luma key of a few points takes out only what is round "
+                         "them, for a screen recording to key. The status line is not kept off black: crop it, or hide it (F9)")
+    ap.add_argument("--no-key", action="store_true", help="the background is whatever it is: no lift of the blacks (--key's opposite)")
+    ap.add_argument("--no-outline", action="store_true", help="no thin line round the sections of the side panel")
+    ap.add_argument("--bench", metavar="URL", default=BENCH_URL,
+                    help="deckbench's page, asked for how many of its decks are on and playing (shown in the status line, a click opens "
+                         "the page; default %s, where start.py starts it)" % BENCH_URL)
     ap.add_argument("--mute", action="store_true",
                     help="play nothing, but show the MASTER / PHONES switch as if a sound device were there (for a recording)")
     ap.add_argument("--listen", choices=("master", "phones"), default="master",
@@ -963,7 +1569,10 @@ def main():
     ap.add_argument("--record", metavar="MP4",
                     help="record the window as video and the master output as FILE.f32, until FILE.stop exists "
                          "(see app/capture.py, which tools/demo.py uses)")
-    ap.add_argument("--fps", type=int, default=25, help="frames a second of --record")
+    ap.add_argument("--fps", type=int, default=0, help="frames a second of --record (25 by default) and of REC (30)")
+    ap.add_argument("--captures", metavar="DIR", default=CAPTURES,
+                    help="where REC (in the tools menu, F7) puts its recordings: a video with its sound (.mp4) and the sound alone (.wav) "
+                         "(default %s, which git ignores)" % CAPTURES)
     ap.add_argument("--width", type=int, default=0, help="window width in pixels")
     ap.add_argument("--snapshot", metavar="PNG",
                     help="draw one frame after a few seconds, save it and quit")
@@ -982,7 +1591,14 @@ def main():
 
     capture = []
 
+    meter = Meter()
+    decks = []
+
     def play(which, data):
+        if which == 0:
+            meter.feed(data)
+        if decks and decks[0].rec and which == decks[0].listen[0]:      # what is heard: the output the MASTER / PHONES switch has chosen
+            decks[0].rec.sound(data, 0)
         if capture:
             capture[0].sound(data, which)
         if master and which == listen[0]:
@@ -992,7 +1608,8 @@ def main():
     desk_w, desk_h = pygame.display.get_desktop_sizes()[0]
     h = args.height or min(desk_h - 110, 1060)
     face_w = int(L.W * (h - STATUS_H) / L.H)
-    w = face_w if args.compact else min(desk_w - 40, face_w + L.LCD_W + 2 * DOCK_PAD)
+    margin = 0 if args.record else edge(h)
+    w = face_w + 2 * margin if args.compact else min(desk_w - 40, margin + face_w + L.LCD_W + DOCK_PAD + margin + 1)
     if args.record and not args.compact:
         w = face_w + L.LCD_W + 2 * DOCK_PAD       # a recording does not depend on the size of the desktop
     w = args.width or w
@@ -1007,12 +1624,28 @@ def main():
         except Exception as e:           # no recording device, or it is refused
             print(f"no input: {e}", file=sys.stderr)
     art.set_style(args.face)
-    deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb, args.modlist))
+    deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb, args.modlist), tidy=not args.record)
+    bench_host, _, bench_port = (args.input_tcp or BENCH_AUDIO).rpartition(":")
+    deck.input_makers = {"system": lambda: audio.Recorder(link.send_input, audio.pick(args.input, True)),
+                         "bench": lambda: audio.StreamRecorder(link.send_input, bench_host or "127.0.0.1", int(bench_port))}
+    deck.input_kind = "bench" if args.input_tcp else "system" if recorder else "none"
+    deck._system = None if args.input_tcp else recorder
+    if not args.record:
+        deck.bench = BenchWatch(args.bench)
     if args.record:
-        capture.append(Capture(args.record, (w, h), args.fps))
+        capture.append(Capture(args.record, (w, h), args.fps or 25))
         deck.fold["help"] = True              # the list of mods gets the room the controls' reminder takes
+    deck.meter = meter
+    decks.append(deck)
+    deck.captures = args.captures
+    deck.rec_fps = args.fps or 30
+    deck.rec_ok = not args.record
     deck.mod_hover = args.hover
     deck.hover_pinned = bool(args.hover)
+    deck.lift = max(0, min(args.key, 40)) if args.key is not None else 0 if (args.record or args.no_key) else 4
+    deck.outline = not (args.record or args.no_outline)
+    if deck.lift:
+        deck.layout()
     if args.compact:
         deck.show_dock = False
         deck.layout()
@@ -1035,12 +1668,20 @@ def main():
                     deck.analogue()
                 elif deck.find(e.pos) == ("strip",):
                     deck.pin(e.pos)
+                else:
+                    deck.latch(e.pos)
             elif e.type == pygame.MOUSEMOTION:
                 deck.motion(e.pos)
             elif e.type == pygame.MOUSEWHEEL:
                 deck.wheel(pygame.mouse.get_pos(), e.y)
             elif e.type == pygame.KEYDOWN and e.key == pygame.K_TAB:
                 deck.switch_output()
+            elif e.type == pygame.KEYDOWN and e.key == pygame.K_F7 and deck.rec_ok:
+                deck.toggle_rec()
+            elif e.type == pygame.KEYDOWN and e.key == pygame.K_F8:
+                deck.toggle_menu()
+            elif e.type == pygame.KEYDOWN and e.key == pygame.K_F9:
+                deck.toggle_status()
             elif e.type == pygame.KEYDOWN and e.key == pygame.K_F10:
                 deck.toggle_dock()
             elif e.type == pygame.KEYDOWN and e.key == pygame.K_F12:
@@ -1083,9 +1724,12 @@ def main():
             running = False
         clock.tick(FPS)
     link.close()
+    if deck.rec:                                 # the window is closed while recording: the file is finished first
+        rec, deck.rec = deck.rec, None
+        rec.finish(print, wait=True)
     if capture:
         capture[0].close()
-    for dev in (master, phones, recorder):
+    for dev in (master, phones, deck.recorder):
         if dev:
             dev.close()
     pygame.display.quit()

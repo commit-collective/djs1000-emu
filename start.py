@@ -15,8 +15,8 @@ stops the emulator.
                   else WSL's default one)
   --port N        the deck link's port (default 7310)
 
-Anything else goes to the deck (app/virtual_djs.py): --audio NAME,
---headphones NAME, --input NAME, --no-input, --listen phones, --list-audio ...
+Anything else goes to the deck (app/virtual_djs.py), whose options are listed
+below (--help here prints them too).
 
 On Windows the emulator runs in WSL (scripts/run.sh, set up once with
 scripts/setup.sh) and the deck here. On Linux both run here. An emulator that
@@ -291,10 +291,23 @@ def flag(args, name):
     return False
 
 
+def deck_help():
+    """The deck's own help, after this one: what it takes is what start.py passes on."""
+    deck = os.path.join(REPO, "app", "virtual_djs.py")
+    run = subprocess.run([sys.executable, deck, "--help"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                         env=dict(os.environ, PYGAME_HIDE_SUPPORT_PROMPT="1"))
+    print("Deck options (python app/virtual_djs.py --help, the same):\n")
+    if run.returncode:
+        print("  (the deck needs pygame-ce and Pillow to say: %s -m pip install -r requirements.txt)" % os.path.basename(sys.executable))
+    else:
+        print(run.stdout.rstrip())
+
+
 def main():
     args = sys.argv[1:]
     if "-h" in args or "--help" in args:
         print(__doc__)
+        deck_help()
         return 0
     emu = Emulator(take(args, "--distro", os.environ.get("DJS_WSL_DISTRO")),
                    int(take(args, "--port", "7310")), flag(args, "--window"))
