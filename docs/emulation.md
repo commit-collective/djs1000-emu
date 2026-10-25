@@ -50,7 +50,7 @@ What `djsdev.c` stands in for, and why:
 
 The unit's internal storage (the eMMC, a FAT volume on `/mnt/emmc`: the factory samples and projects) is a folder of the
 host too, `$DJS_EMMC`, bound on `/mnt/emmc` by `run.sh` when it is set (`start.py` passes it on). It holds a `PIONEER DJ SAMPLER`
-folder, as the stick does. The app lists its projects under OPEN, Internal. Without `$DJS_EMMC`, `/mnt/emmc` is empty. The factory
+folder, as the stick does. The app lists its projects under OPEN, Internal. Without `$DJS_EMMC` the folder `~/djs/emmc` is used if it holds a `PIONEER DJ SAMPLER` folder, else `/mnt/emmc` is empty. The factory
 content is Pioneer's and the sample packs' makers': copy it off a unit of your own and keep it out of this repository.
 
 The USB drive is the host folder `~/djs/usb` (`$DJS_USB`), bound on

@@ -65,6 +65,7 @@ mkdir -p "$USB" "$ROOT/media/usb1/sda1"
 # The unit's internal storage (the eMMC, a FAT volume mounted on /mnt/emmc: the factory samples and projects, and the
 # user's): a folder on the host, $DJS_EMMC, if there is one. Without it /mnt/emmc is an empty folder.
 EMMC="${DJS_EMMC:-}"
+[ -z "$EMMC" ] && [ -d "$DJS/emmc/PIONEER DJ SAMPLER" ] && EMMC="$DJS/emmc"      # or $DJS_HOME/emmc, when it holds one
 [ -n "$EMMC" ] && mkdir -p "$EMMC"
 # The unit's /tmp is in RAM: empty at each start, with the USB message queues
 # the shim keeps there (see queue_put() in shim/djsdev.c).
