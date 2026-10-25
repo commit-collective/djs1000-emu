@@ -47,7 +47,7 @@ a way to deckbench's page. With the status line hidden, the TOOLS button comes u
 the line and the menu can always be reached.
 
 **REC** (the first row of the menu, or F7) records the window to `demo/captures` (`--captures DIR`, 30 frames a second, `--fps`): a video of the
-window as it is, with the keyable background, but without its status line or the menu, so that nothing has to be cropped, and the sound as
+window as it is, with the keyable background and its status line (a reel can take it as a strip of its own), but without the menu, and the sound as
 you hear it: the output the MASTER / PHONES switch has chosen (not the two added, which would thin it: the headphones carry a quieter, partly
 inverted copy of the program). When it ends (REC again, or closing the window) the picture is retimed by a
 percent or two to follow the sound (the emulator's sound runs a little fast or slow against the clock, and the sound keeps its pitch), and three files are made: `deck-DATE-TIME.mp4`, `deck-DATE-TIME.steps` (every command the deck sent, with its second, and the project the app had open, which

@@ -217,7 +217,7 @@ class BenchWatch:
 
 
 class Recording:
-    """REC: the window (without its status line and the menu) as video, and the sound as you hear it (the output the MASTER / PHONES switch
+    """REC: the window (with its status line, without the menu) as video, and the sound as you hear it (the output the MASTER / PHONES switch
     has chosen, not the two added: the headphones carry an attenuated, partly inverted copy of the program, which would thin it), in a
     folder. The video is app/capture.py's, the same as --record; when it ends the sound is joined to it: NAME.mp4 (video and sound),
     NAME.wav (the sound alone, 24 bits, for an editor) and NAME.steps (what was pressed, for tools/reel.py)."""
@@ -479,8 +479,8 @@ class Deck:
             self.say("REC needs ffmpeg on the path")
             return
         w, h = self.win.get_size()
-        self.rec = Recording(self.captures, (w, h - STATUS_H), self.rec_fps, self.link.project)
-        self.say(f"recording to {self.rec.name}.mp4 (F7 ends it): the window without its status line")
+        self.rec = Recording(self.captures, (w, h), self.rec_fps, self.link.project)
+        self.notice = ("", 0)                  # the red REC in the status line says it, and the video has that line
 
     def keep_on_top(self):
         try:
@@ -1104,10 +1104,9 @@ class Deck:
             self.draw_dock()
         if self.lift:
             self.apply_key()
-        if self.rec:
-            w, h = win.get_size()
-            self.rec.frame(win.subsurface((0, 0, w, h - STATUS_H)))       # the window as it is, the status line and the menu not in it
         self.draw_status()
+        if self.rec:
+            self.rec.frame(win)                   # the window as it is, with its status line, the menu not in it
         if self.menu_open:
             self.draw_menu()
         pygame.display.flip()
