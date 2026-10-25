@@ -148,6 +148,23 @@ def hero():
     return {"play": play, "play-device": play, "end": []}, screen_at[0]
 
 
+def hero_full():
+    """The hero's layouts for the clean video (no text): the unit where it is, and the app's screen above the list of mods filling the
+    whole height of the unit (flush with its top and its foot), a little wider than with the caption over them."""
+    unit_h = 1000
+    unit_w = int(round(UNIT_FROM[2] * unit_h / float(UNIT_FROM[3])))
+    gap = 20
+    card_w = int((unit_h - gap) / (SCREEN[3] / float(SCREEN[2]) + MODS_FROM[3] / float(MODS_FROM[2])))
+    screen_h = int(round(SCREEN[3] * card_w / float(SCREEN[2])))
+    x = (1920 - (unit_w + 60 + 710)) // 2                    # the unit is where the captioned video has it
+    unit_at = (x, 40, unit_w, unit_h)
+    screen_at = (x + unit_w + 60, 40, card_w, screen_h)
+    mods_at = (screen_at[0], 40 + screen_h + gap, card_w, unit_h - screen_h - gap)
+    play = [(Cut(UNIT_FROM), unit_at), (Cut(SCREEN, "round-%dx%d.png" % screen_at[2:]), screen_at), ("frame", screen_at),
+            (Cut(MODS_FROM, "round-%dx%d.png" % mods_at[2:]), mods_at), ("frame", mods_at)]
+    return {"play": play, "play-device": play, "end": []}
+
+
 # --shape site: the website's own picture (tools/hero.py), exactly: its dark grid, its two titles and the places of its three cards.
 # The picture itself is the background (without the unit, which hero.clear_background takes out), and the cards go over where
 # the last version had them. The window is cut as hero.py cuts it.
@@ -230,6 +247,7 @@ def composite_window(raw, out, fps):
 
 RESOLUTIONS = {"hd": 1.0, "2k": 4 / 3.0, "4k": 2.0}      # 1080 on the short side of the picture, 1440, 2160
 SCALE, BOX_T, GRID = 1.0, 1, False
+CLEAN_LAYOUTS = None                                   # --shape hero: the layouts of the video without text, where they differ
 BG, BG_COLOUR = "dark", {"dark": "0x0d0d0f", "black": "black", "green": "0x00ff00", "transparent": "black@0"}
 LIFT = 0                                               # --bg black: the unit and the cards never go below this level (of 255), so that
 #                                                        the background is the only pure black and a luma key takes it out
@@ -254,7 +272,8 @@ def set_shape(shape, res="hd", grid=False, bg="dark", status=False):
     picture itself, 2168x1442) or window (the deck's window as it opens): the size, the layouts and where the text goes. res makes the
     picture 1.33 (2k) or 2 (4k) times as big, every layout, text and line with it (the window shape is the recording as it is)."""
     global W, H, LAYOUTS, CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y, CAPTION_X, BACKGROUND, LINE, CARD_RADIUS, SHAPE
-    global SCALE, BOX_T, GRID, SITE_SIZE, BG, PIX_FMT, OVERLAY, EXT, LIFT
+    global SCALE, BOX_T, GRID, SITE_SIZE, BG, PIX_FMT, OVERLAY, EXT, LIFT, CLEAN_LAYOUTS
+    CLEAN_LAYOUTS = None
     BG = bg if shape in ("hero", "site") else "dark"       # the other shapes have no background of their own
     LIFT = 4 if BG == "black" else 0
     PIX_FMT, OVERLAY, EXT = ("yuva444p", ":format=auto", ".mov") if BG == "transparent" else ("yuv420p", "", ".mp4")
@@ -272,6 +291,7 @@ def set_shape(shape, res="hd", grid=False, bg="dark", status=False):
     elif shape == "hero":
         W, H = 1920, 1080
         LAYOUTS, left = hero()
+        CLEAN_LAYOUTS = hero_full()
         CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 40, 94, 40, 26, 330
         BACKGROUND, LINE = hero_filters, "0x2e2e2e"
     elif shape == "landscape":
@@ -284,9 +304,11 @@ def set_shape(shape, res="hd", grid=False, bg="dark", status=False):
         CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 52, H - 58, 66, 34, 560
     if status and shape in ("portrait", "landscape", "hero"):
         LAYOUTS = with_status(LAYOUTS)
+        CLEAN_LAYOUTS = with_status(CLEAN_LAYOUTS) if CLEAN_LAYOUTS else None
     if shape not in ("window", "site"):
         W, H = even(W * SCALE), even(H * SCALE)
         LAYOUTS = scaled_layouts(LAYOUTS, SCALE)
+        CLEAN_LAYOUTS = scaled_layouts(CLEAN_LAYOUTS, SCALE) if CLEAN_LAYOUTS else None
         CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = (int(round(v * SCALE)) for v in (CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y))
         if shape == "hero":
             CAPTION_X = str(int(round(left * SCALE)))
@@ -550,23 +572,24 @@ def layout_segments(tl, length):
     return [(t, marks[i + 1][0] if i + 1 < len(marks) else length, name) for i, (t, name) in enumerate(marks)]
 
 
-def composite(raw, work, tl, length, fps, out, top="screen"):
+def composite(raw, work, tl, length, fps, out, top="screen", layouts=None):
     """The window of the deck, cut up and stacked into 1080x1920 as each scene's layout says. No text."""
+    layouts = layouts or LAYOUTS
     if SHAPE == "window":
         return composite_window(raw, out, fps)
     raw_w, raw_h = probe(raw)
     k = raw_h / float(DECK_H)
     if SHAPE == "site":
         site_background(work)
-    if any(isinstance(src, Cut) and src.mask == "unit-mask.png" for regions in LAYOUTS.values() for src, _ in regions):
+    if any(isinstance(src, Cut) and src.mask == "unit-mask.png" for regions in layouts.values() for src, _ in regions):
         unit_mask(raw, work, k)
-    for regions in LAYOUTS.values():
+    for regions in layouts.values():
         for src, (_, _, dw, dh) in regions:
             if isinstance(src, Cut) and src.mask.startswith("round-"):
                 round_card(work, dw, dh)
     lines, labels = [], []
     for i, (t0, t1, name) in enumerate(layout_segments(tl, length)):
-        regions = LAYOUTS[layout_named(name, top)]
+        regions = layouts[layout_named(name, top)]
         dur = t1 - t0
         if BACKGROUND:
             lines.extend(BACKGROUND(i, fps, dur))
@@ -837,12 +860,17 @@ def main():
         tag += "-" + {"transparent": "alpha"}.get(BG, BG)
     if args.status and args.shape in ("portrait", "landscape", "hero"):
         tag += "-status"
-    composite(raw, work, tl, length, args.fps, os.path.join(work, "clean-video" + EXT), top)
+    chain = captions(tl, length, episode, work) + end_card(episode, tl, length)
+    clean = os.path.join(work, "clean-video" + EXT)
+    base = clean
+    if CLEAN_LAYOUTS and chain:                            # the text has room above the pictures, the clean video fills the height
+        base = os.path.join(work, "captioned-video" + EXT)
+        composite(raw, work, tl, length, args.fps, base, top)
+    composite(raw, work, tl, length, args.fps, clean, top, CLEAN_LAYOUTS)
     master_sound(raw, work, os.path.join(work, "sound.m4a"))
     mux(os.path.join(work, "clean-video" + EXT), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s%s" % (tag, EXT)))
-    chain = captions(tl, length, episode, work) + end_card(episode, tl, length)
     if chain:
-        burn(os.path.join(work, "clean-video" + EXT), os.path.join(work, "sound.m4a"), work, chain, os.path.join(out_dir, "reel-%s%s" % (tag, EXT)), args.fps)
+        burn(base, os.path.join(work, "sound.m4a"), work, chain, os.path.join(out_dir, "reel-%s%s" % (tag, EXT)), args.fps)
     else:                                                  # no text anywhere (the site shape): the one picture is both
         shutil.copyfile(os.path.join(out_dir, "reel-clean-%s%s" % (tag, EXT)), os.path.join(out_dir, "reel-%s%s" % (tag, EXT)))
     write_srt(tl, length, os.path.join(out_dir, "reel.srt"))

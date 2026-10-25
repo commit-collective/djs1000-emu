@@ -82,6 +82,10 @@ app's screen is 800x480 in it. The regions are measured on that window. A scene'
 end card, `END` in the episode): `play` and `mods` are the same picture, so the unit never moves between them, and the name is for the
 episode's own use.
 
+In `--shape hero` the clean video (`reel-clean-...`, no text) is laid out differently from the captioned one: the app's screen and the
+list of mods fill the whole height of the unit, flush with its top and its foot, as there is no caption to leave room for. The unit is
+where it is in the captioned video, so the two can be cut together or the panels moved in an editor.
+
 ## The status line
 
 The deck's status line (the state, MASTER / PHONES, the input level, the decks) is in every recording, at the foot of the window, and the
