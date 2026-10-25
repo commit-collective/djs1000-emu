@@ -363,8 +363,8 @@ def load_episode(name):
 
 def steps_episode(path, base):
     """An episode made of a REC's NAME.steps (app/virtual_djs.py): one scene in which every command the deck sent is sent again, at
-    the same second. It starts from the unit as a reel starts (the project of --project, or the first), so a recording made to be
-    played back begins the same way."""
+    the same second. It starts from the unit as it boots, with no project open (BARE), so a
+    recording made to be played back should begin there too, and its steps load the project."""
     steps = []
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -384,7 +384,7 @@ def steps_episode(path, base):
             ctx.s.send(command)
 
     scenes = [{"layout": "play", "seconds": steps[-1][0] + 3.0, "do": "steps"}]
-    return types.SimpleNamespace(NAME=base, SCENES=scenes, do_steps=do_steps)
+    return types.SimpleNamespace(NAME=base, SCENES=scenes, do_steps=do_steps, BARE=True)
 
 
 def check_episode(episode):
@@ -848,7 +848,9 @@ def record(args, episode, raw):
         s.wait_usb()
         if args.patch:
             regress.wait_patch(emu, s)
-        if getattr(episode, "KIT", False):                    # the generated kit (a project made from the test samples), not a factory one
+        if getattr(episode, "BARE", False):                   # a played-back REC: the unit as it boots, the steps load what they need
+            pass
+        elif getattr(episode, "KIT", False):                  # the generated kit (a project made from the test samples), not a factory one
             demo.load_kit(s)
         elif getattr(episode, "USB_PROJECT", ""):             # a project of your own, copied to the stick (see prepare)
             open_usb_project(s)
