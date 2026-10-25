@@ -5,9 +5,11 @@ outputs, a Recorder feeds its input.
 The shim sends the sound as the app writes it (stereo float32, 44.1 kHz) over
 the deck's link. feed() takes it from the link's thread and SDL's audio
 thread asks for it through _fill(). The two clocks are not the same one, and
-the app, being emulated, can fall behind: so playing starts only once a
-little sound is waiting, starts over after running dry, and the oldest sound
-is dropped if too much piles up.
+the app, being emulated, can fall behind: so playing starts only once some
+sound is waiting (--audio-buffer, 150 ms by default), starts over after running
+dry, and the oldest sound is dropped if too much piles up. A Player counts the
+times it ran dry (the app was late with its sound) and the times SDL's thread
+was itself called late (the deck was busy), which the status line shows.
 """
 
 import array
@@ -19,8 +21,8 @@ from pygame._sdl2 import audio as sdl_audio
 
 RATE = 44100
 FRAME = 8                                # bytes: two float32
-START = RATE * FRAME * 60 // 1000        # sound waiting before playing starts: 60 ms
-MOST = RATE * FRAME * 250 // 1000        # more than this waiting: drop the oldest
+BUFFER_MS = 150                          # sound waiting before playing starts (the cost is that much delay)
+PERIOD = 2048                            # frames SDL asks for at a time: 46 ms. Small ones (11 ms) are missed when the deck draws
 
 
 def devices(capture=False):
@@ -136,22 +138,26 @@ class Silent:
 
 
 class Player:
-    def __init__(self, device=None):
+    def __init__(self, device=None, buffer_ms=BUFFER_MS):
         self.name = device or "default device"
         self.closed = False
         self._buf = bytearray()
         self._lock = threading.Lock()
         self._playing = False
-        self.dry = 0                     # times the sound ran out while playing
-        self._dev = sdl_audio.AudioDevice(device, 0, RATE, sdl_audio.AUDIO_F32, 2, 512, 0,
+        self._start = RATE * FRAME * max(20, buffer_ms) // 1000      # waiting before playing starts
+        self._most = self._start * 3 + RATE * FRAME * 100 // 1000    # more than this waiting: drop the oldest
+        self._last = 0.0
+        self.dry = 0                     # times the sound ran out while playing (the app was late)
+        self.late = 0                    # times SDL's thread was called more than twice its period late (the deck was busy)
+        self._dev = sdl_audio.AudioDevice(device, 0, RATE, sdl_audio.AUDIO_F32, 2, PERIOD, 0,
                                           self._fill)
         self._dev.pause(0)
 
     def feed(self, data):
         with self._lock:
             self._buf += data
-            if len(self._buf) > MOST:
-                del self._buf[:len(self._buf) - START]
+            if len(self._buf) > self._most:
+                del self._buf[:len(self._buf) - self._start]
 
     def reset(self):
         with self._lock:
@@ -161,8 +167,12 @@ class Player:
     def _fill(self, dev, view):
         view = memoryview(view).cast("B")   # SDL's buffer, to be filled
         want = len(view)
+        now = time.monotonic()
+        if self._last and now - self._last > 2.0 * PERIOD / RATE and self._playing:
+            self.late += 1
+        self._last = now
         with self._lock:
-            if not self._playing and len(self._buf) >= START:
+            if not self._playing and len(self._buf) >= self._start:
                 self._playing = True
             have = min(want, len(self._buf)) if self._playing else 0
             have -= have % FRAME

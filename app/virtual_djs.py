@@ -891,6 +891,9 @@ class Deck:
                 x = r.right
             self.listen_rect = pygame.Rect(left, top, x - left, STATUS_H)
             text = f"on {self.master.name}"
+            dry, late = getattr(self.master, "dry", 0), getattr(self.master, "late", 0)
+            if dry or late:
+                text += f" ({dry} dry, {late} late)"       # the app was late with its sound, the deck was late asking for it
         else:
             text = "no sound"
         if self.phones:
@@ -927,6 +930,9 @@ def main():
     ap.add_argument("--height", type=int, default=0, help="window height in pixels")
     ap.add_argument("--audio", metavar="NAME", help="play on the device whose name has NAME in it")
     ap.add_argument("--no-audio", action="store_true", help="do not play the app's sound")
+    ap.add_argument("--audio-buffer", type=int, default=audio.BUFFER_MS, metavar="MS",
+                    help="sound to have waiting before playing starts, in milliseconds (default %d): more is steadier and later"
+                         % audio.BUFFER_MS)
     ap.add_argument("--mute", action="store_true",
                     help="play nothing, but show the MASTER / PHONES switch as if a sound device were there (for a recording)")
     ap.add_argument("--listen", choices=("master", "phones"), default="master",
@@ -965,8 +971,8 @@ def main():
         print("Playback:\n  " + "\n  ".join(audio.devices()))
         print("Recording:\n  " + "\n  ".join(audio.devices(True)))
         return
-    master = audio.Silent() if args.mute else None if args.no_audio else audio.Player(audio.pick(args.audio))
-    phones = audio.Player(audio.pick(args.headphones)) if args.headphones else None
+    master = audio.Silent() if args.mute else None if args.no_audio else audio.Player(audio.pick(args.audio), args.audio_buffer)
+    phones = audio.Player(audio.pick(args.headphones), args.audio_buffer) if args.headphones else None
     outputs = (master, phones)
 
     listen = [1 if args.listen == "phones" else 0]
