@@ -1145,6 +1145,7 @@ class Deck:
             self.rec.frame(win)                   # the window as it is, with its status line, the menu not in it
         if self.menu_open:
             self.draw_menu()
+        self.update_cursor()
         pygame.display.flip()
 
     def draw_boot(self, rect):
@@ -1445,7 +1446,7 @@ class Deck:
                 on = self.listen[0] == i
                 t = self.small.render(name, True, (10, 10, 10) if on else (150, 152, 158))
                 r = pygame.Rect(x, top + 4, t.get_width() + 14, STATUS_H - 8)
-                pygame.draw.rect(win, (150, 220, 120) if on else (40, 41, 45), r,
+                pygame.draw.rect(win, (150, 220, 120) if on else (62, 64, 70) if self.hovering(r) else (40, 41, 45), r,
                                  border_top_left_radius=4 if i == 0 else 0,
                                  border_bottom_left_radius=4 if i == 0 else 0,
                                  border_top_right_radius=4 if i else 0,
@@ -1499,12 +1500,27 @@ class Deck:
             win.blit(t, (x, r.centery - t.get_height() // 2))
             self.menu_rects.append((r, i))
 
+    def hovering(self, rect):
+        """The mouse is over `rect` (and in the window): a button of the status line lights up."""
+        return pygame.mouse.get_focused() and rect.collidepoint(pygame.mouse.get_pos())
+
+    def update_cursor(self):
+        """The mouse is a hand over the status line's buttons (the TOOLS button, the MASTER / PHONES switch, deckbench's button and the hint that
+        copies), an arrow elsewhere."""
+        hand = any(r.width and self.hovering(r) for r in (self.tools_rect, self.listen_rect, self.bench_rect, self.copy_rect))
+        if hand != getattr(self, "_hand", False):
+            self._hand = hand
+            try:
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND if hand else pygame.SYSTEM_CURSOR_ARROW)
+            except pygame.error:
+                pass
+
     def draw_tools_button(self, right, top):
         """The TOOLS button, its right edge at `right`. Returns where it is."""
         win = self.win
         t = self.small.render("TOOLS", True, (10, 10, 10) if self.menu_open else (200, 203, 208))
         r = pygame.Rect(right - t.get_width() - 24, top + 4, t.get_width() + 24, STATUS_H - 8)
-        pygame.draw.rect(win, (150, 220, 120) if self.menu_open else (40, 41, 45), r, border_radius=4)
+        pygame.draw.rect(win, (150, 220, 120) if self.menu_open else (62, 64, 70) if self.hovering(r) else (40, 41, 45), r, border_radius=4)
         win.blit(t, (r.left + 8, r.centery - t.get_height() // 2))
         tip = [(r.right - 14, r.centery + 2), (r.right - 6, r.centery + 2), (r.right - 10, r.centery - 3)]
         pygame.draw.polygon(win, (10, 10, 10) if self.menu_open else (200, 203, 208), tip)
@@ -1583,13 +1599,13 @@ class Deck:
                 win.blit(t, (place.right - t.get_width(), bar.top + 5))
             elif kind == "bench":
                 up = self.bench.up
-                over_it = self.bench_rect.collidepoint(pygame.mouse.get_pos())
                 label = self.small.render("DECKBENCH", True, (225, 228, 232) if up else (150, 152, 158))
                 r = pygame.Rect(place.left, bar.top + 4, label.get_width() + 14, STATUS_H - 8)
-                pygame.draw.rect(win, (62, 64, 70) if over_it else (40, 41, 45), r, border_radius=4)
-                win.blit(label, label.get_rect(center=r.center))
                 words = self.bench.text() if up else "not running"
                 t = self.font.render(words, True, (150, 220, 120) if up and self.bench.on else (150, 152, 158))
+                whole = pygame.Rect(place.left, bar.top, min(r.width + 8 + t.get_width(), width), STATUS_H)
+                pygame.draw.rect(win, (84, 86, 94) if self.hovering(whole) else (40, 41, 45), r, border_radius=4)
+                win.blit(label, label.get_rect(center=r.center))
                 if r.width + 8 + t.get_width() <= width:
                     win.blit(t, (r.right + 8, bar.top + 5))          # from the left: its words change in length
                 else:
@@ -1597,7 +1613,8 @@ class Deck:
                 self.bench_rect = pygame.Rect(place.left, bar.top, min(r.width + 8 + t.get_width(), width), STATUS_H)
             x = place.left - 14
         # What is under the mouse, or when nothing is, the last thing done (a click copies it)
-        room = pygame.Rect(left, bar.top, max(0, x - left), STATUS_H)
+        lo = 10 + self.status_w + 30                       # the hint may use the room from the left readouts on, to sit in the middle
+        room = pygame.Rect(lo, bar.top, max(0, x - lo), STATUS_H)
         if self.hover:
             text, colour = self.hover, (225, 228, 232)
         elif self.notice[0] and pygame.time.get_ticks() < self.notice[1]:
