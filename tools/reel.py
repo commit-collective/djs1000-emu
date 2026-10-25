@@ -54,6 +54,7 @@ SCREEN = (1380, 16, 798, 478)                # the app's screen (the big one bes
 #                                              less one more, for the crop is an even number of pixels)
 PANEL = (0, 486, 1360, 1270)                 # the face below the bezel of its small screen: knobs, pads, strip, fader, step buttons
 DEVICE = (0, 20, 1360, 1740)                 # the whole face, the bezel of the small screen at its top
+STATUS_FROM = (0, DECK_H - 26, DECK_W, 26)   # the deck's status line at the foot of its window (--status)
 LINE = "0x3a3c42"                            # the thin line around a card
 MARGIN, GAP = 24, 22                         # the picture's side margin, and the space between the two cards
 CARD = 1080 - 2 * MARGIN                     # a card's width
@@ -94,6 +95,21 @@ def landscape():
         face_at = (MARGIN, top, face_w, room)
         layouts[name] = [(SCREEN, screen_at), ("box", screen_at), (face, face_at), ("box", face_at)]
     return layouts
+
+
+def with_status(layouts):
+    """The layouts with the status line as a strip of its own under everything else, as wide as the pictures are."""
+    out = {}
+    for name, regions in layouts.items():
+        out[name] = list(regions)
+        if name == "end" or not regions:
+            continue
+        x0 = min(at[0] for _, at in regions)
+        x1 = max(at[0] + at[2] for _, at in regions)
+        foot = max(at[1] + at[3] for _, at in regions)
+        w = x1 - x0
+        out[name].append((STATUS_FROM, (x0, foot + 6, w, int(round(STATUS_FROM[3] * w / float(STATUS_FROM[2]))))))
+    return out
 
 
 class Cut(tuple):
@@ -233,7 +249,7 @@ def scaled_layouts(layouts, f):
     return out
 
 
-def set_shape(shape, res="hd", grid=False, bg="dark"):
+def set_shape(shape, res="hd", grid=False, bg="dark", status=False):
     """Portrait (1080x1920, the default), landscape (1920x1080), hero (1920x1080 in the look of the website's picture), site (that
     picture itself, 2168x1442) or window (the deck's window as it opens): the size, the layouts and where the text goes. res makes the
     picture 1.33 (2k) or 2 (4k) times as big, every layout, text and line with it (the window shape is the recording as it is)."""
@@ -266,6 +282,8 @@ def set_shape(shape, res="hd", grid=False, bg="dark"):
         W, H = 1080, 1920
         LAYOUTS = PORTRAIT
         CAPTION_Y, SUB_Y, CAPTION_SIZE, SUB_SIZE, END_Y = 52, H - 58, 66, 34, 560
+    if status and shape in ("portrait", "landscape", "hero"):
+        LAYOUTS = with_status(LAYOUTS)
     if shape not in ("window", "site"):
         W, H = even(W * SCALE), even(H * SCALE)
         LAYOUTS = scaled_layouts(LAYOUTS, SCALE)
@@ -778,6 +796,9 @@ def main():
                          "lifted by 4 levels (of 255), so a luma key takes only the background out), green (0x00ff00, for a chroma key, but "
                          "the unit has green pads), or transparent (a ProRes 4444 .mov with an alpha channel, very large). The site "
                          "shape's titles are in its picture, so these have none. The files have -black, -green or -alpha after the shape")
+    ap.add_argument("--status", action="store_true",
+                    help="the deck's status line (the state, MASTER / PHONES, the input level, the decks) as a thin strip of its own under "
+                         "the unit and the cards (not --shape site and window: the window has it already). The files have -status after the shape")
     ap.add_argument("--no-link", action="store_true", help="no simulated decks (deckbench)")
     ap.add_argument("--from-raw", action="store_true", help="do not record again: make the picture from the last recording")
     args = ap.parse_args()
@@ -796,7 +817,7 @@ def main():
     if getattr(episode, "PATCH", False) and not args.patch and not args.from_raw:
         sys.exit("this episode shows the mods: give the mods' autoexec.bin with --patch")
     args.shape = args.shape or getattr(episode, "SHAPE", "portrait")
-    set_shape(args.shape, args.res, args.grid, args.bg)
+    set_shape(args.shape, args.res, args.grid, args.bg, args.status)
     out_dir = os.path.abspath(os.path.join(args.out, episode.NAME))
     # The hero shape has the list of mods beside the unit, so the app's screen is not given a page of it: it is another recording
     work = os.path.join(out_dir, "work-window" if args.shape == "window" else "work-hero" if args.shape in ("hero", "site") else "work")
@@ -814,6 +835,8 @@ def main():
         tag += "-" + args.res                              # reel-hero-2k.mp4 beside reel-hero.mp4
     if BG != "dark":
         tag += "-" + {"transparent": "alpha"}.get(BG, BG)
+    if args.status and args.shape in ("portrait", "landscape", "hero"):
+        tag += "-status"
     composite(raw, work, tl, length, args.fps, os.path.join(work, "clean-video" + EXT), top)
     master_sound(raw, work, os.path.join(work, "sound.m4a"))
     mux(os.path.join(work, "clean-video" + EXT), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s%s" % (tag, EXT)))

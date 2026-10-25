@@ -82,6 +82,12 @@ app's screen is 800x480 in it. The regions are measured on that window. A scene'
 end card, `END` in the episode): `play` and `mods` are the same picture, so the unit never moves between them, and the name is for the
 episode's own use.
 
+## The status line
+
+The deck's status line (the state, MASTER / PHONES, the input level, the decks) is in every recording, at the foot of the window, and the
+layouts leave it out. `--status` puts it back as a thin strip of its own under the unit and the cards (portrait, landscape and hero).
+It is made from the same recording, so `--from-raw` adds it to a reel that is already recorded. The files have `-status` after the shape.
+
 ## Playing a REC again
 
 A REC in the virtual deck (see [virtual-deck.md](virtual-deck.md)) leaves a `.steps` file beside its video: every command the deck sent, with
