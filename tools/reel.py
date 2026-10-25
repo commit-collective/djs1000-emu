@@ -863,8 +863,8 @@ def record(args, episode, raw):
     if emu.running():
         sys.exit("An emulator is running: stop it first (start.py stop).")
     prepare(emu, args.patch, getattr(episode, "KIT", False), getattr(episode, "USB_PROJECT", ""), getattr(episode, "MOD_SETTINGS", None),
-            stick=getattr(episode, "BARE", False), mirror_settings=getattr(episode, "MIRROR_SETTINGS", False))
-    mods = args.patch or getattr(episode, "BARE", False)       # a played-back REC runs the mods that its stick holds
+            stick=getattr(episode, "STEPS", False), mirror_settings=getattr(episode, "MIRROR_SETTINGS", False))
+    mods = args.patch or getattr(episode, "STEPS", False)       # a played-back REC runs the mods that its stick holds
     os.environ["DJS_CAPTURE_CRF"] = "12"
     emu.start()
     deck = None
