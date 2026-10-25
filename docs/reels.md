@@ -100,6 +100,11 @@ episode of one scene. It starts a fresh unit with a copy of your own stick (`$DJ
 `autoexec.bin` and mods settings), opens that project, and sends the same commands at the same seconds. The deck draws the knobs and the
 strip as they move. The video is the reel's own, so `--shape`, `--res` and `--bg` apply, and it has no captions.
 
+If deckbench was up during the REC, a `.bench` file beside the steps keeps what was done there (its journal) and where the unit's input came from.
+The replay puts the bench's decks as they were when the REC began and does the same to them at the same seconds, and takes the bench's sound as the
+unit's input if it did. The files that a deck played must still be where they were. If the bench does not answer (on Windows a stale `wslrelay.exe` can
+hold its port: `wsl --shutdown` clears it) that part is left out, with a message.
+
 `--usb-project NAME` or `--project NAME` open another project first. A recording that began before any project was open has none in its
 file and is played from the unit as it boots, so its steps load the project themselves.
 

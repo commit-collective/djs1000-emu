@@ -50,7 +50,7 @@ the line and the menu can always be reached.
 window as it is, with the keyable background and its status line (a reel can take it as a strip of its own), but without the menu, and the sound as
 you hear it: the output the MASTER / PHONES switch has chosen (not the two added, which would thin it: the headphones carry a quieter, partly
 inverted copy of the program). When it ends (REC again, or closing the window) the picture is retimed by a
-percent or two to follow the sound (the emulator's sound runs a little fast or slow against the clock, and the sound keeps its pitch), and three files are made: `deck-DATE-TIME.mp4`, `deck-DATE-TIME.steps` (every command the deck sent, with its second, and the project the app had open, which
+percent or two to follow the sound (the emulator's sound runs a little fast or slow against the clock, and the sound keeps its pitch), and the files are made: `deck-DATE-TIME.mp4`, `deck-DATE-TIME.bench` (with deckbench up: what was done in it, see below), `deck-DATE-TIME.steps` (every command the deck sent, with its second, and the project the app had open, which
 `python tools/reel.py demo/captures/deck-DATE-TIME.steps` plays again on a fresh unit to make a reel of it) and `deck-DATE-TIME.wav` (the
 sound alone, 24 bits). It needs `ffmpeg` on the path. The status line shows a red REC and the time. A window that is resized while it
 records is scaled to the size it began with. `--record` is the scripted capture of the reels and has no REC.

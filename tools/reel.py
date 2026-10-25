@@ -419,16 +419,59 @@ def steps_episode(path, base):
     if not steps:
         sys.exit("%s has no steps" % path)
 
+    journal = None                                   # what was done in deckbench meanwhile (NAME.bench beside the steps)
+    side = os.path.splitext(path)[0] + ".bench"
+    if os.path.exists(side):
+        import json
+        with open(side, encoding="utf-8") as f:
+            journal = json.load(f)
+    events = [(at, "send", command) for at, command in steps]
+    if journal:
+        events += [(at, "bench", request) for at, request in journal["actions"]]
+        events.sort(key=lambda e: e[0])
+
+    def bench_post(ctx, path):
+        import urllib.request
+        try:
+            urllib.request.urlopen(urllib.request.Request(ctx.bench.replace("localhost", "127.0.0.1").rstrip("/") + path, method="POST"),
+                                   timeout=5).read()
+        except OSError as e:
+            print("deckbench did not take %s: %s" % (path, e))
+
+    def bench_reachable(ctx):
+        import urllib.request
+        try:
+            urllib.request.urlopen(ctx.bench.replace("localhost", "127.0.0.1").rstrip("/") + "/api/ready", timeout=4).read()
+            return True
+        except OSError as e:
+            print("deckbench does not answer at %s (%s): its part of the recording is left out. On Windows a stale wslrelay.exe can hold "
+                  "the port (wsl --shutdown clears it)" % (ctx.bench, e))
+            return False
+
     def do_steps(ctx):
+        if journal and ctx.bench and not bench_reachable(ctx):
+            ctx.bench = None
+        if journal and ctx.bench:                    # the bench as it was when the recording began: every deck off, then the baseline
+            for n in (1, 2, 3, 4):
+                for what in ("on/0", "plug", "audio/clear"):
+                    bench_post(ctx, "/api/deck/%d/%s" % (n, what))
+            for request in journal["baseline"]:
+                bench_post(ctx, request)
         began = ctx.tl.now()
-        for at, command in steps:
+        for at, kind, command in events:
             late = began + at - ctx.tl.now()
             if late > 0:
                 ctx.wait(late)
-            ctx.say("send " + command)               # through the deck, which draws the knobs and the strip as they move
+            if kind == "bench":
+                if ctx.bench:
+                    bench_post(ctx, command)
+            else:
+                ctx.say("send " + command)           # through the deck, which draws the knobs and the strip as they move
 
-    scenes = [{"layout": "play", "seconds": steps[-1][0] + 3.0, "do": "steps"}]
+    scenes = [{"layout": "play", "seconds": max(e[0] for e in events) + 3.0, "do": "steps"}]
     episode = types.SimpleNamespace(NAME=base, SCENES=scenes, do_steps=do_steps, STEPS=True, BARE=True)
+    if journal:                                  # deckbench was up: it is again, and the unit's input is the bench's sound if it was
+        episode.LINK, episode.INPUT = True, journal.get("input") == "bench"
     if project:                                  # the recording began with this project open: it is opened first, from where it was
         name = os.path.splitext(os.path.basename(project))[0]
         episode.BARE = False

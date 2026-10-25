@@ -220,9 +220,9 @@ class Recording:
     """REC: the window (with its status line, without the menu) as video, and the sound as you hear it (the output the MASTER / PHONES switch
     has chosen, not the two added: the headphones carry an attenuated, partly inverted copy of the program, which would thin it), in a
     folder. The video is app/capture.py's, the same as --record; when it ends the sound is joined to it: NAME.mp4 (video and sound),
-    NAME.wav (the sound alone, 24 bits, for an editor) and NAME.steps (what was pressed, for tools/reel.py)."""
+    NAME.wav (the sound alone, 24 bits, for an editor), NAME.steps (what was pressed, for tools/reel.py) and, with deckbench up, NAME.bench (what was done there)."""
 
-    def __init__(self, folder, size, fps, project=""):
+    def __init__(self, folder, size, fps, project="", bench="", input_kind=""):
         os.makedirs(folder, exist_ok=True)
         self.name = "deck-" + time.strftime("%Y%m%d-%H%M%S")
         self.base = os.path.join(folder, self.name)
@@ -235,6 +235,36 @@ class Recording:
         self.steps.write("# djs1000 deck steps: seconds into the recording, then the command line\n")
         if project:                                   # the project the app had open (its path as the app sees it), for the replay to open first
             self.steps.write("# project: %s\n" % project)
+
+        # NAME.bench: what was done in deckbench meanwhile (its journal, deckbench/journal.py), and where the unit's input came from
+        self.bench, self.input_kind, self.baseline = bench, input_kind, None
+        if bench:
+            try:
+                self.baseline = self._ask("api/journal/start")["baseline"]
+            except (OSError, ValueError, KeyError):
+                self.bench = ""
+
+    def _ask(self, path):
+        import json
+        import urllib.request
+        request = urllib.request.Request(self.bench.replace("localhost", "127.0.0.1") + path, method="POST")
+        with urllib.request.urlopen(request, timeout=2) as reply:
+            return json.load(reply)
+
+    def _journal(self):
+        """Ends deckbench's journal and keeps it as NAME.bench: the actions with their second from the start of this recording."""
+        import json
+        if not self.bench:
+            return
+        try:
+            got = self._ask("api/journal/stop")
+        except (OSError, ValueError):
+            return
+        actions = [[round(t - self.began, 3), request] for t, request in got["actions"] if t >= self.began]
+        if not actions and not self.baseline:
+            return
+        with open(self.base + ".bench", "w", encoding="utf-8") as f:
+            json.dump({"input": self.input_kind, "baseline": self.baseline or got["baseline"], "actions": actions}, f, indent=1)
 
     def step(self, line):
         try:
@@ -257,6 +287,7 @@ class Recording:
         """Ends the video and, in the background, joins it with the sound. done(text) says where the file is, or what went wrong."""
         self.capture.close()
         self.steps.close()
+        self._journal()
         worker = threading.Thread(target=self._join, args=(done,), daemon=True)
         worker.start()
         if wait:
@@ -479,7 +510,8 @@ class Deck:
             self.say("REC needs ffmpeg on the path")
             return
         w, h = self.win.get_size()
-        self.rec = Recording(self.captures, (w, h), self.rec_fps, self.link.project)
+        self.rec = Recording(self.captures, (w, h), self.rec_fps, self.link.project,
+                             self.bench.url if self.bench and self.bench.up else "", self.input_kind)
         self.notice = ("", 0)                  # the red REC in the status line says it, and the video has that line
 
     def keep_on_top(self):
