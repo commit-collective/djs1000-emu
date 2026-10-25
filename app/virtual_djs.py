@@ -1040,6 +1040,16 @@ class Deck:
             got = self.sprites[(maker, state)] = (surface(img), x, y)
         return got
 
+    def ring(self, size):
+        """The amber ring of a held key, smooth at the corners: drawn at four times the size and brought down."""
+        got = self.sprites.get(("ring", size))
+        if got is None:
+            n = 4
+            big = pygame.Surface((size[0] * n, size[1] * n), pygame.SRCALPHA)
+            pygame.draw.rect(big, (255, 190, 60), big.get_rect(), 2 * n, border_radius=7 * n)
+            got = self.sprites[("ring", size)] = pygame.transform.smoothscale(big, size)
+        return got
+
     def draw(self):
         win = self.win
         win.fill(art.bg())
@@ -1062,13 +1072,16 @@ class Deck:
             if rgb and not any(rgb):
                 rgb = None
             down = i == held or i in self.held_keys or i in self.latched or (key.bit in held_bits and key.bit is not None)
+            if key.kind in ("pad", "step"):         # no white of their own: the unit's lamps are all they show (a pad's own flash on a
+                down = False                        # press comes from the app, and a step key shows none), held or not
             if level or rgb or down:
                 surf, x, y = self.sprite(art.key_sprite, i, self.scale, level, rgb, down)
                 win.blit(surf, (x + self.ox, y))
         for i in self.latched:                      # held by a right click: an amber ring, as the strip's pinned finger is amber
             x0, y0, x1, y1 = L.KEYS[i].bounds()
             ring = pygame.Rect(self.ox + int(x0 * self.scale), int(y0 * self.scale), int((x1 - x0) * self.scale), int((y1 - y0) * self.scale))
-            pygame.draw.rect(win, (255, 190, 60), ring.inflate(6, 6), 2, border_radius=7)
+            ring = ring.inflate(6, 6)
+            win.blit(self.ring(ring.size), ring.topleft)
         for i, knob in enumerate(L.KNOBS):
             down = bool(self.down and self.down == ("knob", i)) or \
                 (knob.push in held_bits and knob.push is not None)
