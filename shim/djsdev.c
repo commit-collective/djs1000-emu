@@ -696,6 +696,10 @@ static void *panel_thread(void *arg)
  *   'A' n, frames (LE16), 4 zeros       then frames*8 bytes: output n (0 master,
  *                                       1 headphones), stereo float32 at 44.1 kHz
  *
+ *   'P' 0, n (LE16), 4 zeros            then n bytes: the path of the project
+ *                                       file the app opened last (a client is
+ *                                       told when it connects, and on a change)
+ *
  * Besides command lines the deck sends the input's sound: the line
  * "in <frames>" and then frames*4 bytes, stereo 16-bit at 44.1 kHz.
  *
@@ -717,6 +721,12 @@ static volatile unsigned ring_w[2], ring_r[2];
 static short in_ring[RING_FRAMES * 2];
 static volatile unsigned in_w, in_r;
 static Spi *panel_spi;
+
+/* The project file the app opened last (a path ending in .prj, read), noted
+ * by open_common() and told to the clients by the sender. */
+static char project_path[512];
+static volatile unsigned project_seq;
+static unsigned project_told[DECKS];
 
 static int deck_send(int fd, const void *buf, unsigned n)
 {
@@ -848,6 +858,25 @@ static void *deck_sender(void *arg)
         for (i = 0; i < DECKS; i++) {
             if (deck_fd[i] < 0) {
                 continue;
+            }
+            if (deck_fresh[i]) {
+                project_told[i] = 0;
+            }
+            if (project_told[i] != project_seq) {
+                unsigned char phdr[8];
+                char copy[sizeof(project_path)];
+                unsigned n, seq = project_seq;
+
+                memcpy(copy, project_path, sizeof(copy));
+                n = strlen(copy);
+                memset(phdr, 0, sizeof(phdr));
+                phdr[0] = 'P';
+                phdr[2] = n & 0xFF;
+                phdr[3] = n >> 8;
+                project_told[i] = seq;
+                if (n) {
+                    deck_msg(i, phdr, copy, n);
+                }
             }
             if (deck_fresh[i]) {
                 deck_fresh[i] = 0;
@@ -1119,6 +1148,12 @@ static int open_common(const char *sym, const char *path, int flags, int mode)
     int sv[2];
 
     if (i < 0) {
+        size_t n = path ? strlen(path) : 0;
+
+        if (n > 4 && n < sizeof(project_path) && !strcmp(path + n - 4, ".prj") && (flags & 3) == 0) {         /* O_RDONLY */
+            memcpy(project_path, path, n + 1);
+            project_seq++;
+        }
         return real(path, flags, mode);
     }
     /* Writing only to a message queue: the queue's file (see queue_take()). */

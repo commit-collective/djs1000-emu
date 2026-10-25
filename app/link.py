@@ -26,6 +26,7 @@ class Link:
         self._lock = threading.Lock()
         self._out = threading.Lock()     # one sender at a time: lines and sound
         self._in = []
+        self.project = ""                 # the path of the project file the app opened last, as the app sees it
         self.log = None                   # a callable(line), told of every command line that is sent (REC keeps them as steps)
         self._stop = False
         threading.Thread(target=self._run, daemon=True).start()
@@ -105,6 +106,8 @@ class Link:
                         self._put(("screen", y, rows, width, self._read(sock, rows * width * 4)))
                     elif kind == ord("L"):
                         self._put(("lamps", self._read(sock, 128)))
+                    elif kind == ord("P"):
+                        self.project = self._read(sock, y).decode("utf-8", "replace")
                     elif kind == ord("A"):
                         data = self._read(sock, y * 8)
                         # Where the frames are in the output: frames written to
