@@ -604,6 +604,67 @@ def _face(scale, background):
     return c.done().convert("RGB")
 
 
+# The Commit Collective mark (the same drawing as deckbench's icon): a closed path of relative moves, cubics and verticals in a 1000 x 480
+# box, y up, and a dot. On a black square, scaled .8 and moved by (100, 308), as in the icon's SVG.
+CC_PATH = ("m0 0c0-68-57-123-125-120-61 2.7-111 53-114 114-3.3 69 52 126 120 126v120c-131 0-238-105-240-236-.96-63-48-119-111-123-70-5.2-129 50-129 120 "
+           "0 66 54 120 120 120v120c-142 0-254-123-238-267 13-113 105-202 219-211 80-6.3 151 26 199 81 44-50 108-82 180-82 133 0 240 107 240 240z")
+CC_DOT = (940, 60, 60)
+
+
+def _cc_outline():
+    """The mark's outline as a list of (x, y) points in the 1000 x 1000 square of the icon (the curves cut into short lines)."""
+    import re
+    x = y = 0.0
+    points = []
+    tokens = re.findall(r"[mcvz]|-?\d*\.?\d+", CC_PATH)
+    i = 0
+    cmd = None
+    while i < len(tokens):
+        if tokens[i] in "mcvz":
+            cmd = tokens[i]
+            i += 1
+            if cmd == "z":
+                continue
+        if cmd == "m":
+            x, y = x + float(tokens[i]), y + float(tokens[i + 1])
+            i += 2
+            points.append((x, y))
+        elif cmd == "v":
+            y += float(tokens[i])
+            i += 1
+            points.append((x, y))
+        elif cmd == "c":
+            c = [float(t) for t in tokens[i:i + 6]]
+            i += 6
+            p0, p1, p2, p3 = (x, y), (x + c[0], y + c[1]), (x + c[2], y + c[3]), (x + c[4], y + c[5])
+            for k in range(1, 25):
+                t = k / 24.0
+                u = 1 - t
+                points.append((u ** 3 * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t ** 3 * p3[0],
+                               u ** 3 * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t ** 3 * p3[1]))
+            x, y = p3
+    return points
+
+
+def _cc_place(px, py):
+    """A point of the mark (path at (719, 240), y up) in the icon's 1000 x 1000 square."""
+    return 100 + 0.8 * (719 + px), 308 + 0.8 * (480 - (240 + py))
+
+
+def cc_icon(size=256):
+    """The Commit Collective mark, white on black, as deckbench's icon has it: a Pillow RGBA image."""
+    k = 4
+    n = size * k
+    img = Image.new("RGBA", (n, n), (0, 0, 0, 255))
+    d = ImageDraw.Draw(img)
+    f = n / 1000.0
+    d.polygon([(a * f, b * f) for a, b in (_cc_place(*p) for p in _cc_outline())], fill=(255, 255, 255, 255))
+    cx, cy = _cc_place(CC_DOT[0] - 719, CC_DOT[1] - 240)
+    r = CC_DOT[2] * 0.8 * f
+    d.ellipse(((cx * f - r), (cy * f - r), (cx * f + r), (cy * f + r)), fill=(255, 255, 255, 255))
+    return img.resize((size, size), Image.LANCZOS)
+
+
 def icon(size=256):
     """The app's icon: the unit seen from above, a screen over a grid of sixteen pads, a few lit. Drawn like the rest, at four
     times the size and scaled down; returns a Pillow RGBA image."""

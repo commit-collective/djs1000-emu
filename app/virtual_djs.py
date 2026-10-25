@@ -337,8 +337,8 @@ def surface(img):
 class Deck:
     @staticmethod
     def icon():
-        """The window's icon (see art.icon), as a pygame surface."""
-        im = art.icon(64)
+        """The window's icon (the Commit Collective mark, as deckbench has it: art.cc_icon), as a pygame surface."""
+        im = art.cc_icon(64)
         return pygame.image.frombytes(im.tobytes(), im.size, "RGBA")
 
     def __init__(self, link, size, players=(None, None), recorder=None, listen=None, mods=None, tidy=True):
@@ -1552,7 +1552,10 @@ class Deck:
         if self.bench:                                  # always there: a button, which opens deckbench's page, and what its decks do
             places.append(("bench", self.small.size("DECKBENCH")[0] + 14 + 8 + self.font.size(self.bench.text() if self.bench.up else "not running")[0]))
         for kind, width in places:
-            if x - width <= left + 260:
+            keep = 260                                          # what is left of the middle for the hint under the mouse
+            if kind == "bench" and x - width <= left + keep:     # too narrow for its words: the button alone, which asks for less
+                width, keep = self.small.size("DECKBENCH")[0] + 14, 100
+            if x - width <= left + keep:
                 break
             place = pygame.Rect(x - width, bar.top, width, STATUS_H)
             if kind == "rec":
@@ -1587,7 +1590,10 @@ class Deck:
                 win.blit(label, label.get_rect(center=r.center))
                 words = self.bench.text() if up else "not running"
                 t = self.font.render(words, True, (150, 220, 120) if up and self.bench.on else (150, 152, 158))
-                win.blit(t, (r.right + 8, bar.top + 5))              # from the left: its words change in length
+                if r.width + 8 + t.get_width() <= width:
+                    win.blit(t, (r.right + 8, bar.top + 5))          # from the left: its words change in length
+                else:
+                    t = pygame.Surface((0, 0))
                 self.bench_rect = pygame.Rect(place.left, bar.top, min(r.width + 8 + t.get_width(), width), STATUS_H)
             x = place.left - 14
         # What is under the mouse, or when nothing is, the last thing done (a click copies it)
@@ -1603,11 +1609,12 @@ class Deck:
             text, colour = "", (0, 0, 0)
         if text and room.width > 40:
             t = self.font.render(text, True, colour)
+            at = max(room.left, min(w // 2 - t.get_width() // 2, room.right - t.get_width()))      # in the middle of the window, if it fits
             win.set_clip(room)
-            win.blit(t, (left, bar.top + 5))
+            win.blit(t, (at, bar.top + 5))
             win.set_clip(None)
             if not self.hover:
-                self.copy_rect = pygame.Rect(left, bar.top, min(t.get_width(), room.width), STATUS_H)
+                self.copy_rect = pygame.Rect(at, bar.top, min(t.get_width(), room.width), STATUS_H)
 
 
 def main():
