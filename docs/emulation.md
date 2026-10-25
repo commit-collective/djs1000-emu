@@ -1,5 +1,38 @@
 # Emulation: what is stood in for, and the state
 
+## How the app is made to run
+
+The sampler is one ARM program, `EP113_Main_R`, on an embedded Linux board. `scripts/setup.sh` unpacks the unit's own root
+filesystem from the update file. `scripts/run.sh` runs the program there, unmodified, under `qemu-arm` in user mode: QEMU
+translates the program's instructions and hands its system calls to the host's Linux kernel, with no guest kernel and no
+emulated board. The program runs in a chroot inside a user namespace, so no root is needed. What the board's drivers did is
+missing on the host, so a small preloaded library (`libdjsdev.so`, from `shim/djsdev.c`) answers for them.
+
+The method is a loop. The shim logs every call the app makes to a device, the app is run, and where it stops shows the next
+thing to answer. Roughly in the order the app asks:
+
+1. **The shim is built for the app's ABI.** The app uses glibc 2.13 and soft-float, so the shim is compiled that way and
+   linked against the device's own libraries.
+2. **Simple devices.** The backlight and GPIO get `/dev/zero`. A device the app polls gets one end of a socket pair, so its
+   `epoll` works.
+3. **The panel and the touch strip.** Both talk over SPI. The shim behaves as Pioneer's own driver does (its GPL source is
+   the reference): a timer, and a reply frame with an identifier and a CRC. Without a valid reply `main()` waits for ever for
+   the panel's handshake.
+4. **The sound devices.** The app would not finish starting, and the panel looked dead. The cause was the audio device and
+   not the panel. The shim now gives the app three ALSA devices on `null`, each with exactly two channels, 24-bit samples
+   and 64-frame periods, and paces the output to 44.1 kHz. See [power-standby.md](power-standby.md).
+5. **Storage.** The USB stick is a folder of the host, announced to the app through the unit's own `/proc` message queues.
+   The data partition and the pad calibration file are made by `run.sh`.
+6. **A screen.** The app draws through X, so `run.sh` starts a hidden Xvfb. The shim drops the request to close the window,
+   because the app hangs half shut down if it is closed.
+7. **The boot flow.** `scripts/guest/init.sh` stands in for the end of the unit's start-up script: it runs the stick's
+   `autoexec.bin` first and then starts the app, as a unit does (see A stick's autoexec.bin, below).
+
+For debugging, every intercepted call is logged with a `[djsdev]` prefix, `run.sh` takes extra `qemu-arm` arguments (`-g` for
+gdb), and a thread's name is visible on the host in `/proc/<pid>/task/*/comm`.
+
+## What is stood in for
+
 What `djsdev.c` stands in for, and why:
 
 | what | stand-in | without it |
