@@ -1552,25 +1552,26 @@ class Deck:
         if self.link.connected:
             x = self.draw_sound(x + 14, bar.top)
         self.status_w = x - 10
-        left = max(self.ox + self.face_w, 10 + self.status_w + 30)
+        left = 10 + self.status_w + 30                      # the right readouts and the hint use the room from the left readouts on
         # From the right: the tools button, the level, how fast the sound comes, how much waits to be played, deckbench's decks. Each has a
         # place of the width of the most it can say, so that what one says changing does not move the rest (what does not fit is left out)
         win = self.win
         x = self.draw_tools_button(w - 8, bar.top).left - 14
         waiting = getattr(self.master, "waiting_ms", None)
         places = []
+        chip_w = self.small.size("DECKBENCH")[0] + 14
+        if self.bench:         # a button beside TOOLS (the two buttons together), with what its decks do on its left, in a place of the widest it says
+            places.append(("bench", chip_w + 8 + self.font.size("decks 4 on · 4 playing · master 4 · 4 with a file")[0]))
         if self.rec:
             places.append(("rec", self.font.size("REC 00:00:00")[0] + 14))
         if self.link.connected:
             places += [("level", 72), ("speed", self.font.size("\u00d70.00")[0])]
             if waiting:
                 places.append(("waits", self.font.size("waits 1000 of 1000 ms")[0]))
-        if self.bench:                                  # always there: a button, which opens deckbench's page, and what its decks do
-            places.append(("bench", self.small.size("DECKBENCH")[0] + 14 + 8 + self.font.size(self.bench.text() if self.bench.up else "not running")[0]))
         for kind, width in places:
             keep = 260                                          # what is left of the middle for the hint under the mouse
             if kind == "bench" and x - width <= left + keep:     # too narrow for its words: the button alone, which asks for less
-                width, keep = self.small.size("DECKBENCH")[0] + 14, 100
+                width, keep = chip_w, 100
             if x - width <= left + keep:
                 break
             place = pygame.Rect(x - width, bar.top, width, STATUS_H)
@@ -1600,17 +1601,16 @@ class Deck:
             elif kind == "bench":
                 up = self.bench.up
                 label = self.small.render("DECKBENCH", True, (225, 228, 232) if up else (150, 152, 158))
-                r = pygame.Rect(place.left, bar.top + 4, label.get_width() + 14, STATUS_H - 8)
-                words = self.bench.text() if up else "not running"
-                t = self.font.render(words, True, (150, 220, 120) if up and self.bench.on else (150, 152, 158))
-                whole = pygame.Rect(place.left, bar.top, min(r.width + 8 + t.get_width(), width), STATUS_H)
+                r = pygame.Rect(place.right - chip_w, bar.top + 4, chip_w, STATUS_H - 8)
+                t = self.font.render(self.bench.text() if up else "not running", True, (150, 220, 120) if up and self.bench.on else (150, 152, 158))
+                if width <= chip_w:                                  # no room for its words
+                    t = pygame.Surface((0, 0))
+                whole = pygame.Rect(r.left - 8 - t.get_width() if t.get_width() else r.left, bar.top, r.right - (r.left - 8 - t.get_width() if t.get_width() else r.left), STATUS_H)
                 pygame.draw.rect(win, (84, 86, 94) if self.hovering(whole) else (40, 41, 45), r, border_radius=4)
                 win.blit(label, label.get_rect(center=r.center))
-                if r.width + 8 + t.get_width() <= width:
-                    win.blit(t, (r.right + 8, bar.top + 5))          # from the left: its words change in length
-                else:
-                    t = pygame.Surface((0, 0))
-                self.bench_rect = pygame.Rect(place.left, bar.top, min(r.width + 8 + t.get_width(), width), STATUS_H)
+                if t.get_width():
+                    win.blit(t, (r.left - 8 - t.get_width(), bar.top + 5))      # right-aligned against the button: its words change in length
+                self.bench_rect = whole
             x = place.left - 14
         # What is under the mouse, or when nothing is, the last thing done (a click copies it)
         lo = 10 + self.status_w + 30                       # the hint may use the room from the left readouts on, to sit in the middle
