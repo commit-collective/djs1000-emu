@@ -19,7 +19,7 @@ strip), with sound in and out.
 
 It is for people who own a DJS-1000: to study how it works, to write and try modifications (such as
 [the mods](https://commitcollective.cc/djs1000/mods/)) before putting them on the unit, and to test software that talks to
-it. How it does this is under [How it works](#how-it-works).
+it. It is kept lightweight on purpose, to match the way mods reach the unit: it runs the same `autoexec.bin` from a USB folder as the unit does from a stick, so what you try here is what you put on the stick. How it does this is under [How it works](#how-it-works).
 
 > [!CAUTION]
 >
