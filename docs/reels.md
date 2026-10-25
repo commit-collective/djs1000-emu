@@ -85,9 +85,13 @@ episode's own use.
 ## Playing a REC again
 
 A REC in the virtual deck (see [virtual-deck.md](virtual-deck.md)) leaves a `.steps` file beside its video: every command the deck sent, with
-the second it was sent. `reel.py demo/captures/deck-DATE-TIME.steps` treats it as an episode of one scene, starts a fresh unit and sends
-the same commands at the same seconds, so the reel shows what you did. It starts as every reel does, with the project of `--project` (or the
-first), so begin a REC from that same point. The video is the reel's own, so `--shape`, `--res` and `--bg` apply, and it has no captions.
+the second it was sent, and the project the app had open when it began. `reel.py demo/captures/deck-DATE-TIME.steps` treats it as an
+episode of one scene. It starts a fresh unit with a copy of your own stick (`$DJS_USB_SRC`, default `~/djs/usb`: its projects, samples,
+`autoexec.bin` and mods settings), opens that project, and sends the same commands at the same seconds. The deck draws the knobs and the
+strip as they move. The video is the reel's own, so `--shape`, `--res` and `--bg` apply, and it has no captions.
+
+`--usb-project NAME` or `--project NAME` open another project first. A recording that began before any project was open has none in its
+file and is played from the unit as it boots, so its steps load the project themselves.
 
 ## The top of the picture
 

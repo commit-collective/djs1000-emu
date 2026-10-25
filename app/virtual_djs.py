@@ -222,7 +222,7 @@ class Recording:
     folder. The video is app/capture.py's, the same as --record; when it ends the sound is joined to it: NAME.mp4 (video and sound),
     NAME.wav (the sound alone, 24 bits, for an editor) and NAME.steps (what was pressed, for tools/reel.py)."""
 
-    def __init__(self, folder, size, fps):
+    def __init__(self, folder, size, fps, project=""):
         os.makedirs(folder, exist_ok=True)
         self.name = "deck-" + time.strftime("%Y%m%d-%H%M%S")
         self.base = os.path.join(folder, self.name)
@@ -233,6 +233,8 @@ class Recording:
         # NAME.steps: every command the deck sends the app, as "seconds command" lines, which tools/reel.py plays back
         self.steps = open(self.base + ".steps", "w", encoding="utf-8", buffering=1)
         self.steps.write("# djs1000 deck steps: seconds into the recording, then the command line\n")
+        if project:                                   # the project the app had open (its path as the app sees it), for the replay to open first
+            self.steps.write("# project: %s\n" % project)
 
     def step(self, line):
         try:
@@ -477,7 +479,7 @@ class Deck:
             self.say("REC needs ffmpeg on the path")
             return
         w, h = self.win.get_size()
-        self.rec = Recording(self.captures, (w, h - STATUS_H), self.rec_fps)
+        self.rec = Recording(self.captures, (w, h - STATUS_H), self.rec_fps, self.link.project)
         self.say(f"recording to {self.rec.name}.mp4 (F7 ends it): the window without its status line")
 
     def keep_on_top(self):
@@ -729,6 +731,29 @@ class Deck:
         if knob.enc is not None:
             self.last_action = f"ctx.say('knob {knob.name} {delta}')"
             self.link.send(f"enc {knob.enc} {delta}")
+
+    def replay(self, line):
+        """A command line of a recording's steps (a .steps file): sent to the app as it is, and what the deck draws of it follows (the
+        knob that a `word` turns, the finger of a `strip`, the encoder that an `enc` turns)."""
+        part = line.split()
+        try:
+            if part[0] == "word" and len(part) == 3:
+                word, value = int(part[1]), int(part[2])
+                if word == L.SLIDER_WORD:
+                    self.slider = 0.5 if value == L.SLIDER_CENTRE else min(1.0, max(0.0, value / 1023))
+                for i, knob in enumerate(L.KNOBS):
+                    if knob.word == word and knob.look == "pot":
+                        self.knob_step[i] = round(value * L.POT_STEPS / 1023)
+            elif part[0] == "enc" and len(part) == 3:
+                for i, knob in enumerate(L.KNOBS):
+                    if knob.enc == int(part[1]):
+                        self.turn(i, int(part[2]))
+                        return
+            elif part[0] == "strip" and len(part) == 2:
+                self.strip = int(part[1]) if int(part[1]) >= 0 else None
+        except ValueError:
+            pass
+        self.link.send(line)
 
     def analogue(self):
         """Sends where the pots and the slider stand: the app only knows
@@ -1722,6 +1747,8 @@ def main():
                             else:
                                 deck.held_keys.discard(i)
                             deck.link.send(f"bit {key.bit[0]} {key.bit[1]} {1 if state.strip() == '1' else 0}")
+                elif command[0] == "send" and len(command) > 1:        # `send LINE`: a command line for the app, from a recording's steps
+                    deck.replay(command[1].strip())
                 elif command[0] == "knob" and len(command) > 1:        # `knob NAME DELTA`: turns a knob, and the picture of it, as the mouse wheel does
                     name, _, delta = command[1].partition(" ")
                     for i, knob in enumerate(L.KNOBS):

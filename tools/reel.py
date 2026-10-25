@@ -363,12 +363,15 @@ def load_episode(name):
 
 def steps_episode(path, base):
     """An episode made of a REC's NAME.steps (app/virtual_djs.py): one scene in which every command the deck sent is sent again, at
-    the same second. It starts from the unit as it boots, with no project open (BARE), so a
-    recording made to be played back should begin there too, and its steps load the project."""
-    steps = []
+    the same second. It starts from the unit as it boots, with no project open (BARE) and your own
+    stick in it, so a recording made to be played back should begin there too, and its steps load the project. Or a project is given
+    (--project, --usb-project) and is opened first, and the recording begins after loading it."""
+    steps, project = [], ""
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
+            if line.startswith("# project:"):
+                project = line.partition(":")[2].strip()
             if line and not line.startswith("#"):
                 at, _, command = line.partition(" ")
                 steps.append((float(at), command))
@@ -381,10 +384,18 @@ def steps_episode(path, base):
             late = began + at - ctx.tl.now()
             if late > 0:
                 ctx.wait(late)
-            ctx.s.send(command)
+            ctx.say("send " + command)               # through the deck, which draws the knobs and the strip as they move
 
     scenes = [{"layout": "play", "seconds": steps[-1][0] + 3.0, "do": "steps"}]
-    return types.SimpleNamespace(NAME=base, SCENES=scenes, do_steps=do_steps, BARE=True)
+    episode = types.SimpleNamespace(NAME=base, SCENES=scenes, do_steps=do_steps, STEPS=True, BARE=True)
+    if project:                                  # the recording began with this project open: it is opened first, from where it was
+        name = os.path.splitext(os.path.basename(project))[0]
+        episode.BARE = False
+        if "/usb" in project:
+            episode.USB_PROJECT, episode.MIRROR_SETTINGS = name, True
+        else:
+            episode.PROJECT = name
+    return episode
 
 
 def check_episode(episode):
@@ -404,11 +415,12 @@ def check_episode(episode):
     return faults
 
 
-def prepare(emu, patch, kit=False, usb_project="", mod_settings=None):
+def prepare(emu, patch, kit=False, usb_project="", mod_settings=None, stick=False, mirror_settings=False):
     """A fresh unit: empty stick (or with the generated test kit on it, for an episode that loads it, or with a project of your own
     copied from the stick in $DJS_USB_SRC, default ~/djs/usb, with its samples, and the mods' settings the episode gives) and settings,
     and the internal storage as hard links to the copy of the factory one (instant, and the app's writes go to the folders that are copies: projects,
-    scenes and system)."""
+    scenes and system). stick: the stick is a copy of your own ($DJS_USB_SRC, with its autoexec.bin and settings), which a played-back
+    REC needs to find what it opened."""
     cmd = '''
 D="${DJS_HOME:-$HOME/djs}/reel"
 SRC="${DJS_EMMC_SRC:-$HOME/djs/emmc-src}"
@@ -420,6 +432,12 @@ for f in Projects Scenes System; do
     cp -a "$SRC/PIONEER DJ SAMPLER/$f" "$D/emmc/PIONEER DJ SAMPLER/$f" || exit 1
 done
 '''
+    if stick:
+        cmd += '''U="${DJS_USB_SRC:-$HOME/djs/usb}"
+[ -d "$U" ] || { echo "no stick in $U"; exit 1; }
+cp -a "$U/." "$D/usb/" || exit 1
+rm -f "$D"/usb/*.log "$D"/usb/*.log.old "$D"/usb/djs1000-trace.txt "$D"/usb/djs1000-report.txt
+'''
     if kit:
         cmd += '''python3 '%s/tools/make_test_kit.py' "$D/usb/PIONEER DJ SAMPLER/Samples/Test Kit"
 ''' % emu.repo()
@@ -430,6 +448,9 @@ mkdir -p "$D/usb/PIONEER DJ SAMPLER/Projects" "$D/usb/PIONEER DJ SAMPLER/Samples
 cp -a "$U/Projects/$N.prj" "$D/usb/PIONEER DJ SAMPLER/Projects/" || exit 1
 [ -d "$U/Samples/$N" ] && { cp -a "$U/Samples/$N" "$D/usb/PIONEER DJ SAMPLER/Samples/" || exit 1; }
 ''' % usb_project
+    if mirror_settings:                       # the settings of your own stick, as the recording had them
+        cmd += '''S="${DJS_USB_SRC:-$HOME/djs/usb}/djs1000-mods.txt"; [ -f "$S" ] && cp "$S" "$D/usb/"
+'''
     if mod_settings:                          # what the mods read from the stick: `key = value` lines, the rest is as they start
         text = "".join("%s = %s\n" % (k, v) for k, v in mod_settings.items())
         cmd += "cat > \"$D/usb/djs1000-mods.txt\" << 'MODS_EOF'\n" + text + "MODS_EOF\n"
@@ -735,6 +756,10 @@ def main():
                     help="the top of the picture: the app's big screen above the panel (screen), or the unit with its own top and "
                          "small screen, the mods composited inside it (device). Default: TOP in the episode, else screen")
     ap.add_argument("--project", help="the project to open from the unit's internal storage (default: PROJECT in the episode, else the first)")
+    ap.add_argument("--usb-project", metavar="NAME",
+                    help="the project to open from the stick (in $DJS_USB_SRC, default ~/djs/usb, with its samples and the stick's mods "
+                         "settings) before the scenes: USB_PROJECT in the episode. For a .steps file it is the project that the "
+                         "recording had open when it began")
     ap.add_argument("--check", action="store_true", help="only look at the episode's scenes, no recording (needs no unit)")
     ap.add_argument("--shape", choices=("portrait", "landscape", "hero", "site", "window"), default=None,
                     help="portrait is 1080x1920 (Reels, Shorts, TikTok), landscape 1920x1080 (Reddit, YouTube). It is made from the "
@@ -757,6 +782,11 @@ def main():
     ap.add_argument("--from-raw", action="store_true", help="do not record again: make the picture from the last recording")
     args = ap.parse_args()
     episode = load_episode(args.episode)
+    if args.usb_project:
+        episode.USB_PROJECT = args.usb_project
+    if getattr(episode, "STEPS", False) and (args.usb_project or args.project):      # the recording began with a project open
+        episode.BARE = False
+        episode.MIRROR_SETTINGS = bool(args.usb_project)
     if args.check:
         faults = check_episode(episode)
         for fault in faults:
@@ -832,7 +862,9 @@ def record(args, episode, raw):
     emu = start.Emulator(os.environ.get("DJS_WSL_DISTRO"), 7310, env=ENV)
     if emu.running():
         sys.exit("An emulator is running: stop it first (start.py stop).")
-    prepare(emu, args.patch, getattr(episode, "KIT", False), getattr(episode, "USB_PROJECT", ""), getattr(episode, "MOD_SETTINGS", None))
+    prepare(emu, args.patch, getattr(episode, "KIT", False), getattr(episode, "USB_PROJECT", ""), getattr(episode, "MOD_SETTINGS", None),
+            stick=getattr(episode, "BARE", False), mirror_settings=getattr(episode, "MIRROR_SETTINGS", False))
+    mods = args.patch or getattr(episode, "BARE", False)       # a played-back REC runs the mods that its stick holds
     os.environ["DJS_CAPTURE_CRF"] = "12"
     emu.start()
     deck = None
@@ -846,7 +878,7 @@ def record(args, episode, raw):
         if not s.wait_screen(quiet=1.5, timeout=120):
             sys.exit("the app never drew its first screen")
         s.wait_usb()
-        if args.patch:
+        if mods:
             regress.wait_patch(emu, s)
         if getattr(episode, "BARE", False):                   # a played-back REC: the unit as it boots, the steps load what they need
             pass
@@ -866,9 +898,9 @@ def record(args, episode, raw):
         # The unit's input: silence, or the simulated decks' sound when the episode records from them (INPUT = True, with deckbench)
         cmd += ["--input-tcp", "127.0.0.1:%d" % start.AUDIO_PORT] if bench and getattr(episode, "INPUT", False) else ["--no-input"]
         usb, modlist = emu.usb(), emu.modlist()
-        if usb and args.patch:
+        if usb and mods:
             cmd += ["--usb", usb]
-        if modlist and args.patch:
+        if modlist and mods:
             cmd += ["--modlist", modlist]
         for suffix in (".start", ".stop", ".cmd", ".f32", ".f32p", ".rate"):
             if os.path.exists(raw + suffix):
