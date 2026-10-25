@@ -154,12 +154,13 @@ def hero_full():
     unit_h = 1000
     unit_w = int(round(UNIT_FROM[2] * unit_h / float(UNIT_FROM[3])))
     gap = 20
-    card_w = int((unit_h - gap) / (SCREEN[3] / float(SCREEN[2]) + MODS_FROM[3] / float(MODS_FROM[2])))
+    body_h = 994                      # the unit's case is shorter than its cut: the dark below it is not part of what the panels line up with
+    card_w = int((body_h - gap) / (SCREEN[3] / float(SCREEN[2]) + MODS_FROM[3] / float(MODS_FROM[2])))
     screen_h = int(round(SCREEN[3] * card_w / float(SCREEN[2])))
     x = (1920 - (unit_w + 60 + 710)) // 2                    # the unit is where the captioned video has it
     unit_at = (x, 40, unit_w, unit_h)
     screen_at = (x + unit_w + 60, 40, card_w, screen_h)
-    mods_at = (screen_at[0], 40 + screen_h + gap, card_w, unit_h - screen_h - gap)
+    mods_at = (screen_at[0], 40 + screen_h + gap, card_w, body_h - screen_h - gap)
     play = [(Cut(UNIT_FROM), unit_at), (Cut(SCREEN, "round-%dx%d.png" % screen_at[2:]), screen_at), ("frame", screen_at),
             (Cut(MODS_FROM, "round-%dx%d.png" % mods_at[2:]), mods_at), ("frame", mods_at)]
     return {"play": play, "play-device": play, "end": []}
