@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.join(REPO, "app"))
 import regress  # noqa: E402
 import start  # noqa: E402
 from session import Session  # noqa: E402
+import capture  # noqa: E402  (session.py puts app/ on the path)
 
 ENV = 'DJS_USB="${DJS_HOME:-$HOME/djs}/demo/usb" DJS_DATA="${DJS_HOME:-$HOME/djs}/demo/data"'
 FONTS = ["C:/Windows/Fonts/segoeuib.ttf", "C:/Windows/Fonts/arialbd.ttf",
@@ -194,7 +195,7 @@ def finish(video, final, marks, length, gif, work):
             speed = "asetrate=%d,aresample=44100," % round(44100 * ratio)     # resampled: atempo smears the bass
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-f", "f32le", "-ar", "44100", "-ac", "2", "-i",
            video + ".f32", "-vf", ",".join(["scale=1920:-2"] + chain), "-af", speed + "alimiter=limit=0.89:level=0", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart",
+           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", capture.AUDIO_BITRATE, "-shortest", "-movflags", "+faststart",
            os.path.abspath(final)]
     subprocess.check_call(cmd, cwd=work)
     if gif:

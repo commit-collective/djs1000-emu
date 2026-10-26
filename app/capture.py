@@ -23,6 +23,8 @@ import os
 import subprocess
 import time
 
+AUDIO_BITRATE = "320k"               # the AAC the recordings, REC and the reels are written with (the sound is kept whole beside it as 24-bit WAV or f32)
+
 import pygame
 
 RATE = 44100

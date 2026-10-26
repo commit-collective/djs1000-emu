@@ -67,7 +67,7 @@ import audio  # noqa: E402
 import layout as L  # noqa: E402
 from link import Link  # noqa: E402
 from mods import Mods  # noqa: E402
-from capture import Capture  # noqa: E402
+from capture import AUDIO_BITRATE, Capture  # noqa: E402
 
 CAPTURES = os.path.join(os.path.dirname(HERE), "demo", "captures")      # where REC puts its files (demo/ is git-ignored: media is never committed)
 
@@ -309,7 +309,7 @@ class Recording:
                 subprocess.check_call([ffmpeg, "-y", "-loglevel", "error"] + raw + ["-i", master, "-c:a", "pcm_s24le", wav])
                 video = ["-c:v", "copy"] if retime == "null" else ["-vf", retime, "-c:v", "libx264", "-preset", "fast", "-crf", "16", "-pix_fmt", "yuv420p"]
                 subprocess.check_call([ffmpeg, "-y", "-loglevel", "error", "-i", self.video, "-i", wav, "-map", "0:v", "-map", "1:a"] + video + [
-                                       "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", final])
+                                       "-c:a", "aac", "-b:a", AUDIO_BITRATE, "-shortest", "-movflags", "+faststart", final])
             else:
                 os.replace(self.video, final)
             for suffix in ("", ".f32", ".f32p", ".rate", ".start", ".stop", ".cmd"):

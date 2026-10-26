@@ -41,6 +41,7 @@ import demo  # noqa: E402
 import regress  # noqa: E402
 import start  # noqa: E402
 from session import ORIGIN, Session  # noqa: E402
+import capture  # noqa: E402,F401   (session.py puts app/ on the path)
 
 ENV = ('DJS_USB="${DJS_HOME:-$HOME/djs}/reel/usb" DJS_DATA="${DJS_HOME:-$HOME/djs}/reel/data" '
        'DJS_EMMC="${DJS_HOME:-$HOME/djs}/reel/emmc"')
@@ -821,7 +822,7 @@ def master_sound(raw, work, out):
                      speed.rstrip(",") or "anull", speed.rstrip(",") or "anull", levels), "-map", "[a]"])
     else:
         sound = raw_in + ["-i", clean, "-af", speed + levels]
-    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error"] + sound + ["-c:a", "aac", "-b:a", "192k", os.path.abspath(out)], cwd=work)
+    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error"] + sound + ["-c:a", "aac", "-b:a", capture.AUDIO_BITRATE, os.path.abspath(out)], cwd=work)
 
 
 def mux(video, audio, out):
