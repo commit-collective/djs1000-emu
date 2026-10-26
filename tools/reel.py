@@ -411,12 +411,14 @@ def steps_episode(path, base):
     the same second. It starts from the unit as it boots, with no project open (BARE) and your own
     stick in it, so a recording made to be played back should begin there too, and its steps load the project. Or a project is given
     (--project, --usb-project) and is opened first, and the recording begins after loading it."""
-    steps, project = [], ""
+    steps, project, setup = [], "", []
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line.startswith("# project:"):
                 project = line.partition(":")[2].strip()
+            elif line.startswith("# before:"):           # a command line sent off camera before the recording starts (a state the REC began in)
+                setup.append(line.partition(":")[2].strip())
             if line and not line.startswith("#"):
                 at, _, command = line.partition(" ")
                 steps.append((float(at), command))
@@ -474,6 +476,13 @@ def steps_episode(path, base):
 
     scenes = [{"layout": "play", "seconds": max(e[0] for e in events) + 3.0, "do": "steps"}]
     episode = types.SimpleNamespace(NAME=base, SCENES=scenes, do_steps=do_steps, STEPS=True, BARE=True)
+    if setup:
+        def before(sess):
+            for command in setup:
+                sess.send(command)
+                sess.pump(0.35)
+            sess.settle()
+        episode.before = before
     if journal:                                  # deckbench was up: it is again, and the unit's input is the bench's sound if it was
         episode.LINK, episode.INPUT = True, journal.get("input") == "bench"
     if project:                                  # the recording began with this project open: it is opened first, from where it was

@@ -109,6 +109,8 @@ The replay puts the bench's decks as they were when the REC began and does the s
 unit's input if it did. The files that a deck played must still be where they were. If the bench does not answer (on Windows a stale `wslrelay.exe` can
 hold its port: `wsl --shutdown` clears it) that part is left out, with a message.
 
+A line `# before: COMMAND` in the header (a command as the deck sends it, such as `bit 5 7 1`) is sent off camera, in order, before the recording begins: it puts back a state that the REC began in and the steps do not hold, such as the effect the PERFORMANCE FX page had selected.
+
 `--usb-project NAME` or `--project NAME` open another project first. A recording that began before any project was open has none in its
 file and is played from the unit as it boots, so its steps load the project themselves.
 
