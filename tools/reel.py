@@ -813,7 +813,7 @@ def master_sound(raw, work, out):
     # What the unit's input monitor plays comes out of its headphones, not the master: it is mixed in (it is silent otherwise)
     phones = os.path.abspath(raw) + ".f32p"
     mix = os.path.exists(phones) and os.path.getsize(phones) > 0
-    levels = "afade=t=in:d=0.02,loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.89:level=0"
+    levels = "afade=t=in:d=0.02,loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.89:level=0,aresample=48000"        # loudnorm works at 192 kHz: back to the 48 kHz of video
     speed = ""
     raw_in = ["-f", "f32le", "-ar", "44100", "-ac", "2"]
     if mix:
@@ -823,6 +823,9 @@ def master_sound(raw, work, out):
     else:
         sound = raw_in + ["-i", clean, "-af", speed + levels]
     subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error"] + sound + ["-c:a", "aac", "-b:a", capture.AUDIO_BITRATE, os.path.abspath(out)], cwd=work)
+    # The AAC encoder takes the bit rate as a target: what it writes depends on the sound (a quiet or plain one is 100 to 190 kb/s at a target
+    # of 192). The same sound is also written whole, for the editor: 24 bits, beside the videos.
+    subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error"] + sound + ["-c:a", "pcm_s24le", os.path.splitext(os.path.abspath(out))[0] + ".wav"], cwd=work)
 
 
 def mux(video, audio, out):
@@ -934,6 +937,7 @@ def main():
         composite(raw_fit, work, tl, length, args.fps, base, top)
     composite(raw_fit, work, tl, length, args.fps, clean, top, CLEAN_LAYOUTS)
     master_sound(raw, work, os.path.join(work, "sound.m4a"))
+    shutil.copyfile(os.path.join(work, "sound.wav"), os.path.join(out_dir, "reel-sound.wav"))
     mux(os.path.join(work, "clean-video" + EXT), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s%s" % (tag, EXT)))
     if chain:
         burn(base, os.path.join(work, "sound.m4a"), work, chain, os.path.join(out_dir, "reel-%s%s" % (tag, EXT)), args.fps)
