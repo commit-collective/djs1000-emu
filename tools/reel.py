@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Makes a short video (a reel) of the emulator, vertical unless --shape says another: a script plays the unit and the virtual deck records it.
+"""Makes a short video (a reel) of the emulator, in the look of the website's picture (--shape hero) at 2K (--res 2k) unless they say another: a script plays the unit and the virtual deck records it.
 
     reel.py EPISODE [--patch autoexec.bin] [--out DIR] [--fps 30] [--top screen|device] [--no-link] [--project NAME]
              [--shape portrait|landscape|hero|site|window] [--res hd|2k|4k] [--grid] [--bg dark|black|green|transparent]
@@ -769,9 +769,42 @@ def declick(path, out, rate=44100, fade=0.008):
     return count
 
 
+def audio_ratio(raw):
+    """The unit's sound over the picture it was recorded with, in length (see app/capture.py): the emulator runs a little fast or slow."""
+    rate = os.path.abspath(raw) + ".rate"
+    if os.path.exists(rate):
+        return float(open(rate).read())
+    if os.path.exists(os.path.abspath(raw) + ".f32"):               # a recording from before the deck wrote it: the lengths say
+        seconds = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                                 os.path.abspath(raw)], text=True))
+        return os.path.getsize(os.path.abspath(raw) + ".f32") / 8.0 / 44100 / seconds
+    return 1.0
+
+
+def fit_picture(raw, work, tl, length, fps):
+    """The picture retimed to the unit's own time, so that the sound keeps its pitch and its pace (a pattern is the 12 s it is in the unit, whatever
+    the emulator's speed was): the recording slowed or sped up by the ratio of the sound to it, and every time of the plan (layouts, text)
+    with it. Gives the picture to use, and the length. Nothing is done if the two are within 0.2%."""
+    ratio = audio_ratio(raw)
+    if abs(ratio - 1.0) <= 0.002:
+        return raw, length
+    out = os.path.join(work, "raw-fit.mp4")
+    stamp = os.path.join(work, "raw-fit.ratio")
+    if not (os.path.exists(out) and os.path.exists(stamp) and float(open(stamp).read()) == ratio
+            and os.path.getmtime(out) >= os.path.getmtime(raw)):
+        subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-i", os.path.abspath(raw), "-vf", "setpts=%.6f*PTS,fps=%d" % (ratio, fps),
+                               "-c:v", "libx264", "-preset", "fast", "-crf", "12", "-pix_fmt", "yuv420p", "-an", os.path.abspath(out)])
+        with open(stamp, "w") as f:
+            f.write(repr(ratio))
+    tl.layouts = [(t * ratio, name) for t, name in tl.layouts]
+    tl.cues = [(t * ratio, caption, sub) for t, caption, sub in tl.cues]
+    print("picture retimed by %.2f%% to the unit's time" % ((ratio - 1.0) * 100))
+    return out, length * ratio
+
+
 def master_sound(raw, work, out):
     """The deck's master output, as a track at a loudness a phone plays: -14 LUFS, peaks under -1.5 dB, a click taken out where
-    the sound stops hard, and a few milliseconds of fade in at the start."""
+    the sound stops hard, and a few milliseconds of fade in at the start. The sound is as the unit made it: the picture follows it (fit_picture)."""
     clean = os.path.abspath(raw) + ".clean.f32"
     n = declick(os.path.abspath(raw) + ".f32", clean)
     if n:
@@ -780,20 +813,7 @@ def master_sound(raw, work, out):
     phones = os.path.abspath(raw) + ".f32p"
     mix = os.path.exists(phones) and os.path.getsize(phones) > 0
     levels = "afade=t=in:d=0.02,loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.89:level=0"
-    # The emulator's sound is a few percent longer than the picture it was recorded with (see app/capture.py), so the sound is sped up
-    # by the ratio the deck wrote, without a change of pitch, and each sound stays where its picture is
     speed = ""
-    rate = os.path.abspath(raw) + ".rate"
-    ratio = 1.0
-    if os.path.exists(rate):
-        ratio = float(open(rate).read())
-    elif os.path.exists(os.path.abspath(raw) + ".f32"):             # a recording from before the deck wrote it: the lengths say
-        seconds = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
-                                                 os.path.abspath(raw)], text=True))
-        ratio = os.path.getsize(os.path.abspath(raw) + ".f32") / 8.0 / 44100 / seconds
-    if abs(ratio - 1.0) > 0.002:
-        speed = "asetrate=%d,aresample=44100," % round(44100 * ratio)     # resampled: atempo smears the bass
-        print("sound sped up %.2f%% to match the picture" % ((ratio - 1.0) * 100))
     raw_in = ["-f", "f32le", "-ar", "44100", "-ac", "2"]
     if mix:
         sound = (raw_in + ["-i", clean] + raw_in + ["-i", phones] +
@@ -850,9 +870,9 @@ def main():
                     help="portrait is 1080x1920 (Reels, Shorts, TikTok), landscape 1920x1080 (Reddit, YouTube). It is made from the "
                          "same recording, so --from-raw changes it. hero is landscape in the look of the website's picture, site is that picture "
                          "itself, to the pixel, made to move (2168x1442), window is the deck's window as it opens (about 1626x1060), "
-                         "with no layout and no text. Default: SHAPE in the episode, else portrait")
-    ap.add_argument("--res", choices=tuple(RESOLUTIONS), default="hd",
-                    help="the size of the picture: hd is as the shape says (1080 on its short side), 2k is 1440 and 4k is 2160, with every "
+                         "with no layout and no text. Default: SHAPE in the episode, else hero")
+    ap.add_argument("--res", choices=tuple(RESOLUTIONS), default="2k",
+                    help="the size of the picture: hd is as the shape says (1080 on its short side), 2k (the default) is 1440 and 4k is 2160, with every "
                          "layout and text made bigger. Like --shape, it is made from the same recording (--from-raw). The deck's window is "
                          "recorded at one size, so the app's screen (800x480) is scaled up. The files have -2k or -4k after the shape")
     ap.add_argument("--grid", action="store_true",
@@ -883,7 +903,7 @@ def main():
         sys.exit(1 if faults else 0)
     if getattr(episode, "PATCH", False) and not args.patch and not args.from_raw:
         sys.exit("this episode shows the mods: give the mods' autoexec.bin with --patch")
-    args.shape = args.shape or getattr(episode, "SHAPE", "portrait")
+    args.shape = args.shape or getattr(episode, "SHAPE", "hero")
     set_shape(args.shape, args.res, args.grid, args.bg, args.status)
     out_dir = os.path.abspath(os.path.join(args.out, episode.NAME))
     # The hero shape has the list of mods beside the unit, so the app's screen is not given a page of it: it is another recording
@@ -896,6 +916,7 @@ def main():
     plan = episode_plan(work)
     length = plan["length"]
     tl = plan["timeline"]
+    raw_fit, length = fit_picture(raw, work, tl, length, args.fps)
     top = args.top or getattr(episode, "TOP", "screen")
     tag = args.shape if args.shape in ("hero", "site", "window") else top + ("-wide" if args.shape == "landscape" else "")        # the files of the landscape picture have -wide after the look
     if args.res != "hd" and args.shape != "window":
@@ -909,8 +930,8 @@ def main():
     base = clean
     if CLEAN_LAYOUTS and chain:                            # the text has room above the pictures, the clean video fills the height
         base = os.path.join(work, "captioned-video" + EXT)
-        composite(raw, work, tl, length, args.fps, base, top)
-    composite(raw, work, tl, length, args.fps, clean, top, CLEAN_LAYOUTS)
+        composite(raw_fit, work, tl, length, args.fps, base, top)
+    composite(raw_fit, work, tl, length, args.fps, clean, top, CLEAN_LAYOUTS)
     master_sound(raw, work, os.path.join(work, "sound.m4a"))
     mux(os.path.join(work, "clean-video" + EXT), os.path.join(work, "sound.m4a"), os.path.join(out_dir, "reel-clean-%s%s" % (tag, EXT)))
     if chain:

@@ -49,12 +49,14 @@ website's repository beside this one (`SITE_HERO` in `tools/hero.py`).
 
 `--bg black`, `green` or `transparent` takes the dark background away (`hero` and `site`), to composite the video over something else in an editor. `black` is pure black, with the unit and the cards lifted by 4 levels (of 255), so a luma key with a low threshold takes out the background and nothing else. `green` is 0x00ff00 for a chroma key (the unit has green pads, so `black` is the safer one). `transparent` is a ProRes 4444 `.mov` with an alpha channel, which is very large (about 2.8 GB for a minute at 2k). The files have `-black`, `-green` or `-alpha` after the shape. The `site` shape's titles are part of its picture, so they go with it.
 
-`--res 2k` or `--res 4k` makes the picture bigger (1440 or 2160 on its short side: 2560x1440 for `hero`, 1440x2560 for `portrait`),
+A reel is made as `--shape hero` at `--res 2k` unless the episode says another shape (`SHAPE = "portrait"`) or the command line another size. The video has no captions in `reel-clean-hero-2k.mp4`, where the app's screen and the list of mods fill the height of the unit, and has them in `reel-hero-2k.mp4`.
+
+`--res hd`, `--res 2k` (the default) or `--res 4k` sets the size of the picture (1440 or 2160 on its short side: 2560x1440 for `hero`, 1440x2560 for `portrait`),
 with every layout, line and text scaled to match. It is made from the same recording, so `--from-raw` can make it. The files have the
 size after the shape (`reel-hero-2k.mp4`). The deck's window is recorded at one size and the app's screen is 800x480 in it, so that
 part is scaled up. `--shape window` ignores it.
 
-The emulator makes its sound about 2% faster than real time (a little slower than it, on a project that is heavy for it), which a player never notices because it drops what it cannot play. A recording keeps every sample, so the sound would drift from the picture. The deck writes the ratio beside the recording (`raw.mp4.rate`) and `reel.py` and `demo.py` change the speed of the sound by it, keeping its pitch. A recording from before this has the ratio worked out from the two lengths. The deck's `--audio-block` and `--audio-buffer` are for playing live and do not matter here (a recording is made with the deck muted).
+The emulator makes its sound about 2% faster than real time (a little slower than it, on a project that is heavy for it), which a player never notices because it drops what it cannot play. A recording keeps every sample, so the sound would drift from the picture. The deck writes the ratio beside the recording (`raw.mp4.rate`) and `reel.py` retimes the picture by it (to `raw-fit.mp4`, and every time of the layouts and the text with it), so that the sound is as the unit made it, at its own pitch and pace: a pattern of 16 beats at 80 BPM is 12 s of the video whatever the emulator's speed was. `demo.py` changes the speed of the sound by it. A recording from before this has the ratio worked out from the two lengths. The deck's `--audio-block` and `--audio-buffer` are for playing live and do not matter here (a recording is made with the deck muted).
 
 ## An episode
 
