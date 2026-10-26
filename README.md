@@ -42,7 +42,7 @@ it. It is kept lightweight on purpose, to match the way mods reach the unit: it 
 
 - **The update file**, `DJS1000.UPD` (version 1.22), the public update from the maker.
 - **The key that opens it** (the update is encrypted): see [About the key](#about-the-key).
-- **Linux, or Windows with WSL2** (Windows Subsystem for Linux) and Ubuntu 24.04 installed in it. macOS is not supported.
+- **Linux, or Windows with WSL2** (Windows Subsystem for Linux) and Ubuntu 24.04 installed in it. macOS is untested: see [macOS](#macos).
 - **Python 3** on the computer you sit at (Windows itself, or the Linux machine), to run the deck.
 
 ## About the key
@@ -58,9 +58,7 @@ readable by you alone, for the tools that need it later.
 ## Quick start
 
 The emulator itself runs in Linux. On Windows that is the Ubuntu terminal of WSL2: steps 2 and 3 go there, and the deck
-(steps 4 and 5) is started from Windows itself. On Linux everything runs in one place. macOS is not supported: the
-emulator needs Linux's `qemu-arm` user mode and Linux's chroot and namespaces, which a Mac would have to get from a
-Linux virtual machine (a patch that does that is welcome).
+(steps 4 and 5) is started from Windows itself. On Linux everything runs in one place. On macOS see [macOS](#macos).
 
 1. **Get the code**: clone this repository (or download a [release](https://github.com/commit-collective/djs1000-emu/releases)).
    The commands below are run from its folder.
@@ -174,7 +172,15 @@ section of [docs/virtual-deck.md](docs/virtual-deck.md) describes.
   from one run to the next
 
 **Not yet:** MIDI. Real decks on a physical network are not seen under WSL2's default networking (it needs mirrored
-networking or a bridge). macOS.
+networking or a bridge). A tested macOS setup.
+
+## macOS
+
+Not tested. The emulator needs Linux (`qemu-arm` user mode, a chroot and namespaces), so on a Mac it would run inside a Linux virtual
+machine such as [OrbStack](https://orbstack.dev) or [Lima](https://lima-vm.io) with Ubuntu 24.04, the way it runs in WSL2 on Windows, and
+the deck (`python app/virtual_djs.py`) on the Mac itself, talking to the emulator over the forwarded port. That should work in principle, but
+nobody has tried it, so it needs a tester: the first run will probably hit things (the `start.py` helper that drives WSL, the audio
+devices, the paths). If you try it, [report what happened](#reporting-a-problem), with the fix if you have one. A patch is welcome.
 
 ## Other ways to run it
 
