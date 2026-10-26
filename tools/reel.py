@@ -238,7 +238,7 @@ def encoder(fps, preset, crf):
     """The video codec: H.264, or ProRes 4444 with its alpha for --bg transparent (the file is a .mov)."""
     if PIX_FMT == "yuva444p":
         return ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-r", str(fps)]
-    return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p", "-r", str(fps)]
+    return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-g", str(fps), "-pix_fmt", "yuv420p", "-r", str(fps)]       # a key frame each second: it scrubs in an editor
 
 
 def composite_window(raw, out, fps):
@@ -247,6 +247,7 @@ def composite_window(raw, out, fps):
                            "-c:v", "libx264", "-preset", "medium", "-crf", "14", "-pix_fmt", "yuv420p", "-r", str(fps), os.path.abspath(out)])
 
 
+VIDEO_CRF = 8                                          # the x264 quality of the clean video (lower is better and bigger: 14 was 0.7 Mb/s here), and 2 more for the captioned one
 RESOLUTIONS = {"hd": 1.0, "2k": 4 / 3.0, "4k": 2.0}      # 1080 on the short side of the picture, 1440, 2160
 SCALE, BOX_T, GRID = 1.0, 1, False
 CLEAN_LAYOUTS = None                                   # --shape hero: the layouts of the video without text, where they differ
@@ -672,7 +673,7 @@ def composite(raw, work, tl, length, fps, out, top="screen", layouts=None):
     with open(script, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-i", os.path.abspath(raw), "-filter_complex_script", "composite.txt",
-                           "-map", "[outv]"] + encoder(fps, "medium", 14) + [os.path.abspath(out)], cwd=work)
+                           "-map", "[outv]"] + encoder(fps, "slow", VIDEO_CRF) + [os.path.abspath(out)], cwd=work)
 
 
 def unit_mask(raw, work, k):
@@ -733,7 +734,7 @@ def burn(video, audio, work, chain, out, fps):
     with open(os.path.join(work, "burn.txt"), "w", encoding="utf-8") as f:
         f.write(",".join(chain))
     subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-i", os.path.abspath(video), "-i", os.path.abspath(audio),
-                           "-filter_script:v", "burn.txt", "-map", "0:v", "-map", "1:a"] + encoder(fps, "slow", 17) + ["-c:a", "copy", "-movflags", "+faststart",
+                           "-filter_script:v", "burn.txt", "-map", "0:v", "-map", "1:a"] + encoder(fps, "slow", VIDEO_CRF + 2) + ["-c:a", "copy", "-movflags", "+faststart",
                            os.path.abspath(out)], cwd=work)
 
 
