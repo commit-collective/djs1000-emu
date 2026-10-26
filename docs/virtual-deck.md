@@ -129,6 +129,9 @@ Sound, all at 44.1 kHz stereo:
   instead of a device: deckbench's `--audio-port`, a drum loop in time with each playing simulated deck
   (it connects again if the stream goes away, and INPUT LEVEL works). A take in LIVE SAMPLING then records something that
   is on the deck's beat, with no sound card or microphone
+  of its own. With deckbench as the input, the 5th knob of LIVE SAMPLING (INPUT SOURCE, the mod `input-select`) picks the deck that is
+  heard: the unit would send the choice as MIDI on its DIN output, which the emulator has none of, so the deck reads it from the mod's log on
+  the stick (`djs1000-mods-app.log`, needs `--usb`) and tells deckbench (`POST /api/audio/source/N`). Until the knob is turned every playing deck is heard
 - `--list-audio` prints the playback and recording devices
 
 ## How it is made

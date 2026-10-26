@@ -46,6 +46,7 @@ import argparse
 import array
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -214,6 +215,44 @@ class BenchWatch:
         if self.with_file:
             text += f" \u00b7 {self.with_file} with a file"
         return text
+
+
+class InputWatch:
+    """The unit's INPUT SOURCE, the 5th knob of LIVE SAMPLING (the mod input-select): the mod sends it as MIDI on the DIN output, which the
+    emulator has none of, and writes it to its log on the stick as it changes ("input-select: input 00000002"). This reads that log as it
+    grows, from where it is when the deck starts, and calls tell(n) with the input, 1 to 6."""
+    PATTERN = re.compile(rb"input-select: input ([0-9a-fA-F]{8})")
+
+    def __init__(self, usb, tell):
+        self.path = os.path.join(usb, "djs1000-mods-app.log")
+        self.tell = tell
+        self.closed = False
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _size(self):
+        try:
+            return os.path.getsize(self.path)
+        except OSError:
+            return 0
+
+    def _run(self):
+        pos = self._size()
+        while not self.closed:
+            time.sleep(0.25)
+            size = self._size()
+            if size < pos:                               # a new log: the emulator started again
+                pos = 0
+            if size > pos:
+                try:
+                    with open(self.path, "rb") as f:
+                        f.seek(pos)
+                        data = f.read(size - pos)
+                except OSError:
+                    continue
+                pos = size
+                found = self.PATTERN.findall(data)
+                if found:
+                    self.tell(int(found[-1], 16))
 
 
 class Recording:
@@ -562,10 +601,28 @@ class Deck:
             print(f"no input: {e}", file=sys.stderr)
             kind = "none"
         self.recorder, self.input_kind = new, kind
+        if kind == "bench" and getattr(self, "last_source", None):
+            self.input_source(self.last_source, self.bench_url)
         if new:
             for i, knob in enumerate(L.KNOBS):   # the INPUT LEVEL knob is where it was
                 if knob.gain:
                     new.gain = self.knob_step[i] / L.POT_STEPS
+
+    def input_source(self, number, bench_url):
+        """The unit's INPUT SOURCE is `number`: with deckbench as the sound input, its sound port plays that deck only."""
+        self.last_source, self.bench_url = number, bench_url      # for when deckbench becomes the input later
+        if self.input_kind != "bench" or not bench_url or not 1 <= number <= 16:
+            return
+        self.say(f"sound in: deckbench, deck {number}")
+
+        def post():
+            import urllib.request
+            try:
+                urllib.request.urlopen(urllib.request.Request(bench_url.replace("localhost", "127.0.0.1").rstrip("/") + f"/api/audio/source/{number}",
+                                                              method="POST"), timeout=3).read()
+            except OSError:
+                pass
+        threading.Thread(target=post, daemon=True).start()
 
     def open_bench(self):
         if self.bench and self.bench.up:
@@ -1746,6 +1803,8 @@ def main():
     deck._system = None if args.input_tcp else recorder
     if not args.record:
         deck.bench = BenchWatch(args.bench)
+    if args.usb:                                  # the INPUT SOURCE knob picks the deck deckbench plays to the unit's input
+        deck.input_watch = InputWatch(args.usb, lambda n: deck.input_source(n, args.bench))
     if args.record:
         capture.append(Capture(args.record, (w, h), args.fps or 25))
         deck.fold["help"] = True              # the list of mods gets the room the controls' reminder takes
