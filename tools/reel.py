@@ -238,7 +238,8 @@ def encoder(fps, preset, crf):
     """The video codec: H.264, or ProRes 4444 with its alpha for --bg transparent (the file is a .mov)."""
     if PIX_FMT == "yuva444p":
         return ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-r", str(fps)]
-    return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-g", str(fps), "-pix_fmt", "yuv420p", "-r", str(fps)]       # a key frame each second: it scrubs in an editor
+    rate = ["-b:v", VIDEO_BITRATE, "-maxrate", VIDEO_BITRATE, "-bufsize", "30M"] if VIDEO_BITRATE else ["-crf", str(crf)]
+    return ["-c:v", "libx264", "-preset", preset] + rate + ["-g", str(fps), "-pix_fmt", "yuv420p", "-r", str(fps)]       # a key frame each second: it scrubs in an editor
 
 
 def composite_window(raw, out, fps):
@@ -247,7 +248,8 @@ def composite_window(raw, out, fps):
                            "-c:v", "libx264", "-preset", "medium", "-crf", "14", "-pix_fmt", "yuv420p", "-r", str(fps), os.path.abspath(out)])
 
 
-VIDEO_CRF = 8                                          # the x264 quality of the clean video (lower is better and bigger: 14 was 0.7 Mb/s here), and 2 more for the captioned one
+VIDEO_BITRATE = None
+VIDEO_CRF = 4
 RESOLUTIONS = {"hd": 1.0, "2k": 4 / 3.0, "4k": 2.0}      # 1080 on the short side of the picture, 1440, 2160
 SCALE, BOX_T, GRID = 1.0, 1, False
 CLEAN_LAYOUTS = None                                   # --shape hero: the layouts of the video without text, where they differ
@@ -988,7 +990,7 @@ def record(args, episode, raw):
     prepare(emu, args.patch, getattr(episode, "KIT", False), getattr(episode, "USB_PROJECT", ""), getattr(episode, "MOD_SETTINGS", None),
             stick=getattr(episode, "STEPS", False), mirror_settings=getattr(episode, "MIRROR_SETTINGS", False))
     mods = args.patch or getattr(episode, "STEPS", False)       # a played-back REC runs the mods that its stick holds
-    os.environ["DJS_CAPTURE_CRF"] = "12"
+    os.environ["DJS_CAPTURE_CRF"] = "4"
     emu.start()
     deck = None
     try:
