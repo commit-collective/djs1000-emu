@@ -86,7 +86,7 @@ by `DECKBENCH`), which `start.py` runs in the emulator's network when
 it finds it, four decks, players 1 to 4, off until its page switches them on
 (the emulated unit is player 1: deck 1 is there to show it in the list, and
 stays off, a deck with the unit's number being a clash). The page
-is at <http://localhost:8750/> (it prints the address when it starts): a row
+is at <http://127.0.0.1:8750/> (it prints the address when it starts. Use the number, not `localhost`: from Windows to WSL, `localhost` tries IPv6 first and every new connection waits 2 s): a row
 for each deck with ON, PLAY, SYNC and MASTER, the deck's four beat squares and
 its BPM. See deckbench's own README and `docs/prolink.md` for what the decks
 send and for what a DJS-1000 was found to need from them.

@@ -156,7 +156,7 @@ if ! pgrep -f '[d]eckbench --numbers' > /dev/null; then
     cd "$B" && setsid nohup python3 -m deckbench --numbers 1,2,3,4 --audio-port %d > "$RUN/deckbench.log" 2>&1 < /dev/null &
     sleep 1
 fi
-pgrep -f '[d]eckbench --numbers' > /dev/null && echo http://localhost:8750/
+pgrep -f '[d]eckbench --numbers' > /dev/null && echo http://127.0.0.1:8750/
 """ % (there, AUDIO_PORT))
         if code or not out.startswith("http"):
             self.bench_why = "deckbench did not start (see deckbench.log in the emulator's run folder)."
