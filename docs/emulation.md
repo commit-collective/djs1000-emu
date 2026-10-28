@@ -20,7 +20,7 @@ thing to answer. Roughly in the order the app asks:
    the panel's handshake.
 4. **The sound devices.** The app would not finish starting, and the panel looked dead. The cause was the audio device and
    not the panel. The shim now gives the app three ALSA devices on `null`, each with exactly two channels, 24-bit samples
-   and 64-frame periods, and paces the output to 44.1 kHz. See [power-standby.md](power-standby.md).
+   and 64-frame periods, and paces the output to 44.1 kHz.
 5. **Storage.** The USB stick is a folder of the host, announced to the app through the unit's own `/proc` message queues.
    The data partition and the pad calibration file are made by `run.sh`.
 6. **A screen.** The app draws through X, so `run.sh` starts a hidden Xvfb. The shim drops the request to close the window,
@@ -40,7 +40,7 @@ What `djsdev.c` stands in for, and why:
 | `/dev/backlight`, `/dev/gpiodrv` | `/dev/zero` (the app polls `gpiodrv` ~500x/s) | `BacklightManager` crashes in its own error message (passes a line number to a `%s`) |
 | `/dev/subucom_spi0.1` (panel), `/dev/cdc_spi2.0` (the touch strip) | the driver's behaviour, from `subucom_spi.c`: timer, reply on `read()`, `POLLIN` | `main()` waits forever for the panel handshake (its startup object) |
 | panel reply | idle frame, identifier `0x01`, CRC | `didRecievePanelComData - invalid identifier` / `UIThread (IN) - CRC Error` |
-| `snd_pcm_open("hw:ak4452audio,N")` | ALSA `null` (or `$DJSDEV_PCM`), reporting exactly 2 channels like the board's stereo devices | the device does not open and startup never completes. With `null`'s own 1–32 channels the audio thread crashes, see [power-standby.md](power-standby.md) |
+| `snd_pcm_open("hw:ak4452audio,N")` | ALSA `null` (or `$DJSDEV_PCM`), reporting exactly 2 channels like the board's stereo devices | the device does not open and startup never completes. With `null`'s own 1–32 channels the audio thread crashes |
 | `socket(AF_PACKET, SOCK_RAW, ETH_P_IP)` (`UDPRecvManager`) | a socket that receives the Pro DJ Link broadcasts of the host's network (see below). `bind`/`setsockopt` succeed | needs CAP_NET_RAW. The thread carries on with -1 and crashes |
 | `snd_pcm_readi` on the input | the sound the virtual deck sends, as the 24-bit-in-32 samples the app expects. Silence without it | |
 | `snd_pcm_hw_params_set_format` on the board's devices | only S24_LE is accepted (24 bits in the low three bytes of a 32-bit word), as on the unit, so the app settles on it there too: 64-frame periods, 2 of them | `null` accepts 32-bit float, which the app tries first: the app works, but what a mod sees in the sound path is not what it would see on a unit |

@@ -106,7 +106,6 @@ Use hardware to validate what the emulator cannot establish.
 - [Virtual deck and controls](docs/virtual-deck.md)
 - [Tools and regression workflow](docs/tools.md)
 - [Panel protocol](docs/panel-protocol.md)
-- [Hardware](docs/hardware.md), [standby](docs/power-standby.md)
 - [Reels](docs/reels.md), [releasing](docs/releasing.md)
 
 ## Support

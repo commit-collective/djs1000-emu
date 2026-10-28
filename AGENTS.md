@@ -6,6 +6,8 @@
   projects, and its manuals. The virtual deck's face is drawn here in code, not traced or copied from a photo or a Pioneer DJ
   picture. Tests and tools read the user's own firmware from `$DJS_HOME` and never copy it into the checkout. Do not commit
   pictures, samples or screenshots taken from the unit or its skin.
+- `docs/` is for running, using and building the emulator. What is learned about the firmware itself (hardware, internals,
+  the update's contents) goes in the private notes, not here.
 - Media (videos, renders) is never committed. Reels are generated into the git-ignored `demo/` folder, and personal episodes
   stay in `demo/episodes`.
 - Always commit completed changes locally on main. Ask before pushing, tagging or deploying, and never amend a pushed commit.

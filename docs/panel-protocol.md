@@ -67,7 +67,7 @@ sound. A lamp's id is not its button's:
 | TEMPO RESET | byte 6 bit 3 | 0x17 | 0x1d |
 | FX ON/OFF (a toggle, heard only with LEVEL/DEPTH above zero) | byte 6 bit 7 | 7 | 0x06: blinks while off, steady while on |
 | step keys 1–8, 9–16 | byte 3 bits 0–7, byte 4 bits 0–7 | 0x1a–0x29 | colour lamps 16–31 |
-| power/standby key: press and release puts the app in standby. From then on it asks the panel for it (tx `0x6C` bit 1, `transition Standby!`), see [power-standby.md](power-standby.md) | byte 5 bit 4 | 0 | |
+| power/standby key: press and release puts the app in standby. From then on it asks the panel for it (tx `0x6C` bit 1, `transition Standby!`) | byte 5 bit 4 | 0 | |
 | PROJECT (opens and closes its menu) | byte 5 bit 5 | 2 | 0x01 |
 | LIVE SAMPLING | byte 5 bit 6 | 3 | 0x02 |
 | FX | byte 5 bit 7 | 4 | 0x03 |
@@ -84,8 +84,8 @@ the panel's frame. It is what the second link carries: the same driver with
 4-byte replies every 3 ms, read by the app's `CdcManager`, which makes
 one 16-bit value of them, `(0x7F - byte 0) | byte 1 << 8`: bit 15 is set
 while the strip is touched and the low 7 bits are the position, 0 at the
-bottom to 127 at the top. The UI thread hands it to the ribbon
-(`UIInputManager`'s map at +0xa0). The app lights the eight lamps beside the
+bottom to 127 at the top. The UI thread hands it to the ribbon.
+The app lights the eight lamps beside the
 strip itself, 0x0c (bottom) to 0x13 (top). In PITCH mode a touch at the
 centre lights the middle two and the ends light four each.
 
