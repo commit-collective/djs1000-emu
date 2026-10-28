@@ -6,6 +6,7 @@
 - Media (videos, renders) is never committed. Reels are generated into the git-ignored `demo/` folder, and personal episodes
   stay in `demo/episodes`.
 - Always commit completed changes locally on main. Ask before pushing, tagging or deploying, and never amend a pushed commit.
+  Amending the latest commit is fine while it is not pushed and the change iterates on it.
 
 ## Make and verify changes
 
