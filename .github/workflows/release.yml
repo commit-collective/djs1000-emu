@@ -1,5 +1,5 @@
 # A tag becomes a GitHub release, with the changelog's entry as the notes. The emulator needs Pioneer's firmware to
-# run, so there is nothing to test here.
+# run. Firmware-free setup safety checks are in checks.yml.
 name: release
 
 on:

@@ -1,7 +1,7 @@
 # The update file
 
 `DJS1000.UPD` is the update the maker publishes. It is encrypted, and `scripts/setup.sh` opens it with a key that you
-supply (see [About the key](../README.md#about-the-key)). Nothing of it, and no key, is kept in this repository.
+supply (see [your firmware and key](running.md#your-firmware-and-key)). Nothing of it, and no key, is kept in this repository.
 
 - The body is an encrypted disk image, followed by a short trailer that names the version (`LIVESAMPLER1.22`) and carries a
   checksum of the body. `tools/decrypt_upd.py` checks the trailer and decrypts the body with your key, which gives an ISO 9660

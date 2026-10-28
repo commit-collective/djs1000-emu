@@ -75,10 +75,9 @@ as it left the factory.
 On the unit, udev's rule for a USB stick (`12-usb-memory-auto-mount.rules`)
 mounts it and runs `/root/pdj/decrypt_autoexec.sh <mount point>` before it
 tells the app of the mount. If the stick holds `autoexec.bin`, that script
-opens it as a cryptoloop image with the unit's key
-(`/usr/local/pdj/aes256.key`, the same key and cipher as the update file,
-without the trailer), mounts it on `/mnt/iso`, and runs its `autoexec.sh`
-with the stick's mount point, as root. Nothing is written to the unit.
+opens it with the unit's own key, mounts its contents and runs its
+`autoexec.sh` with the stick's mount point, as root. This workflow alone
+does not make a script safe. A script can write wherever its permissions allow.
 
 The emulator does the same with the USB folder's `autoexec.bin`:
 
@@ -168,13 +167,11 @@ What was found of the app's Pro DJ Link (firmware 1.22), for going on:
   the host's network brings back, are not passed to the app's packet sockets
   (the unit would be a linked player of its own network, and the "No LINKED
   Players found" message would never show).
-- Its choice of the deck to sync to (its sync-target routine) goes over six stored copies of status packets (292 bytes,
-  at +0x16c8 + n * 0x124 of the network manager), takes the player whose
+- Its choice of the deck to sync to uses the received status packets and takes the player whose
   flags byte (0x89) & 0x5c is 0x5c (playing, synced, on air, and bit 2) with
   the lowest sync counter (0x84), failing that 0x54, 0x4c, 0x44, and last any
   that plays. The master bit (0x20) is not what it looks at there.
-  `TempoController::beatsyncController` is the state machine of
-  the SYNC and MASTER buttons.
+  SYNC and MASTER are separate parts of the application's state machine.
 - What makes the unit follow a deck: its status packet must be built like a
   CDJ's. The fake decks' status packets lacked the header after the name
   (01, the subtype 03, the player, the length that follows at 0x22) and the

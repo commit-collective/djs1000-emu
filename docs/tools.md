@@ -86,7 +86,7 @@ out to have gone quiet before it.
   (hold HOME, and a changed setting is still there after a restart, in
   `PadPlayer.dat` on the data partition), PATTERN + a step key to change
   pattern, SCENE + a step key to change scene.
-- LIVE SAMPLING has an input now (the IN meter moves) but has not been
-  gone through.
+- LIVE SAMPLING accepts live input and is exercised by sampling-mod checks.
+  Hardware latency and MIDI output still need a real unit.
 - "Samples [INTERNAL]" in BROWSE is empty: the factory samples are on the
   unit's eMMC (`/mnt/emmc`), not in the update.
