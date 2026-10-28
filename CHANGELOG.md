@@ -2,6 +2,19 @@
 
 Newest first. A release is a tagged commit.
 
+## Not yet released
+
+### Setup
+
+- Setup extracts into a staging folder before replacing an installation. An existing installation needs `--rebuild`,
+  which backs up its previous firmware files and settings. Unsafe or unrecognised destinations are rejected.
+- Unexpected archive extraction errors stop setup instead of leaving an incomplete installation marked ready.
+
+### Docs
+
+- The README focuses on first use. `docs/running.md` covers off-screen interaction, scripting and platform details.
+- Linux virtual machines on macOS are described as untested, not unsupported. The launcher does not manage the VM.
+
 ## v0.2.0
 
 Tested on WSL2 with Ubuntu 24.04. The regression session comes out identical to the reference, and the deck's self-test passes.
