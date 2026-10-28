@@ -1,5 +1,6 @@
 # djs1000-emu: working rules
 
+- New to the project? Read the handover first: `M:\Git\dev-notes\djs1000\handover.md` (the rules, where everything is, what is open).
 - This repo is public. Its docs and code comments stay high level: byte-level protocols are fine, but no firmware addresses,
   no Ghidra symbols (`FUN_...`) and no cipher details. Those go in the private notes repo, `M:\Git\dev-notes\djs1000\emu`.
 - Firmware and anything unpacked from it never go in any repo.
