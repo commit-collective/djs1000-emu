@@ -3,8 +3,8 @@
 ## Your firmware and key
 
 Supply your own firmware 1.22 update and the key needed to open it.
-The device stores its key at `/usr/local/pdj/aes256.key`. Obtain it only by
-means you are entitled to use, for example from a unit you own. Do not share
+The unit stores its key on its own system. Obtain it only by means you are
+entitled to use, for example from a unit you own. Do not share
 it in issues or commits. This project does not distribute it.
 
 Setup keeps a private-readable copy at `$DJS_HOME/aes256.key`.
