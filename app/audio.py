@@ -6,7 +6,7 @@ The shim sends the sound as the app writes it (stereo float32, 44.1 kHz) over
 the deck's link. feed() takes it from the link's thread and SDL's audio
 thread asks for it through _fill(). The two clocks are not the same one, and
 the app, being emulated, can fall behind: so playing starts only once some
-sound is waiting (--audio-buffer, 150 ms by default), starts over after running
+sound is waiting (--audio-buffer, 250 ms by default), starts over after running
 dry, and the oldest sound is dropped if too much piles up. A Player counts the
 times it ran dry (the app was late with its sound) and the times SDL's thread
 was itself called late (the deck was busy). The status line's hint for the
@@ -24,7 +24,7 @@ from pygame._sdl2 import audio as sdl_audio
 
 RATE = 44100
 FRAME = 8                                # bytes: two float32
-BUFFER_MS = 150                          # sound waiting before playing starts (the cost is that much delay)
+BUFFER_MS = 250                          # sound waiting before playing starts (the cost is that much delay)
 PERIOD = 2048                            # frames SDL asks for at a time (46 ms). Small ones (11 ms) are missed when the deck draws; --audio-block
 
 
