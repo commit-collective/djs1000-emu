@@ -780,8 +780,11 @@ class Deck:
             if not self.master:
                 return "no sound device"
             dry, late = getattr(self.master, "dry", 0), getattr(self.master, "late", 0)
-            return (f"sound ran dry {dry} times (the app was late with it)  \u00b7  "
-                    f"asked late {late} times (the deck was busy)")
+            gone, ms = getattr(self.master, "dropped", 0), getattr(self.master, "dropped_ms", 0)
+            return (f"sound ran dry {dry} times (the app was late with it)  \u00b7  asked late {late} times (the deck was busy)"
+                    f"  \u00b7  cut {gone} times, {ms} ms (too much waited)",
+                    f"dry {dry} (app late)  \u00b7  late {late} (deck busy)  \u00b7  cut {gone} ({ms} ms, too much waited)",
+                    f"dry {dry}  \u00b7  late {late}  \u00b7  cut {gone}")
         if what[0] == "deck":
             return {"on": f"fake CDJ {what[1]} on Pro DJ Link  ·  click to put it on the "
                           "network or take it off",
@@ -1694,7 +1697,9 @@ class Deck:
         else:
             text, colour = "", (0, 0, 0)
         if text and room.width > 40:
-            t = self.font.render(text, True, colour)
+            versions = text if isinstance(text, tuple) else (text,)     # longest first: the first that fits, else the last, smaller
+            text = next((v for v in versions if self.font.size(v)[0] <= room.width), None)
+            t = self.font.render(text, True, colour) if text else self.small.render(versions[-1], True, colour)
             at = max(room.left, min(w // 2 - t.get_width() // 2, room.right - t.get_width()))      # in the middle of the window, if it fits
             win.set_clip(room)
             win.blit(t, (at, bar.top + 5))
@@ -1710,6 +1715,8 @@ def main():
     ap.add_argument("--height", type=int, default=0, help="window height in pixels")
     ap.add_argument("--audio", metavar="NAME", help="play on the device whose name has NAME in it")
     ap.add_argument("--no-audio", action="store_true", help="do not play the app's sound")
+    ap.add_argument("--no-pace", action="store_true",
+                    help="leave the app's time to the host's clock, not to the sound card's (see docs/emulation.md)")
     ap.add_argument("--audio-buffer", type=int, default=audio.BUFFER_MS, metavar="MS",
                     help="sound to have waiting before playing starts, in milliseconds (default %d): more is steadier and later"
                          % audio.BUFFER_MS)
@@ -1797,6 +1804,14 @@ def main():
         w = face_w + L.LCD_W + 2 * DOCK_PAD       # a recording does not depend on the size of the desktop
     w = args.width or w
     link = Link(args.host, args.port, audio=play)
+    if master and hasattr(master, "pace") and not args.no_pace:
+        def pacer():                     # the sound card is the app's clock: see pace() in audio.py and "pace" in the shim
+            while True:
+                time.sleep(0.5)
+                ppm = master.pace(0.5)
+                if ppm is not None:
+                    link.send(f"pace {ppm}", log=False)
+        threading.Thread(target=pacer, daemon=True).start()
     recorder = None
     if args.input_tcp:
         host, _, port = args.input_tcp.rpartition(":")

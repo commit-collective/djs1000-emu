@@ -37,10 +37,12 @@ keyboard key.
 
 The right of the status line has some readings, and a TOOLS button (F8) with a menu. The readings are the master's level (a bar with a
 held peak, and a red mark for a sample at full scale), how fast the sound arrives (`×1.00` is real time: the emulator runs a little
-fast or slow, and below about 0.97 it is not keeping up, which is when the sound drops out), and how much sound waits to be played
+fast or slow, and below about 0.97 it is not keeping up, which is when the sound drops out. The deck keeps it at
+`×1.00` by pacing the app to its sound card, see `--no-pace`), and how much sound waits to be played
 against how much is asked (`waits 118 of 150 ms`, see `--audio-buffer`). The sound device's name, on the left, turns orange once the sound
-has cut: hovering it says how many times the sound ran dry (the app was late with it) and how many times the deck was too busy
-to ask for it in time. With the mouse over nothing, the line shows the last thing
+has cut: hovering it says how many times the sound ran dry (the app was late with it), how many times the deck was too busy
+to ask for it in time, and how many times too much waited and the oldest was cut. The hint gets shorter, then smaller, when
+the status line has little room. `DJS_AUDIO_STATS=1` prints these and the two speeds every 10 s on the deck's console. With the mouse over nothing, the line shows the last thing
 you did as a line for a script (`ctx.touch(487, 333)`, `ctx.press((2, 3))  # play`) and a click on it copies it. The menu has: the
 keyable background (`--key`), the side panel outline, the status line (F9), always on top, the velocity of a pad hit by the mouse, a larger or smaller window, unplugging
 and plugging in the USB stick, where the app's sound input comes from (this computer's recording device, deckbench's decks or nothing:
@@ -116,6 +118,8 @@ Sound, all at 44.1 kHz stereo:
   MASTER / PHONES switch in the status line, or Tab, chooses (`--listen
   phones` starts on the headphones). `--no-audio` plays nothing
   and shows no switch, `--mute` plays nothing too but shows the switch as if a sound device were there (for a recording)
+- the main device's sound card sets the app's pace (the shim's waits are corrected to keep what waits steady).
+  `--no-pace` leaves the app's time to the host's clock
 - `--headphones NAME` names a second device that plays the headphone output
   all the time
 - `--audio-buffer MS` (default 150) is how much sound waits before playing starts. The app is emulated and gives its sound

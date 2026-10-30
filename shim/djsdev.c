@@ -715,6 +715,7 @@ static volatile int deck_fresh[DECKS];  /* just connected: owed the whole screen
  * float frames in rings the audio thread fills (audio_put) and the deck
  * link's sender empties. And the input: stereo 16-bit frames the deck sends,
  * which the app's read takes (snd_pcm_readi). */
+static volatile int pace_ppm;           /* the deck's correction of the sound's pace, see audio_put() */
 #define RING_FRAMES 16384               /* a power of two. 370 ms */
 static float ring[2][RING_FRAMES * 2];
 static volatile unsigned ring_w[2], ring_r[2];
@@ -928,6 +929,8 @@ static void *deck_reader(void *arg)
                 line[n] = 0;
                 if (sscanf(line, "in %i", &frames) == 1 && frames > 0 && frames <= 65536) {
                     raw = frames * 4;
+                } else if (sscanf(line, "pace %i", &frames) == 1) {
+                    pace_ppm = frames < -200000 ? -200000 : frames > 200000 ? 200000 : frames;
                 } else {
                     panel_command(line);
                 }
@@ -938,6 +941,7 @@ static void *deck_reader(void *arg)
     if (deck_fd[i] == fd) {
         deck_fd[i] = -1;
     }
+    pace_ppm = 0;            /* the guest's clock again, until a deck says otherwise */
     usleep(100000);          /* let the sender finish with it */
     close(fd);
     fprintf(stderr, "[djsdev] deck link: closed\n");
@@ -1799,7 +1803,14 @@ int snd_pcm_open(void **pcm, const char *name, int stream, int mode)
  */
 #define RATE 44100
 static long long pace_us;               /* when the master output is due its next frame */
-static unsigned pace_rem;
+static unsigned pace_frac;              /* and the 65536ths of a microsecond */
+/*
+ * The guest's clock is the host's (WSL's), which can run several percent away from the clock of the sound card the deck
+ * plays on (measured 7 % fast, 2026-10-30): time in the app, its sequencer included, then runs that much off and the
+ * deck's sound piles up or runs dry. A deck that plays the sound says, in parts per million, how much longer (or shorter)
+ * a block is to take here so that what waits on its side stays where it wants it ("pace <ppm>"): the sound card is the
+ * clock, as the DAC is on the unit. 0 with no such deck. (pace_ppm is declared with the rings, the deck's reader sets it.)
+ */
 static unsigned long stat_frames;
 static float stat_peak;
 static long long stat_us;
@@ -1846,15 +1857,18 @@ static void audio_put(int ch, const float *l, const float *r, unsigned step, uns
     }
     ring_w[0] = w;
 
-    /* Real time: sleep until this block is due. Start over after a stall. */
+    /* Real time: sleep until this block is due. Start over after a stall. The block's time, in 65536ths of a microsecond,
+     * is scaled by the deck's correction (ppm * 4295 / 65536 is ppm / 1000000 in 65536ths). */
     if (pace_us < now - 100000) {
         pace_us = now;
     }
-    pace_us += us / RATE;
-    pace_rem += us % RATE;
-    if (pace_rem >= RATE) {
-        pace_rem -= RATE;
-        pace_us++;
+    {
+        unsigned block = ((us / RATE) << 16) + ((us % RATE) << 16) / RATE;
+        unsigned scale = (unsigned)(65536 + (pace_ppm * 4295 >> 16));
+        unsigned long long t = ((unsigned long long)block * scale >> 16) + pace_frac;
+
+        pace_us += (long long)(t >> 16);
+        pace_frac = (unsigned)t & 0xFFFF;
     }
     if (pace_us > now) {
         usleep((unsigned)(pace_us - now));

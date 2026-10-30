@@ -33,8 +33,8 @@ class Link:
 
     audio_pos = [0, 0]          # of the last sound message, per output
 
-    def send(self, line):
-        """One command line. Dropped while the app is not there."""
+    def send(self, line, log=True):
+        """One command line. Dropped while the app is not there. log=False: not one of the steps REC keeps (the sound's pace)."""
         sock = self._sock
         if sock is None:
             return
@@ -43,7 +43,7 @@ class Link:
                 sock.sendall(line.encode() + b"\n")
         except OSError:
             return
-        if self.log:
+        if self.log and log:
             self.log(line)
 
     def send_input(self, data):

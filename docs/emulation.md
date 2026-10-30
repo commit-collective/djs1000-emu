@@ -21,6 +21,10 @@ thing to answer. Roughly in the order the app asks:
 4. **The sound devices.** The app would not finish starting, and the panel looked dead. The cause was the audio device and
    not the panel. The shim now gives the app three ALSA devices on `null`, each with exactly two channels, 24-bit samples
    and 64-frame periods, and paces the output to 44.1 kHz.
+   That pace is kept by the host's clock, and WSL's can run several percent fast against the sound card (7 % was measured).
+   Time in the app, its sequencer included, would run that much fast and the deck would cut the sound to catch up.
+   So a deck that plays the sound sends a correction (`pace <ppm>` on the deck link) that keeps what waits to be played
+   steady: the sound card is the clock, as the DAC is on the unit. `--no-pace` leaves it to the host's clock.
 5. **Storage.** The USB stick is a folder of the host, announced to the app through the unit's own `/proc` message queues.
    The data partition and the pad calibration file are made by `run.sh`.
 6. **A screen.** The app draws through X, so `run.sh` starts a hidden Xvfb. The shim drops the request to close the window,
@@ -44,7 +48,7 @@ What `djsdev.c` stands in for, and why:
 | `socket(AF_PACKET, SOCK_RAW, ETH_P_IP)` (`UDPRecvManager`) | a socket that receives the Pro DJ Link broadcasts of the host's network (see below). `bind`/`setsockopt` succeed | needs CAP_NET_RAW. The thread carries on with -1 and crashes |
 | `snd_pcm_readi` on the input | the sound the virtual deck sends, as the 24-bit-in-32 samples the app expects. Silence without it | |
 | `snd_pcm_hw_params_set_format` on the board's devices | only S24_LE is accepted (24 bits in the low three bytes of a 32-bit word), as on the unit, so the app settles on it there too: 64-frame periods, 2 of them | `null` accepts 32-bit float, which the app tries first: the app works, but what a mod sees in the sound path is not what it would see on a unit |
-| `snd_pcm_writei` on the outputs | the master's is paced to 44100 frames a second, and both outputs' sound is kept for the virtual deck | `null` takes sound as fast as it is given, so the app's audio thread spins: a core and a half burnt, startup 3 minutes instead of 30 s |
+| `snd_pcm_writei` on the outputs | the master's is paced to 44100 frames a second (by the deck's sound card when a deck plays it), and both outputs' sound is kept for the virtual deck | `null` takes sound as fast as it is given, so the app's audio thread spins: a core and a half burnt, startup 3 minutes instead of 30 s |
 | `/root/data/PadCalibration.xml` (the unit's data partition) | made by `run.sh`: 336 for every pad | the app takes every pad as held for ever and blinks them all red, see [panel-protocol.md](panel-protocol.md) |
 | `/proc/udev_usb1`, `/proc/udev_usbctn1` (Pioneer's `fs/proc/udev_usb.c`, `udev_usbctn.c`: system-wide message queues udev writes to, a message kept until some reader takes it, one beginning with `0` emptying the queue) | a file in the guest's `/tmp` per queue, shared by every process (`init.sh`'s shell writes what udev would), handed to the app through a socket pair. `umount()` succeeds | no drive: "Save To: ---" |
 

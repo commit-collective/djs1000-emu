@@ -14,7 +14,9 @@ sound device says them, and the device's name turns orange once either happens.
 """
 
 import array
+import os
 import socket
+import sys
 import threading
 import time
 
@@ -151,6 +153,14 @@ class Player:
         self._period = block / RATE
         self.dry = 0                     # times the sound ran out while playing (the app was late)
         self.late = 0                    # times SDL's thread was called more than twice its period late (the deck was busy)
+        self.dropped = 0                 # times too much waited and the oldest was dropped (the app was ahead of the device)
+        self.dropped_ms = 0
+        self._stats = os.environ.get("DJS_AUDIO_STATS")   # a line on stderr every 10 s: what waits, what came and went
+        self._stats_at = time.monotonic()
+        self._fed = self._played = 0
+        self._sum = self._count = 0      # what waited, summed at each call of SDL's thread while playing (for pace())
+        self._integral = 0.0             # the slow part of the correction, in ppm
+        self.ppm = 0                     # the last correction
         self._dev = sdl_audio.AudioDevice(device, 0, RATE, sdl_audio.AUDIO_F32, 2, block, 0,
                                           self._fill)
         self._dev.pause(0)
@@ -158,13 +168,40 @@ class Player:
     def feed(self, data):
         with self._lock:
             self._buf += data
+            self._fed += len(data) // FRAME
             if len(self._buf) > self._most:
-                del self._buf[:len(self._buf) - self._start]
+                gone = len(self._buf) - self._start
+                del self._buf[:gone]
+                self.dropped += 1
+                self.dropped_ms += gone * 1000 // (RATE * FRAME)
+        if self._stats:
+            now = time.monotonic()
+            if now - self._stats_at >= 10.0:
+                span, fed, played = now - self._stats_at, self._fed, self._played
+                self._stats_at, self._fed, self._played = now, 0, 0
+                print(f"audio: came x{fed / RATE / span:.4f}, played x{played / RATE / span:.4f}, waits {self.waiting_ms()} ms, "
+                      f"pace {self.ppm:+d} ppm, dry {self.dry}, late {self.late}, dropped {self.dropped} ({self.dropped_ms} ms)",
+                      file=sys.stderr, flush=True)
 
     def reset(self):
         with self._lock:
             self._buf.clear()
             self._playing = False
+
+    def pace(self, dt):
+        """How much longer (ppm, + or -) the app's blocks are to take for what waits to stay at what is wanted: the sound
+        card is the clock. Called every dt seconds. A proportional part for what waits now, an integral one for the
+        steady difference of the two clocks (WSL's ran 7 % fast once). None while nothing plays."""
+        with self._lock:
+            n, total = self._count, self._sum
+            self._sum = self._count = 0
+            target = self._start
+        if not n:
+            return None
+        error_ms = (total / n - target) * 1000.0 / (RATE * FRAME)     # + : too much waits, the app is ahead
+        self._integral = max(-150000.0, min(150000.0, self._integral + 100.0 * error_ms * dt))
+        self.ppm = int(max(-200000.0, min(200000.0, self._integral + 300.0 * error_ms)))
+        return self.ppm
 
     def waiting_ms(self):
         """Sound waiting to be played, in milliseconds."""
@@ -197,6 +234,10 @@ class Player:
             if have:
                 view[:have] = self._buf[:have]
                 del self._buf[:have]
+            self._played += want // FRAME
+            if self._playing:
+                self._sum += len(self._buf)
+                self._count += 1
             if self._playing and have < want:
                 self._playing = False
                 self.dry += 1
