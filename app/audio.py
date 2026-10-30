@@ -9,7 +9,8 @@ the app, being emulated, can fall behind: so playing starts only once some
 sound is waiting (--audio-buffer, 150 ms by default), starts over after running
 dry, and the oldest sound is dropped if too much piles up. A Player counts the
 times it ran dry (the app was late with its sound) and the times SDL's thread
-was itself called late (the deck was busy), which the status line shows.
+was itself called late (the deck was busy). The status line's hint for the
+sound device says them, and the device's name turns orange once either happens.
 """
 
 import array

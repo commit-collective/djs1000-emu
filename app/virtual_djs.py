@@ -448,6 +448,8 @@ class Deck:
         self.drag_y = 0
         self.moved = False
         self.hover = ""
+        self.hover_what = None           # what is under the mouse (the sound device's hint is made again each frame: its counts change)
+        self.sound_rect = pygame.Rect(0, 0, 0, 0)
         self.sprites = {}
         self.unknown = L.unknown_bits()
         self.keymap = self._keymap()
@@ -723,6 +725,8 @@ class Deck:
             return ("lcd", *p)
         if self.listen_rect.collidepoint(pos):
             return ("listen",)
+        if self.sound_rect.collidepoint(pos):
+            return ("sound",)
         for r, bit in self.grid:
             if r.collidepoint(pos):
                 return ("bit", bit)
@@ -772,6 +776,12 @@ class Deck:
             return f"screen  {what[1] - 1}, {what[2] - 1}"
         if what[0] == "listen":
             return "which output the main sound device plays  \u00b7  click, or Tab"
+        if what[0] == "sound":
+            if not self.master:
+                return "no sound device"
+            dry, late = getattr(self.master, "dry", 0), getattr(self.master, "late", 0)
+            return (f"sound ran dry {dry} times (the app was late with it)  \u00b7  "
+                    f"asked late {late} times (the deck was busy)")
         if what[0] == "deck":
             return {"on": f"fake CDJ {what[1]} on Pro DJ Link  ·  click to put it on the "
                           "network or take it off",
@@ -1063,7 +1073,8 @@ class Deck:
                 self.moved = True
                 self.turn(self.down[1], steps)
         else:
-            self.hover = self.describe(self.find(pos))
+            self.hover_what = self.find(pos)
+            self.hover = self.describe(self.hover_what)
 
     def wheel(self, pos, dy):
         for key, rect in self.body_rects.items():
@@ -1512,17 +1523,16 @@ class Deck:
                 x = r.right
             self.listen_rect = pygame.Rect(left, top, x - left, STATUS_H)
             text = f"on {self.master.name}"
-            dry, late = getattr(self.master, "dry", 0), getattr(self.master, "late", 0)
-            if dry or late:
-                text += f" ({dry} dry, {late} late)"       # the app was late with its sound, the deck was late asking for it
         else:
             text = "no sound"
         if self.phones:
             text += f"  \u00b7  phones also on {self.phones.name}"
         if self.recorder:
             text += f"  \u00b7  in: {self.recorder.name}"
-        t = self.font.render(text, True, (150, 220, 120))
+        cut = self.master and (getattr(self.master, "dry", 0) or getattr(self.master, "late", 0))
+        t = self.font.render(text, True, (240, 180, 70) if cut else (150, 220, 120))   # orange: hover it for the counts
         win.blit(t, (x + 8, top + 5))
+        self.sound_rect = pygame.Rect(x + 8, top, t.get_width(), STATUS_H)
         return x + 8 + t.get_width()
 
 
@@ -1672,7 +1682,9 @@ class Deck:
         # What is under the mouse, or when nothing is, the last thing done (a click copies it)
         lo = 10 + self.status_w + 30                       # the hint may use the room from the left readouts on, to sit in the middle
         room = pygame.Rect(lo, bar.top, max(0, x - lo), STATUS_H)
-        if self.hover:
+        if self.hover_what and self.hover_what[0] == "sound":
+            text, colour = self.describe(self.hover_what), (225, 228, 232)
+        elif self.hover:
             text, colour = self.hover, (225, 228, 232)
         elif self.notice[0] and pygame.time.get_ticks() < self.notice[1]:
             text, colour = self.notice[0], (240, 180, 70)
