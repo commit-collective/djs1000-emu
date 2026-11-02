@@ -125,10 +125,12 @@ def scenario(s, r, emu):
     s.press(FX_ON)
 
     # Kick on steps 1, 5, 9, snare on 5, hat on 9, nothing in the last
-    # quarter of the bar: STOP, which cuts whatever still plays, comes close
-    # to 400 ms after the last sound has ended and 500 ms before the next bar
-    # would begin. The app's sound runs up to a few hundred ms ahead of the
-    # clock STOP is sent by, differently from run to run.
+    # quarter of the bar: STOP, which cuts whatever still plays, comes after
+    # the hat's tail has died away (about 3.6 s) and before the next bar would
+    # begin (4 s). It is timed by the frames the app has played since PLAY,
+    # not by this host's clock: the guest's clock runs a few percent away from
+    # it (7 % fast one week, 2 % slow the next), which moved STOP into the
+    # hat's tail and the sound's length with it.
     for track, steps in ((0, (0, 4, 8)), (1, (4,)), (2, (8,))):
         s.touch(*TRACK[track])
         s.press(HOME)
@@ -136,9 +138,12 @@ def scenario(s, r, emu):
             s.press(STEP[n])
     r.screen("05-home-steps")
 
-    def two_bars():                      # 4 s at 120 BPM. The last hat ends at 3.12 s
+    def two_bars():                      # 4 s at 120 BPM
+        begun = s.frames_heard()
         s.tap(PLAY)                      # (not press(): the screen moves while it plays)
-        s.pump(3.5)
+        end = time.time() + 6.0          # (in case the sound stops coming)
+        while s.frames_heard() - begun < int(3.8 * RATE) and time.time() < end:
+            s.pump(0.01)
         s.tap(STOP)
 
     r.sound("sequence", 5.5, two_bars)

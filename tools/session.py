@@ -155,6 +155,13 @@ class Session:
 
     # ---- taking things ---------------------------------------------------
 
+    def frames_heard(self, which=0):
+        """How many frames of output `which` have come in since the
+        recording under way began (see record()). The app's own time: it
+        does not drift with the host's clock as time.time() does."""
+        with self._lock:
+            return sum(len(b) for b in self._sound[which]) // 8   # two floats a frame
+
     def record(self, seconds, action=None, which=0):
         """The sound of output `which` for `seconds` from now, as a list of
         floats (left, right, left ...). `action` is run once it has begun."""
