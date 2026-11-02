@@ -2,6 +2,20 @@
 
 Newest first. A release is a tagged commit.
 
+## v0.3.1
+
+Tested on WSL2 with Ubuntu 24.04. The regression session comes out identical to the reference, the deck's self-test passes, and
+setup was run from scratch into a new folder.
+
+- The app's sound is paced by the deck's sound card, not the host's clock. On WSL the clock ran about 7 % fast, so time in the
+  app ran fast too, and the deck cut 400 ms of sound every few seconds to catch up: a skipped beat about once a pattern, and
+  sound behind the screen. `--no-pace` brings back the old pacing, and `DJS_AUDIO_STATS=1` prints the speeds every 10 s.
+- The deck keeps 250 ms of sound waiting by default (`--audio-buffer`, 150 before), so a short stall of the app no longer runs it
+  dry.
+- The sound's cuts, and the times the deck asked for sound late, are the status line's hint for the sound device, kept up to date
+  while it is hovered. The device's name turns orange once either has happened.
+- The docs keep to what runs the emulator. The hardware and power pages are gone, and the update file page is shorter.
+
 ## v0.3.0
 
 Tested on WSL2 with Ubuntu 24.04. The regression session comes out identical to the reference, the deck's self-test passes, and
