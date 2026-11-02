@@ -15,6 +15,9 @@ setup was run from scratch into a new folder.
 - The sound's cuts, and the times the deck asked for sound late, are the status line's hint for the sound device, kept up to date
   while it is hovered. The device's name turns orange once either has happened.
 - The docs keep to what runs the emulator. The hardware and power pages are gone, and the update file page is shorter.
+- The regression check times its sequence's STOP by the sound the app has played, not by this machine's clock. WSL's clock
+  runs a few percent away from Windows', by a different amount from week to week, and STOP fell into the last sound's tail,
+  so the check failed now and then with nothing wrong. `Session.frames_heard()` counts that sound for other scripts.
 
 ## v0.3.0
 
