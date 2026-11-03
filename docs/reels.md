@@ -5,7 +5,7 @@ a script plays the unit and the virtual deck records it. Run it on the host, lik
 
     python tools/reel.py example
 
-It needs ffmpeg on the path, Pillow and pygame-ce for the deck, deckbench beside this repository (for the episodes that show
+It needs ffmpeg on the path, Pillow and pygame-ce for the deck, DeckBench beside this repository (for the episodes that show
 Pro DJ Link, and `--patch` for the mods), and a copy of the unit's internal storage in WSL (below). The output goes in `DIR/NAME/`, where DIR is `--out`, else `demo/reels`. `demo/` is the one folder for what the tools generate (the
 demonstration video as well), and git ignores it: videos are not committed, and these show the firmware's screen.
 
@@ -16,7 +16,7 @@ demonstration video as well), and git ignores it: videos are not committed, and 
 | `reel.srt` | the text of the scenes, for a subtitle track |
 | `thumb-LOOK.png` | a frame, for a cover |
 
-An episode can record from the simulated decks: `INPUT = True` (with `LINK = True`) feeds the unit's input with their sound (deckbench's
+An episode can record from the simulated decks: `INPUT = True` (with `LINK = True`) feeds the unit's input with their sound (DeckBench's
 audio port, which `start.py` now starts the bench with), so a scene can do live sampling: the IN meter moves, a pad hit records a take
 of the deck, and it loops by itself when it ends. The input monitor plays in the unit's headphones, not on the master, so a reel mixes the
 headphones into its sound (they are silent otherwise).
@@ -104,7 +104,7 @@ episode of one scene. It starts a fresh unit with a copy of your own stick (`$DJ
 `autoexec.bin` and mods settings), opens that project, and sends the same commands at the same seconds. The deck draws the knobs and the
 strip as they move. The video is the reel's own, so `--shape`, `--res` and `--bg` apply, and it has no captions.
 
-If deckbench was up during the REC, a `.bench` file beside the steps keeps what was done there (its journal) and where the unit's input came from.
+If DeckBench was up during the REC, a `.bench` file beside the steps keeps what was done there (its journal) and where the unit's input came from.
 The replay puts the bench's decks as they were when the REC began and does the same to them at the same seconds, and takes the bench's sound as the
 unit's input if it did. The files that a deck played must still be where they were. If the bench does not answer (on Windows a stale `wslrelay.exe` can
 hold its port: `wsl --shutdown` clears it) that part is left out, with a message.

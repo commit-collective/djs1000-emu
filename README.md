@@ -91,7 +91,7 @@ Remove the patch and restart to run stock. Projects and saved settings remain.
 
 The application supports project save/load, sample browsing, sequencing,
 effects, LIVE SAMPLING, audio input and master/headphone output.
-Pro DJ Link can be exercised with [deckbench](https://github.com/commit-collective/deckbench)
+Pro DJ Link can be exercised with [DeckBench](https://github.com/commit-collective/deckbench)
 in the same Linux environment.
 
 This is application emulation, not a full board or bootloader emulator.
