@@ -1,4 +1,4 @@
-# djs1000-emu
+# DJS-1000 emulator
 
 [![release](https://img.shields.io/github/v/release/commit-collective/djs1000-emu?display_name=tag)](https://github.com/commit-collective/djs1000-emu/releases)
 
