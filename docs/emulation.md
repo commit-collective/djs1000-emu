@@ -148,7 +148,7 @@ whole Ethernet frame (zero MAC, IPv4 from the sender's address and port to
 packet alone for a `SOCK_DGRAM` one. (The app's own `AF_PACKET` socket is for
 the PC link over USB Ethernet, not for Pro DJ Link. A mod's can read the
 decks' packets.) Decks can be fake ones sending to the loopback broadcast
-(127.255.255.255, as DeckBench does, which `start.py` runs). Under WSL2 the network is NAT: real decks on the physical
+(127.255.255.255, as Deckbench does, which `start.py` runs). Under WSL2 the network is NAT: real decks on the physical
 network are not seen unless WSL uses mirrored networking or a bridge.
 The regression's reference was recorded again with this (the PLAYER box is
 no longer greyed out).

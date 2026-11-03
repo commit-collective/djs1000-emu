@@ -45,16 +45,16 @@ to ask for it in time, and how many times too much waited and the oldest was cut
 the status line has little room. `DJS_AUDIO_STATS=1` prints these and the two speeds every 10 s on the deck's console. With the mouse over nothing, the line shows the last thing
 you did as a line for a script (`ctx.touch(487, 333)`, `ctx.press((2, 3))  # play`) and a click on it copies it. The menu has: the
 keyable background (`--key`), the side panel outline, the status line (F9), always on top, the velocity of a pad hit by the mouse, a larger or smaller window, unplugging
-and plugging in the USB stick, where the app's sound input comes from (this computer's recording device, DeckBench's decks or nothing:
+and plugging in the USB stick, where the app's sound input comes from (this computer's recording device, Deckbench's decks or nothing:
 the same as `--input` and `--input-tcp 127.0.0.1:7320`, changed as it runs), the time the sound waits (50 ms at a time, while it plays) and
-a way to DeckBench's page. With the status line hidden, the TOOLS button comes up when the mouse goes to the foot of the window, so that
+a way to Deckbench's page. With the status line hidden, the TOOLS button comes up when the mouse goes to the foot of the window, so that
 the line and the menu can always be reached.
 
 **REC** (the first row of the menu, or F7) records the window to `demo/captures` (`--captures DIR`, 30 frames a second, `--fps`): a video of the
 window as it is, with the keyable background and its status line (a reel can take it as a strip of its own), but without the menu, and the sound as
 you hear it: the output the MASTER / PHONES switch has chosen (not the two added, which would thin it: the headphones carry a quieter, partly
 inverted copy of the program). When it ends (REC again, or closing the window) the picture is retimed by a
-percent or two to follow the sound (the emulator's sound runs a little fast or slow against the clock, and the sound keeps its pitch), and the files are made: `deck-DATE-TIME.mp4`, `deck-DATE-TIME.bench` (with DeckBench up: what was done in it, see below), `deck-DATE-TIME.steps` (every command the deck sent, with its second, and the project the app had open, which
+percent or two to follow the sound (the emulator's sound runs a little fast or slow against the clock, and the sound keeps its pitch), and the files are made: `deck-DATE-TIME.mp4`, `deck-DATE-TIME.bench` (with Deckbench up: what was done in it, see below), `deck-DATE-TIME.steps` (every command the deck sent, with its second, and the project the app had open, which
 `python tools/reel.py demo/captures/deck-DATE-TIME.steps` plays again on a fresh unit to make a reel of it) and `deck-DATE-TIME.wav` (the
 sound alone, 24 bits). It needs `ffmpeg` on the path. The status line shows a red REC and the time. A window that is resized while it
 records is scaled to the size it began with. `--record` is the scripted capture of the reels and has no REC.
@@ -65,8 +65,8 @@ is drawn pressed, with an amber ring round it. A pad is hit as hard as where on 
 past 100 it goes back to by position), which a held pad uses too.
 
 The status line always has a DECKBENCH button (`--bench URL`, `http://127.0.0.1:8750/` by default, where `start.py` starts it, and the tools
-menu has the same). A click opens DeckBench's page. Beside it the line says how many of the decks are on and playing, which is the master and
-how many play a file of their own (DeckBench's `--track`), or "not running" when the page does not answer, and a click then says how to start it.
+menu has the same). A click opens Deckbench's page. Beside it the line says how many of the decks are on and playing, which is the master and
+how many play a file of their own (Deckbench's `--track`), or "not running" when the page does not answer, and a click then says how to start it.
 
 When the patch on the USB folder carries mods (`autoexec.bin` from the
 djs1000-mods project), the panel lists them above the reminder, grouped as the
@@ -85,14 +85,14 @@ SYNC and MASTER light as the unit's own lamps do (lamps 0x1B and 0x1C: the app
 writes "dim" for off, drawn as unlit. MASTER backlit orange, SYNC white).
 
 Pro DJ Link. The fake decks are not in this window: they are
-DeckBench's (a repository of its own, `deckbench`, beside this one or named
+Deckbench's (a repository of its own, `deckbench`, beside this one or named
 by `DECKBENCH`), which `start.py` runs in the emulator's network when
 it finds it, four decks, players 1 to 4, off until its page switches them on
 (the emulated unit is player 1: deck 1 is there to show it in the list, and
 stays off, a deck with the unit's number being a clash). The page
 is at <http://127.0.0.1:8750/> (it prints the address when it starts. Use the number, not `localhost`: from Windows to WSL, `localhost` tries IPv6 first and every new connection waits 2 s): a row
 for each deck with ON, PLAY, SYNC and MASTER, the deck's four beat squares and
-its BPM. See DeckBench's own README and `docs/prolink.md` for what the decks
+its BPM. See Deckbench's own README and `docs/prolink.md` for what the decks
 send and for what a DJS-1000 was found to need from them.
 
 What the emulated unit then does, with an ON deck: it sees it as a linked
@@ -108,7 +108,7 @@ is a hand-off: the unit asks, the deck yields, and the unit is the master (its
 MASTER lamp lights). A deck's MASTER while the unit is the master asks the unit
 as a CDJ does: the unit hands over, and its MASTER goes off.
 
-The start script restarts what is stale: a bench older than DeckBench's
+The start script restarts what is stale: a bench older than Deckbench's
 source, and an emulator older than `shim/djsdev.c`.
 
 Sound, all at 44.1 kHz stereo:
@@ -132,12 +132,12 @@ Sound, all at 44.1 kHz stereo:
   `--no-input` feeds silence. With a microphone and speakers, monitoring the
   input in the app will feed back
 - `--input-tcp HOST:PORT` feeds the input from a TCP stream of raw stereo 16-bit 44.1 kHz samples
-  instead of a device: DeckBench's `--audio-port`, a drum loop in time with each playing simulated deck
+  instead of a device: Deckbench's `--audio-port`, a drum loop in time with each playing simulated deck
   (it connects again if the stream goes away, and INPUT LEVEL works). A take in LIVE SAMPLING then records something that
   is on the deck's beat, with no sound card or microphone
-  of its own. With DeckBench as the input, the 5th knob of LIVE SAMPLING (INPUT SOURCE, the mod `input-select`) picks the deck that is
+  of its own. With Deckbench as the input, the 5th knob of LIVE SAMPLING (INPUT SOURCE, the mod `input-select`) picks the deck that is
   heard: the unit would send the choice as MIDI on its DIN output, which the emulator has none of, so the deck reads it from the mod's log on
-  the stick (`djs1000-mods-app.log`, needs `--usb`) and tells DeckBench (`POST /api/audio/source/N`). Until the knob is turned every playing deck is heard
+  the stick (`djs1000-mods-app.log`, needs `--usb`) and tells Deckbench (`POST /api/audio/source/N`). Until the knob is turned every playing deck is heard
 - `--list-audio` prints the playback and recording devices
 
 ## How it is made

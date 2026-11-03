@@ -26,7 +26,7 @@
   still, take the screen and record the sound. Works beside an open deck.
 - `tools/demo.py`: makes the demonstration video. It starts an emulator of its own on a fresh unit with the test kit, the
   deck with `--record`, and plays scenes through the scripted session (pads, the touch strip and an effect, a pattern, the mods
-  with `--patch autoexec.bin`, and Pro DJ Link with a DeckBench deck if it is beside this repository). ffmpeg burns the captions
+  with `--patch autoexec.bin`, and Pro DJ Link with a Deckbench deck if it is beside this repository). ffmpeg burns the captions
   in, which are lines of the scenes in the script, and joins the sound. `--gif` makes a GIF as well. The output goes in `demo/`,
   which git ignores: the video shows the firmware's screen.
 - `tools/reel.py`: the same idea for short vertical videos (1080x1920): an episode (start from `tools/reels/example.py`) says the
@@ -39,7 +39,7 @@
   own with the test kit and saves the deck's window; the second puts the deck, the app's screen and the list of mods into the
   three cards of the previous picture (by default the website's, `commitcollective.cc/public/djs1000/emulator/hero.png`), so that
   the titles and the layout stay as they were. Run both again after the look of the deck changes.
-- Pro DJ Link decks: DeckBench (its own repository, beside this one or named by `DECKBENCH`). `start.py` runs it in the emulator's network. Its page is at <http://localhost:8750/>.
+- Pro DJ Link decks: Deckbench (its own repository, beside this one or named by `DECKBENCH`). `start.py` runs it in the emulator's network. Its page is at <http://localhost:8750/>.
 - `tools/xref.py <binary> "<string>"`: where a string is used, with the code
   leading up to it and the branches to it.
 - gdb: `scripts/run.sh 300 -g 1234`, then `gdb-multiarch` with `set sysroot
