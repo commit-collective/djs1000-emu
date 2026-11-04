@@ -28,6 +28,7 @@ Clone this repository or extract a [release](https://github.com/commit-collectiv
 On Windows, run these first commands inside WSL Ubuntu. On Linux, use a terminal:
 
 ```sh
+sudo apt update
 sudo apt install qemu-user-static binfmt-support squashfs-tools \
     p7zip-full gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl xvfb
 scripts/setup.sh /path/to/DJS1000.UPD /path/to/aes256.key
