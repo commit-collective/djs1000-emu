@@ -8,6 +8,9 @@ Newest first. A release is a tagged commit.
   to an existing Deckbench without starting another. The `--bench` alias remains accepted.
 - Track the launcher's local Deckbench by process identity rather than matching
   unrelated bench command lines. Stopping the emulator leaves external benches alone.
+- After upgrading, a local bench started by the old launcher is untracked.
+  Stop that specific process manually once, or attach with `--bench-url`.
+  `start.py stop` deliberately leaves untracked benches alone.
 
 ## v0.3.1
 
