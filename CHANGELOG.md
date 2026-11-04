@@ -2,6 +2,13 @@
 
 Newest first. A release is a tagged commit.
 
+## Unreleased
+
+- Use `--no-bench` for hardware-only sessions or `--bench-url URL` to attach
+  to an existing Deckbench without starting another. The `--bench` alias remains accepted.
+- Track the launcher's local Deckbench by process identity rather than matching
+  unrelated bench command lines. Stopping the emulator leaves external benches alone.
+
 ## v0.3.1
 
 Tested on WSL2 with Ubuntu 24.04. The regression session comes out identical to the reference, the deck's self-test passes, and

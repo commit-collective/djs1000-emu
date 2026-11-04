@@ -64,7 +64,7 @@ is drawn pressed, with an amber ring round it. A pad is hit as hard as where on 
 **Pad velocity** says a share of full velocity (10 to 100 %: a click on the left half of the row is less and on the right half more, and
 past 100 it goes back to by position), which a held pad uses too.
 
-The status line always has a DECKBENCH button (`--bench URL`, `http://127.0.0.1:8750/` by default, where `start.py` starts it, and the tools
+The status line has a DECKBENCH button when a bench URL is set (`--bench URL`, `http://127.0.0.1:8750/` by default, where `start.py` starts it, and the tools
 menu has the same). A click opens Deckbench's page. Beside it the line says how many of the decks are on and playing, which is the master and
 how many play a file of their own (Deckbench's `--track`), or "not running" when the page does not answer, and a click then says how to start it.
 

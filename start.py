@@ -14,6 +14,8 @@ stops the emulator.
   --distro NAME   the WSL distribution to run it in (default: $DJS_WSL_DISTRO,
                   else WSL's default one)
   --port N        the deck link's port (default 7310)
+  --no-bench      do not start or attach to Deckbench (for real hardware)
+  --bench-url URL use an existing bench without starting or stopping it
 
 Anything else goes to the deck (app/virtual_djs.py), whose options are listed
 below (--help here prints them too).
@@ -24,10 +26,12 @@ is already running is used as it is, and then left running. Its output goes
 to $DJS_HOME/run/emulator.log (default ~/djs/run, in WSL on Windows).
 """
 import os
+import shlex
 import socket
 import subprocess
 import sys
 import time
+from app.bench import request as bench_request
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 AUDIO_PORT = 7320                       # where deckbench serves its decks' sound (the deck's --input-tcp takes it)
@@ -54,6 +58,7 @@ class Emulator:
         self.distro = distro
         self.port = port
         self.window = window
+        self.manage_bench = True
         self.env = env                   # more environment for run.sh: "NAME=value ..."
         slot = os.environ.get("DJS_SLOT", "")
         self.tag = "s" + slot if slot != "" else ""
@@ -142,24 +147,10 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
             there = out.splitlines()[-1]
         else:
             there = here
-        code, out = self.sh("""
-RUN="${DJS_HOME:-$HOME/djs}/run"
-mkdir -p "$RUN"
-B='%s'
-# A bench older than its source (it was changed since), or without the decks' sound on a port, is a stale one: replaced.
-PID=$(pgrep -f '[d]eckbench --numbers' | head -1)
-if [ -n "$PID" ] && { [ -n "$(find "$B/deckbench" -name '*.py' -newer "/proc/$PID" | head -1)" ] ||         ! pgrep -f '[d]eckbench --numbers 1,2,3,4 --audio-port' > /dev/null; }; then
-    pkill -f '[d]eckbench --numbers'
-    sleep 0.5
-fi
-if ! pgrep -f '[d]eckbench --numbers' > /dev/null; then
-    cd "$B" && setsid nohup python3 -m deckbench --numbers 1,2,3,4 --audio-port %d > "$RUN/deckbench.log" 2>&1 < /dev/null &
-    sleep 1
-fi
-pgrep -f '[d]eckbench --numbers' > /dev/null && echo http://127.0.0.1:8750/
-""" % (there, AUDIO_PORT))
+        code, out = self.sh('python3 %s ensure --repo %s --run "${DJS_HOME:-$HOME/djs}/run" --audio-port %d' %
+                            (shlex.quote(self.repo() + '/tools/bench_process.py'), shlex.quote(there), AUDIO_PORT))
         if code or not out.startswith("http"):
-            self.bench_why = "deckbench did not start (see deckbench.log in the emulator's run folder)."
+            self.bench_why = out or "deckbench did not start (see deckbench.log in the emulator's run folder)."
             return None
         return out.splitlines()[-1]
 
@@ -200,6 +191,9 @@ tail -n 15 "$RUN/emulator.log"; exit 1
         # one that needs it.
         # A slot ends what carries its tag (everything of its guest, and what runs it). Without a slot, the app and
         # the guest's processes as before (the bench too).
+        if self.manage_bench:
+            self.sh('python3 %s stop --run "${DJS_HOME:-$HOME/djs}/run"' %
+                    shlex.quote(self.repo() + '/tools/bench_process.py'))
         self.sh("""
 if [ -n "${DJSDEV_TAG:-}" ]; then
     for i in 1 2 3; do
@@ -210,7 +204,6 @@ if [ -n "${DJSDEV_TAG:-}" ]; then
         sleep 0.3
     done
 else
-    pkill -f '[d]eckbench --numbers'
     kill $(pids_of EP113_Main_R) $(pids_of /opt/djsemu/init.sh) 2> /dev/null
     for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
     kill -9 $(pids_of EP113_Main_R) 2> /dev/null
@@ -312,6 +305,20 @@ def main():
     emu = Emulator(take(args, "--distro", os.environ.get("DJS_WSL_DISTRO")),
                    int(take(args, "--port", "7310")), flag(args, "--window"))
     keep, no_deck = flag(args, "--keep"), flag(args, "--no-deck")
+    no_bench = flag(args, "--no-bench")
+    bench_url = take(args, "--bench-url")
+    if no_bench and bench_url is not None:
+        sys.exit('--no-bench and --bench-url cannot be combined')
+    legacy_bench = take(args, '--bench')
+    if legacy_bench is not None:
+        if no_bench or bench_url is not None:
+            sys.exit('--bench cannot be combined with --no-bench or --bench-url')
+        bench_url = legacy_bench
+    if bench_url:
+        try:
+            bench_request(bench_url, 'api/state')
+        except ValueError as error:
+            sys.exit(str(error))
     if args[:1] == ["stop"]:
         was = emu.running()
         emu.stop()
@@ -327,6 +334,7 @@ def main():
         return 0
     if "--list-audio" in args:
         return subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py")] + args)
+    emu.manage_bench = not no_bench and bench_url is None
     if not no_deck:
         os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
         try:
@@ -366,13 +374,15 @@ def main():
         return 0
     say("Deck open. The app takes about half a minute to start. Close the deck to quit.")
     try:
-        usb, bench, modlist = emu.usb(), emu.deckbench(), emu.modlist()
+        usb, modlist = emu.usb(), emu.modlist()
+        bench = '' if no_bench else bench_url if bench_url is not None else emu.deckbench()
         if bench:
             say("Pro DJ Link decks (deckbench): %s" % bench)
         else:
-            say("No Pro DJ Link decks: %s" % emu.bench_why)
+            say("Deckbench disabled. Real players require a reachable DJ network." if no_bench or bench_url == '' else
+                "No Pro DJ Link decks: %s" % emu.bench_why)
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
-                                "--port", str(emu.port)] + (["--usb", usb] if usb else [])
+                                "--port", str(emu.port), "--bench", bench or ''] + (["--usb", usb] if usb else [])
                                 + (["--modlist", modlist] if modlist else []) + args)
     except KeyboardInterrupt:
         code = 130

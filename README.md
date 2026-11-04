@@ -97,6 +97,8 @@ in the same Linux environment.
 This is application emulation, not a full board or bootloader emulator.
 Hardware audio timing, pressure-sensitive pads and MIDI are not reproduced.
 Real decks require appropriate host networking, not WSL's default NAT.
+See [real players and an existing bench](docs/running.md#real-players-and-an-existing-deckbench)
+to disable the automatic bench or connect the frontend to one you already run.
 Use hardware to validate what the emulator cannot establish.
 
 ## Documentation

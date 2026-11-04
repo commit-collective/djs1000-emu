@@ -66,6 +66,44 @@ Inspect backups before removing any of them.
 
 ## Manual launch
 
+### Real players and an existing Deckbench
+
+The default launcher starts a local Deckbench with its simulated players off.
+For a real DJ setup, choose explicitly:
+
+```sh
+python start.py --no-bench
+python start.py --bench-url http://127.0.0.1:8750/
+```
+
+The first runs without a bench connection in the frontend. The second attaches
+its status button and browser link to a bench you manage separately, without
+starting or stopping it. Neither command bridges a network or changes adapters.
+For a token-protected bench, use its backend URL with `#token=...`, inside
+quotes. The frontend sends that token as an authorization header to the API.
+An already-running launcher-owned local bench is not stopped by these flags.
+Stop that local session first if you no longer need it.
+
+The emulator and Deckbench must both reach the players' Ethernet segment.
+On Windows, the emulator's backend lives in WSL, even though its window is on
+Windows. A Windows Deckbench seeing the CDJs does not prove that WSL can see
+them. Default WSL NAT does not carry the necessary LAN broadcasts. Configure
+and verify a suitable mirrored or bridged network before hardware testing.
+The backend currently takes its identity from Linux `eth0`, with no emulator
+adapter picker. Do not assume it selects the Windows DJ adapter automatically.
+
+Give every player, real or simulated, an unused player number. Avoid running
+two benches on the same ports, and keep all simulated players off until needed.
+Deckbench's adapter selection applies only to its own process, not the emulator.
+Real players can provide discovery, tempo and beat messages, but Pro DJ Link
+does not provide their audio to the emulator. Feed a physical audio interface
+to the frontend's input separately if testing live sampling or audio effects.
+
+The launcher stops only the local bench it recorded as its own. It does not
+adopt or terminate a separately launched bench occupying port 8750. Stop a
+legacy local bench manually after checking its identity if upgrading from a
+launcher that did not record ownership.
+
 `scripts/run.sh 3600` runs the backend for an hour. Use 0 for no time limit.
 `python app/virtual_djs.py` opens a frontend separately.
 

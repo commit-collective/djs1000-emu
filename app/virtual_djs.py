@@ -67,6 +67,7 @@ import art  # noqa: E402
 import audio  # noqa: E402
 import layout as L  # noqa: E402
 from link import Link  # noqa: E402
+from bench import request as bench_request  # noqa: E402
 from mods import Mods  # noqa: E402
 from capture import AUDIO_BITRATE, Capture  # noqa: E402
 
@@ -183,7 +184,7 @@ class BenchWatch:
     """What deckbench says of its decks, asked for in the background every two seconds, for the status line."""
 
     def __init__(self, url):
-        self.url = url.rstrip("/") + "/"
+        self.url = url
         self.up = False
         self.on = self.playing = self.with_file = 0
         self.master = None
@@ -195,7 +196,7 @@ class BenchWatch:
         import urllib.request
         while not self.closed:
             try:
-                with urllib.request.urlopen(self.url + "api/state", timeout=1.5) as reply:
+                with urllib.request.urlopen(bench_request(self.url, 'api/state'), timeout=1.5) as reply:
                     decks = json.load(reply)["decks"]
                 self.on = sum(1 for d in decks.values() if d.get("on"))
                 self.playing = sum(1 for d in decks.values() if d.get("on") and d.get("play"))
@@ -286,7 +287,7 @@ class Recording:
     def _ask(self, path):
         import json
         import urllib.request
-        request = urllib.request.Request(self.bench.replace("localhost", "127.0.0.1") + path, method="POST")
+        request = bench_request(self.bench, path, method='POST')
         with urllib.request.urlopen(request, timeout=2) as reply:
             return json.load(reply)
 
@@ -620,8 +621,7 @@ class Deck:
         def post():
             import urllib.request
             try:
-                urllib.request.urlopen(urllib.request.Request(bench_url.replace("localhost", "127.0.0.1").rstrip("/") + f"/api/audio/source/{number}",
-                                                              method="POST"), timeout=3).read()
+                urllib.request.urlopen(bench_request(bench_url, f'api/audio/source/{number}', method='POST'), timeout=3).read()
             except OSError:
                 pass
         threading.Thread(target=post, daemon=True).start()
@@ -1828,7 +1828,7 @@ def main():
                          "bench": lambda: audio.StreamRecorder(link.send_input, bench_host or "127.0.0.1", int(bench_port))}
     deck.input_kind = "bench" if args.input_tcp else "system" if recorder else "none"
     deck._system = None if args.input_tcp else recorder
-    if not args.record:
+    if not args.record and args.bench:
         deck.bench = BenchWatch(args.bench)
     if args.usb:                                  # the INPUT SOURCE knob picks the deck deckbench plays to the unit's input
         deck.input_watch = InputWatch(args.usb, lambda n: deck.input_source(n, args.bench))
