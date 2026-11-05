@@ -16,10 +16,11 @@ python app/virtual_djs.py                     # on Windows: py -3 app/virtual_dj
 and again after a restart. Until the app has drawn, which takes about half a
 minute from a cold start, its screen says so with a progress bar.
 
-When launched through `start.py`, Tools includes **Network adapter (restart
-required)**. It saves a Linux/WSL backend interface and IPv4 address for the
-next start, without interrupting the running firmware. Stop recording before
-opening it. Save your project before restarting. See [network setup](running.md#real-players-and-an-existing-deckbench)
+When launched through `start.py`, **Tools > Network adapter** opens a compact
+submenu of backend interfaces and IPv4 addresses. Click a row to save it for
+the next start without interrupting the running firmware. The check marks the
+saved choice, not a live network change. Escape returns to Tools. Stop recording
+before opening it and save your project before restarting. See [network setup](running.md#real-players-and-an-existing-deckbench)
 for WSL reachability, existing Deckbench sessions and hardware-test limits.
 
 Beside the face is the app's screen at full size, the easier one to touch,

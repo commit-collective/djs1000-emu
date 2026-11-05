@@ -15,17 +15,17 @@ def query(command, *args):
 def choose(command, surface=None):
     import pygame
     data = query(command, 'list')
+    rows = [{'interface': '', 'address': ''}] + data['interfaces']
     own_window = surface is None
     if own_window:
         pygame.display.init()
         pygame.font.init()
-        surface = pygame.display.set_mode((760, 560), pygame.RESIZABLE)
+        surface = pygame.display.set_mode((640, min(560, 220 + 36 * len(rows))), pygame.RESIZABLE)
         pygame.display.set_caption('DJS-1000 emulator · Network adapter')
-    rows = [{'interface': '', 'address': ''}] + data['interfaces']
     selected = next((i for i, row in enumerate(rows) if all(row.get(k) == data['selected'].get(k) for k in ('interface', 'address'))), 0)
     offset, message, clock = 0, '', pygame.time.Clock()
-    font = pygame.font.Font(None, 24)
-    small = pygame.font.Font(None, 20)
+    font = pygame.font.SysFont('arial', 20, bold=True)
+    small = pygame.font.SysFont('arial', 16)
     def text(value, x, y, colour=(225, 225, 225), face=font):
         surface.blit(face.render(value, True, colour), (x, y))
     try:
@@ -35,9 +35,9 @@ def choose(command, surface=None):
             offset = max(0, min(offset, max(0, len(rows) - visible)))
             surface.fill((12, 12, 12))
             text('DJ network adapter', 20, 18)
-            text('Choose an interface/address available to the emulator backend.', 20, 53, face=small)
+            text('Choose an adapter available to the emulator backend.', 20, 53, face=small)
             text('Applies after restart. Save your project before restarting.', 20, 77, face=small)
-            text('This does not change host or VM networking, addresses or firewall rules.', 20, 101, face=small)
+            text('Host and VM network settings are unchanged.', 20, 101, face=small)
             rectangles = []
             for i in range(offset, min(len(rows), offset + visible)):
                 row = rows[i]

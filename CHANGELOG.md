@@ -4,6 +4,10 @@ Newest first. A release is a tagged commit.
 
 ## Unreleased
 
+- Keep adapter selection in a compact Tools submenu, with a saved-choice
+  checkmark and restart note. Use the main UI's system font instead of the
+  bundled bold font for the optional pre-launch picker.
+
 - Choose a Linux/WSL backend adapter and IPv4 address from Tools or
   `--network-picker`, applying the saved choice after restart. Route Link UDP
   through that identity without changing OS networking. Explicit selection

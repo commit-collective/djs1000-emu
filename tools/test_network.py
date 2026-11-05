@@ -43,6 +43,63 @@ class Picker(unittest.TestCase):
         self.exercise(False)
 
 
+@unittest.skipUnless(importlib.util.find_spec('pygame'), 'needs pygame-ce')
+class Submenu(unittest.TestCase):
+    def setUp(self):
+        os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
+        os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
+        import pygame
+        import deck_selftest
+        pygame.display.init()
+        pygame.font.init()
+        self.addCleanup(pygame.display.quit)
+        self.deck = deck_selftest.virtual_djs.Deck(deck_selftest.FakeLink(), (420, 500),
+                                                  (deck_selftest.FakePlayer(), None), None, [0])
+        self.deck.network_command = ['helper']
+        self.data = {'interfaces': [{'interface': 'eth2', 'address': '169.254.10.5', 'prefix': 16}],
+                     'selected': {'interface': '', 'address': ''}}
+
+    def test_menu_selects_without_replacing_the_window(self):
+        import pygame
+        # The frontend imports the same helper by its script-local module name.
+        import network_picker as frontend_picker
+        with patch.object(frontend_picker, 'query', side_effect=[self.data, {'interface': 'eth2', 'address': '169.254.10.5'}]) as query:
+            surface = self.deck.win
+            self.deck.choose_network()
+            self.deck.draw_menu()
+            self.assertIs(self.deck.win, surface)
+            self.assertLess(self.deck.menu_panel.height, 160)
+            self.assertTrue(self.deck.win.get_rect().contains(self.deck.menu_panel))
+            index = next(i for i, item in enumerate(self.deck.menu_items) if item[0].startswith('eth2'))
+            self.deck.press(self.deck.menu_rects[index][0].center)
+            query.assert_called_with(['helper'], 'select', 'eth2', '169.254.10.5')
+            self.assertEqual(self.deck.network_menu['selected']['interface'], 'eth2')
+            self.deck.key(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, mod=0), True)
+            self.assertIsNone(self.deck.network_menu)
+            self.assertTrue(self.deck.menu_open)
+
+    def test_many_adapters_are_paged_inside_the_window(self):
+        self.data['interfaces'] *= 40
+        self.deck.network_menu = self.data
+        self.deck.menu_open = True
+        self.deck.draw_menu()
+        self.assertTrue(self.deck.win.get_rect().contains(self.deck.menu_panel))
+        more = next(item for item in self.deck.menu_items if item[0] == 'More adapters')
+        more[3]()
+        self.deck.draw_menu()
+        self.assertGreater(self.deck.network_offset, 0)
+        self.assertTrue(self.deck.win.get_rect().contains(self.deck.menu_panel))
+        self.deck.press((0, 0))
+        self.assertFalse(self.deck.menu_open)
+
+    def test_failed_save_preserves_the_checkmark(self):
+        import network_picker
+        self.deck.network_menu = self.data
+        with patch.object(network_picker, 'query', side_effect=ValueError('Adapter is unavailable')):
+            self.deck.select_network(self.data['interfaces'][0])
+        self.assertEqual(self.deck.network_menu['selected'], {'interface': '', 'address': ''})
+
+
 class Configuration(unittest.TestCase):
     def test_reset_can_recover_invalid_saved_json(self):
         with tempfile.TemporaryDirectory() as folder:
