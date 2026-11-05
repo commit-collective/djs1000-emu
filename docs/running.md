@@ -112,6 +112,22 @@ check that the players are seen. WSL and Windows then share their ports, so a
 Windows program cannot listen on a port a WSL program already uses (Deckbench
 on 8750 in both, for example). See Microsoft's
 [WSL networking guide](https://learn.microsoft.com/en-us/windows/wsl/networking).
+
+With a DJ adapter chosen, the launcher starts no Deckbench of its own: its
+simulated decks live on the loopback, which the emulator no longer listens to,
+and an extra device on the real link could change what is being tested. To
+watch the network as well, run a Deckbench yourself in watching mode and point
+the launcher at it:
+
+```powershell
+python -m deckbench --observe --dj-interface "Ethernet 2"
+start.cmd --bench-url http://127.0.0.1:8750/
+```
+
+With mirrored networking, that Deckbench shares the emulated DJS's address on
+the DJ network. Whether the players accept two devices at one address is not
+checked yet.
+
 Open **Tools > Network adapter** in the virtual deck and select a row, or
 run `python start.py --network-picker` before starting. The picker lists
 active IPv4 addresses visible to the Linux backend, including separate aliases.
