@@ -176,6 +176,10 @@ QENV="${TAG:+-E DJSDEV_TAG=$TAG }-E DISPLAY=${DISPLAY:-:0} -E HOME=/root -E PATH
 QENV="$QENV -E LD_LIBRARY_PATH=/usr/lib:/lib -E LD_PRELOAD=/opt/djsemu/libdjsdev.so $XDISPLAY"
 [ -n "${DJSDEV_USB:-}" ] && QENV="$QENV -E DJSDEV_USB=$DJSDEV_USB"
 [ -n "${DJSDEV_DIRECT:-}" ] && QENV="$QENV -E DJSDEV_DIRECT=$DJSDEV_DIRECT"
+for name in DJSDEV_INTERFACE DJSDEV_ADDRESS DJSDEV_NETMASK DJSDEV_BROADCAST DJSDEV_IFINDEX; do
+    value=${!name:-}
+    [ -z "$value" ] || QENV="$QENV -E $name=$value"
+done
 # The unit's console (its serial port), where a process started by a stick's
 # autoexec may send its output: a file here, $DJS_HOME/run/console.log.
 : > "$DJS/run/console.log"

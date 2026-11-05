@@ -16,6 +16,12 @@ python app/virtual_djs.py                     # on Windows: py -3 app/virtual_dj
 and again after a restart. Until the app has drawn, which takes about half a
 minute from a cold start, its screen says so with a progress bar.
 
+When launched through `start.py`, Tools includes **Network adapter (restart
+required)**. It saves a Linux/WSL backend interface and IPv4 address for the
+next start, without interrupting the running firmware. Stop recording before
+opening it. Save your project before restarting. See [network setup](running.md#real-players-and-an-existing-deckbench)
+for WSL reachability, existing Deckbench sessions and hardware-test limits.
+
 Beside the face is the app's screen at full size, the easier one to touch,
 and under it the list of installed mods and a reminder of what the mouse and the keys do, each in a box closed by a thin line (`--no-outline`
 leaves the lines out, and a recording leaves them out too, as the reels frame their cards themselves). For a screen recording that is keyed on

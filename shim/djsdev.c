@@ -90,6 +90,8 @@ extern int memcmp(const void *a, const void *b, size_t n);
 extern void *memset(void *d, int c, size_t n);
 extern void *stderr;
 
+#include "network.h"
+
 /* What each device is backed by. */
 enum { DEV_ZERO, DEV_SOCK, DEV_SPI, DEV_MSG };
 
@@ -1356,7 +1358,7 @@ int ioctl(int fd, unsigned long req, ...)
         return 0;
     }
     if (!dev) {
-        return real(fd, req, arg);
+        return network_ioctl(fd, req, arg, real);
     }
     if (fake_spi[fd] && ((req >> 8) & 0xFF) == 'p') {
         return spi_ioctl(fake_spi[fd], req, arg);
@@ -1536,6 +1538,7 @@ static void *link_listener(void *arg)
             usleep(100000);
             continue;
         }
+        if (!network_accept(sa + 4)) continue;
         if (!first[port - 50000]++) {
             fprintf(stderr, "[djsdev] Pro DJ Link: first datagram on UDP %d, %d bytes\n", port, n);
         }
@@ -1545,9 +1548,11 @@ static void *link_listener(void *arg)
          * are on other addresses: 127.0.0.n, or addresses of the host's network
          * of their own. (If the unit's address is not known: whatever is not
          * from the loopback.) */
-        if (own_ip_known ? (sa[4] == own_ip[0] && sa[5] == own_ip[1] && sa[6] == own_ip[2]
+        if ((own_ip_known ? (sa[4] == own_ip[0] && sa[5] == own_ip[1] && sa[6] == own_ip[2]
                             && sa[7] == own_ip[3])
-                         : sa[4] != 127) {
+                         : sa[4] != 127) &&
+            (!network_selected() ||
+             (n >= 20 && (!memcmp(buf + 11, "DJS-1000", 8) || !memcmp(buf + 12, "DJS-1000", 8))))) {
             static int dropped[3];
 
             if (!dropped[port - 50000]++) {
@@ -1726,6 +1731,8 @@ ssize_t sendto(int fd, const void *buf, size_t n, int flags, const void *addr, u
                 fprintf(stderr, "[djsdev] the app sends to %d.%d.%d.%d:%d: type 0x%02x, %d bytes\n",
                         a[4], a[5], a[6], a[7], port, kind, (int)n);
             }
+            if (alen >= 16 && network_selected())
+                return network_send(fd, buf, n, flags, addr, alen, dlsym(RTLD_NEXT, "sendmsg"));
         }
     }
     return real(fd, buf, n, flags, addr, alen);

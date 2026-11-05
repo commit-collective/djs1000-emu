@@ -89,11 +89,37 @@ On Windows, the emulator's backend lives in WSL, even though its window is on
 Windows. A Windows Deckbench seeing the CDJs does not prove that WSL can see
 them. Default WSL NAT does not carry the necessary LAN broadcasts. Configure
 and verify a suitable mirrored or bridged network before hardware testing.
-The backend currently takes its identity from Linux `eth0`, with no emulator
-adapter picker. Do not assume it selects the Windows DJ adapter automatically.
+Open **Tools > Network adapter (restart required)** in the virtual deck, or
+run `python start.py --network-picker` before starting. The picker lists
+active IPv4 addresses visible to the Linux backend, including separate aliases.
+It needs Linux `iproute2` (`sudo apt install iproute2`). It does not list native
+Windows adapters unless WSL exposes them. Picking an adapter is not a WSL bridge.
+
+Save the choice, save your project and stop/restart the emulator to apply it.
+The launcher refuses to reuse a running backend with a different selection.
+For scripted use, run `python start.py --network eth1@169.254.10.5`, substituting
+an existing backend interface and address. `--network default` restores the
+previous local-test networking. Choices live in `$DJS_HOME/network.json`, not
+the repository. A missing saved adapter must be replaced or reset explicitly.
+
+Explicit selection maps the app's Ethernet identity to that adapter, sends
+Link UDP from its selected IP and uses its subnet broadcast address. The
+packet-socket stand-in ignores sources outside that subnet. This is not an
+OS-level network sandbox. No interface addressing, routes or firewall rules
+are changed. A selected physical adapter disables automatic loopback Deckbench
+startup. Use `--bench-url` to attach to a separately managed bench on that
+network. An older local bench already running is left alone.
+
+These paths have firmware-free Linux identity and UDP source-routing checks.
+Real-player discovery and timing through a selected Linux/WSL adapter still
+need hardware validation. Do not assume Windows adapter visibility or VM
+broadcast reachability merely because the frontend can open the picker.
 
 Give every player, real or simulated, an unused player number. Avoid running
 two benches on the same ports, and keep all simulated players off until needed.
+The emulator also needs an IP identity distinct from each real or simulated
+player. On a shared host, configure separate existing IPv4 aliases before
+selecting them. The picker does not create aliases for you.
 Deckbench's adapter selection applies only to its own process, not the emulator.
 Real players can provide discovery, tempo and beat messages, but Pro DJ Link
 does not provide their audio to the emulator. Feed a physical audio interface
