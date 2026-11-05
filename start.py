@@ -16,6 +16,8 @@ stops the emulator.
   --port N        the deck link's port (default 7310)
   --no-bench      do not start or attach to Deckbench (for real hardware)
   --bench-url URL use an existing bench without starting or stopping it
+  --network-picker choose a Linux/WSL network adapter before starting
+  --network NAME@IPv4 select an adapter/address, or default for local testing
 
 Anything else goes to the deck (app/virtual_djs.py), whose options are listed
 below (--help here prints them too).
@@ -26,12 +28,14 @@ is already running is used as it is, and then left running. Its output goes
 to $DJS_HOME/run/emulator.log (default ~/djs/run, in WSL on Windows).
 """
 import os
+import json
 import shlex
 import socket
 import subprocess
 import sys
 import time
 from app.bench import request as bench_request
+from app.network_picker import query as network_query
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 AUDIO_PORT = 7320                       # where deckbench serves its decks' sound (the deck's --input-tcp takes it)
@@ -154,6 +158,23 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
             return None
         return out.splitlines()[-1]
 
+    def network_command(self):
+        code, home = self.sh('printf "%s\\n" "${DJS_HOME:-$HOME/djs}"')
+        if code or not home.startswith('/'):
+            raise ValueError('Could not locate the backend home for network settings')
+        command = ['python3', self.repo() + '/tools/network_backend.py', '--home', home.splitlines()[-1]]
+        return (['wsl.exe'] + (['-d', self.distro] if self.distro else []) + ['--'] + command) if WINDOWS else command
+
+    def configure_network(self, command):
+        environment = network_query(command, 'environment')
+        keys = ('DJSDEV_INTERFACE', 'DJSDEV_ADDRESS', 'DJSDEV_NETMASK', 'DJSDEV_BROADCAST', 'DJSDEV_IFINDEX')
+        self.env += ''.join(' %s=%s' % (key, shlex.quote(environment.get(key, ''))) for key in keys)
+        return bool(environment)
+
+    def network_matches(self, command):
+        code, pid = self.sh('pids_of EP113_Main_R | head -1')
+        return not code and pid.isdecimal() and network_query(command, 'matches', pid)
+
     def running(self):
         return self.sh(self.running_cmd)[0] == 0
 
@@ -172,8 +193,8 @@ if command -v rsync > /dev/null; then rsync -a "$HOME/djs/root/" "$DJS_HOME/root
         the script that builds it) last changed: it still has the old shim."""
         return self.sh("""
 PID=$(pids_of EP113_Main_R | head -1)
-[ -n "$PID" ] && { [ '%s/shim/djsdev.c' -nt "/proc/$PID" ] || [ '%s/scripts/run.sh' -nt "/proc/$PID" ]; }
-""" % (self.repo(), self.repo()))[0] == 0
+[ -n "$PID" ] && { [ '%s/shim/djsdev.c' -nt "/proc/$PID" ] || [ '%s/shim/network.h' -nt "/proc/$PID" ] || [ '%s/scripts/run.sh' -nt "/proc/$PID" ]; }
+""" % (self.repo(), self.repo(), self.repo()))[0] == 0
 
     def start(self):
         code, out = self.sh("""
@@ -305,6 +326,8 @@ def main():
     emu = Emulator(take(args, "--distro", os.environ.get("DJS_WSL_DISTRO")),
                    int(take(args, "--port", "7310")), flag(args, "--window"))
     keep, no_deck = flag(args, "--keep"), flag(args, "--no-deck")
+    network_picker = flag(args, '--network-picker')
+    network_choice = take(args, '--network')
     no_bench = flag(args, "--no-bench")
     bench_url = take(args, "--bench-url")
     if no_bench and bench_url is not None:
@@ -335,7 +358,7 @@ def main():
     if "--list-audio" in args:
         return subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py")] + args)
     emu.manage_bench = not no_bench and bench_url is None
-    if not no_deck:
+    if not no_deck or network_picker:
         os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
         try:
             import PIL  # noqa: F401
@@ -347,7 +370,29 @@ def main():
     def say(text, end="\n"):
         print(text, end=end, flush=True)
 
+    try:
+        network_command = emu.network_command()
+        if network_choice is not None:
+            if network_choice == 'default':
+                network_query(network_command, 'select')
+            else:
+                name, separator, address = network_choice.rpartition('@')
+                if not separator:
+                    sys.exit('--network needs NAME@IPv4 or default')
+                network_query(network_command, 'select', name, address)
+        if network_picker:
+            from app.network_picker import choose
+            if not choose(network_command):
+                return 0
+        physical_network = emu.configure_network(network_command)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        sys.exit(str(error))
+    if physical_network and bench_url is None:
+        no_bench, emu.manage_bench = True, False
+        say('Selected backend DJ adapter. Automatic loopback Deckbench is disabled.')
     ours = not emu.running()
+    if not ours and not emu.network_matches(network_command):
+        sys.exit('Network selection changed. Save your project, run start.py stop, then start again.')
     if not ours and not emu.alive():
         say("An emulator is running but not answering. Restarting it.")
         emu.stop()
@@ -382,7 +427,8 @@ def main():
             say("Deckbench disabled. Real players require a reachable DJ network." if no_bench or bench_url == '' else
                 "No Pro DJ Link decks: %s" % emu.bench_why)
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
-                                "--port", str(emu.port), "--bench", bench or ''] + (["--usb", usb] if usb else [])
+                                "--port", str(emu.port), "--bench", bench or '',
+                                '--network-command', json.dumps(network_command)] + (["--usb", usb] if usb else [])
                                 + (["--modlist", modlist] if modlist else []) + args)
     except KeyboardInterrupt:
         code = 130

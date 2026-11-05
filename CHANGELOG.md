@@ -4,6 +4,11 @@ Newest first. A release is a tagged commit.
 
 ## Unreleased
 
+- Choose a Linux/WSL backend adapter and IPv4 address from Tools or
+  `--network-picker`, applying the saved choice after restart. Route Link UDP
+  through that identity without changing OS networking. Explicit selection
+  disables automatic loopback Deckbench unless an external bench is supplied.
+  Firmware-free routing checks pass. Physical-network validation is pending.
 - Use `--no-bench` for hardware-only sessions or `--bench-url URL` to attach
   to an existing Deckbench without starting another. The `--bench` alias remains accepted.
 - Track the launcher's local Deckbench by process identity rather than matching

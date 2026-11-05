@@ -416,6 +416,7 @@ class Deck:
         self.latched = {}                # the pads and step keys a right click holds down: key index -> the line that lets it go
         self.velocity = None             # a pad hit by the mouse: a share (10 to 100) of full velocity, or None: by where it is hit
         self.bench = None                # BenchWatch, if deckbench is looked at
+        self.network_command = []
         self.bench_rect = pygame.Rect(0, 0, 0, 0)
         self.input_makers = {}           # "system" and "bench": what makes the recorder that feeds the app's input
         self.input_kind = "system" if recorder else "none"
@@ -640,6 +641,18 @@ class Deck:
     def wait_more(self, ms):
         self.master.set_wait(self.master.wait_ms + ms)
 
+    def choose_network(self):
+        if self.rec:
+            self.say('Stop recording before opening network setup.')
+            return
+        from network_picker import choose
+        try:
+            if choose(self.network_command, self.win):
+                self.say('Network choice saved. Save your project and restart the emulator to apply it.')
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            self.say(str(error))
+        self.layout()
+
     def tool_items(self):
         """The tools menu: (label, "check" or "action", the state of a check, what a click does)."""
         items = [("Keyable background (luma key)", "check", lambda: bool(self.lift), self.toggle_key),
@@ -659,6 +672,8 @@ class Deck:
                       ("Sound in: nothing", "check", lambda: self.input_kind == "none", lambda: self.set_input("none"))]
         if self.bench:
             items += [("Open deckbench's page", "action", None, self.open_bench)]
+        if self.network_command:
+            items += [('Network adapter (restart required)', 'action', None, self.choose_network)]
         if hasattr(self.master, "set_wait"):
             items += [("Sound waits 50 ms less", "action", None, lambda: self.wait_more(-50)),
                       ("Sound waits 50 ms more", "action", None, lambda: self.wait_more(50))]
@@ -1711,6 +1726,7 @@ class Deck:
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument('--network-command', help=argparse.SUPPRESS)
     ap.add_argument("--port", type=int, default=7310)
     ap.add_argument("--height", type=int, default=0, help="window height in pixels")
     ap.add_argument("--audio", metavar="NAME", help="play on the device whose name has NAME in it")
@@ -1823,6 +1839,9 @@ def main():
             print(f"no input: {e}", file=sys.stderr)
     art.set_style(args.face)
     deck = Deck(link, (w, h), outputs, recorder, listen, Mods(args.usb, args.modlist), tidy=not args.record)
+    if args.network_command:
+        import json
+        deck.network_command = json.loads(args.network_command)
     bench_host, _, bench_port = (args.input_tcp or BENCH_AUDIO).rpartition(":")
     deck.input_makers = {"system": lambda: audio.Recorder(link.send_input, audio.pick(args.input, True)),
                          "bench": lambda: audio.StreamRecorder(link.send_input, bench_host or "127.0.0.1", int(bench_port))}

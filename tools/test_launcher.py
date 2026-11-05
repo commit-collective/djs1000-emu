@@ -79,6 +79,30 @@ class BenchOwnership(unittest.TestCase):
                 request(url, 'api/state')
 
 
+class NetworkSelection(unittest.TestCase):
+    def test_network_command_uses_backend_home_and_distro(self):
+        emu = start.Emulator('Test Linux', 7310)
+        emu._repo = '/tmp/emulator'
+        emu.sh = Mock(return_value=(0, '/home/test/djs-s7'))
+        with patch.object(start, 'WINDOWS', True):
+            command = emu.network_command()
+        self.assertEqual(command[:4], ['wsl.exe', '-d', 'Test Linux', '--'])
+        self.assertEqual(command[-2:], ['--home', '/home/test/djs-s7'])
+
+    def test_configuration_is_explicit_and_running_match_is_checked(self):
+        emu = start.Emulator(None, 7310)
+        with patch.object(start, 'network_query', return_value={}) as query:
+            self.assertFalse(emu.configure_network(['helper']))
+            self.assertIn("DJSDEV_INTERFACE=''", emu.env)
+        with patch.object(start, 'network_query', return_value={'DJSDEV_INTERFACE': 'eth2', 'DJSDEV_ADDRESS': '169.254.10.5'}):
+            self.assertTrue(emu.configure_network(['helper']))
+            self.assertIn('DJSDEV_INTERFACE=eth2', emu.env)
+        emu.sh = Mock(return_value=(0, '123'))
+        with patch.object(start, 'network_query', return_value=False) as query:
+            self.assertFalse(emu.network_matches(['helper']))
+            query.assert_called_once_with(['helper'], 'matches', '123')
+
+
 @unittest.skipUnless(sys.platform.startswith('linux'), 'needs Linux process identity')
 class LinuxOwnership(unittest.TestCase):
     def test_start_reuse_and_stop_only_the_recorded_child(self):
