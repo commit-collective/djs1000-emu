@@ -417,6 +417,8 @@ class Deck:
         self.velocity = None             # a pad hit by the mouse: a share (10 to 100) of full velocity, or None: by where it is hit
         self.bench = None                # BenchWatch, if deckbench is looked at
         self.network_command = []
+        self.network_menu = None
+        self.network_offset = 0
         self.bench_rect = pygame.Rect(0, 0, 0, 0)
         self.input_makers = {}           # "system" and "bench": what makes the recorder that feeds the app's input
         self.input_kind = "system" if recorder else "none"
@@ -565,6 +567,7 @@ class Deck:
 
     def toggle_menu(self):
         self.menu_open = not self.menu_open
+        self.network_menu = None
 
     def toggle_status(self):
         self.show_status = not self.show_status
@@ -645,13 +648,42 @@ class Deck:
         if self.rec:
             self.say('Stop recording before opening network setup.')
             return
-        from network_picker import choose
+        from network_picker import query
         try:
-            if choose(self.network_command, self.win):
-                self.say('Network choice saved. Save your project and restart the emulator to apply it.')
+            self.network_menu = query(self.network_command, 'list')
+            self.network_offset = 0
+            self.menu_open = True
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             self.say(str(error))
-        self.layout()
+
+    def network_back(self):
+        self.network_menu = None
+
+    def select_network(self, row):
+        from network_picker import query
+        try:
+            self.network_menu['selected'] = query(self.network_command, 'select', row['interface'], row['address'])
+            self.say('Network choice saved. Save your project and restart the emulator to apply it.')
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            self.say(str(error))
+
+    def network_items(self):
+        rows = [{'interface': '', 'address': ''}] + self.network_menu['interfaces']
+        count = max(1, (self.win.get_height() - STATUS_H - 24) // MENU_ROW - 4)
+        self.network_offset = max(0, min(self.network_offset, max(0, len(rows) - count)))
+        def page(direction):
+            self.network_offset = max(0, min(len(rows) - count, self.network_offset + direction * count))
+        items = [('< Tools', 'action', None, self.network_back),
+                 ('Saved choice applies after restart', 'note', None, None)]
+        if self.network_offset:
+            items.append(('Previous adapters', 'action', None, lambda: page(-1)))
+        for row in rows[self.network_offset:self.network_offset + count]:
+            label = '%s · %s/%s' % (row['interface'], row['address'], row['prefix']) if row['interface'] else 'Default / local testing'
+            state = lambda row=row: all(row.get(k) == self.network_menu['selected'].get(k) for k in ('interface', 'address'))
+            items.append((label, 'check', state, lambda row=row: self.select_network(row)))
+        if self.network_offset + count < len(rows):
+            items.append(('More adapters', 'action', None, lambda: page(1)))
+        return items
 
     def tool_items(self):
         """The tools menu: (label, "check" or "action", the state of a check, what a click does)."""
@@ -673,7 +705,7 @@ class Deck:
         if self.bench:
             items += [("Open deckbench's page", "action", None, self.open_bench)]
         if self.network_command:
-            items += [('Network adapter (restart required)', 'action', None, self.choose_network)]
+            items += [('Network adapter >', 'action', None, self.choose_network)]
         if hasattr(self.master, "set_wait"):
             items += [("Sound waits 50 ms less", "action", None, lambda: self.wait_more(-50)),
                       ("Sound waits 50 ms more", "action", None, lambda: self.wait_more(50))]
@@ -977,7 +1009,7 @@ class Deck:
                 label, kind, state, handler = self.menu_items[what[1]]
                 if kind == "stepper":                 # the left half of the row is less, the right half more
                     handler(-1 if pos[0] < self.menu_rects[what[1]][0].centerx else 1)
-                else:
+                elif handler:
                     handler()
             return
         if what[0] == "copy":
@@ -1095,6 +1127,9 @@ class Deck:
             self.hover = self.describe(self.hover_what)
 
     def wheel(self, pos, dy):
+        if self.menu_open and self.network_menu is not None and self.menu_panel.collidepoint(pos):
+            self.network_offset -= dy
+            return
         for key, rect in self.body_rects.items():
             if rect.collidepoint(pos) and key in self.track_rects:
                 self.scroll[key] = min(self.track_rects[key][2], max(0, self.scroll[key] - dy * ROW))
@@ -1104,6 +1139,12 @@ class Deck:
             self.turn(what[1], dy)
 
     def key(self, event, down):
+        if down and event.key == pygame.K_ESCAPE and self.menu_open:
+            if self.network_menu is not None:
+                self.network_back()
+            else:
+                self.menu_open = False
+            return
         act = self.keymap.get(event.key)
         if not act:
             return
@@ -1558,17 +1599,18 @@ class Deck:
         """The tools menu, over the window's lower right corner."""
         win = self.win
         w, h = win.get_size()
-        self.menu_items = items = self.tool_items()
+        self.menu_items = items = self.network_items() if self.network_menu is not None else self.tool_items()
+        width = min(w - 16, max(MENU_W, max(self.font.size(label)[0] for label, _, _, _ in items) + 46)) if self.network_menu is not None else MENU_W
         height = len(items) * MENU_ROW + 10
         bottom = h - (STATUS_H if self.show_status else 0) - 4
-        self.menu_panel = panel = pygame.Rect(w - MENU_W - 8, bottom - height, MENU_W, height)
+        self.menu_panel = panel = pygame.Rect(w - width - 8, bottom - height, width, height)
         pygame.draw.rect(win, (24, 25, 28), panel, border_radius=6)
         pygame.draw.rect(win, (70, 72, 80), panel, 1, border_radius=6)
         mouse = pygame.mouse.get_pos()
         self.menu_rects = []
         for i, (label, kind, state, _) in enumerate(items):
-            r = pygame.Rect(panel.left + 4, panel.top + 5 + i * MENU_ROW, MENU_W - 8, MENU_ROW)
-            if r.collidepoint(mouse):
+            r = pygame.Rect(panel.left + 4, panel.top + 5 + i * MENU_ROW, width - 8, MENU_ROW)
+            if kind != 'note' and r.collidepoint(mouse):
                 pygame.draw.rect(win, (44, 46, 52), r, border_radius=4)
             x = r.left + 10
             if kind == "check":
@@ -1581,7 +1623,10 @@ class Deck:
                 pygame.draw.polygon(win, (150, 152, 158), [(r.left + 10, mid), (r.left + 17, mid - 5), (r.left + 17, mid + 5)])
                 pygame.draw.polygon(win, (150, 152, 158), [(r.right - 10, mid), (r.right - 17, mid - 5), (r.right - 17, mid + 5)])
                 x = r.left + 26
-            t = self.font.render(label() if callable(label) else label, True, (225, 228, 232))
+            label = label() if callable(label) else label
+            while self.font.size(label)[0] > r.right - x - 8 and len(label) > 4:
+                label = label[:-4] + '...'
+            t = self.font.render(label, True, (150, 152, 158) if kind == 'note' else (225, 228, 232))
             win.blit(t, (x, r.centery - t.get_height() // 2))
             self.menu_rects.append((r, i))
 

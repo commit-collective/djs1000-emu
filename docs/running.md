@@ -89,13 +89,14 @@ On Windows, the emulator's backend lives in WSL, even though its window is on
 Windows. A Windows Deckbench seeing the CDJs does not prove that WSL can see
 them. Default WSL NAT does not carry the necessary LAN broadcasts. Configure
 and verify a suitable mirrored or bridged network before hardware testing.
-Open **Tools > Network adapter (restart required)** in the virtual deck, or
+Open **Tools > Network adapter** in the virtual deck and select a row, or
 run `python start.py --network-picker` before starting. The picker lists
 active IPv4 addresses visible to the Linux backend, including separate aliases.
 It needs Linux `iproute2` (`sudo apt install iproute2`). It does not list native
 Windows adapters unless WSL exposes them. Picking an adapter is not a WSL bridge.
 
-Save the choice, save your project and stop/restart the emulator to apply it.
+The submenu saves on selection and marks the saved choice. Save your project
+and stop/restart the emulator to apply it.
 The launcher refuses to reuse a running backend with a different selection.
 For scripted use, run `python start.py --network eth1@169.254.10.5`, substituting
 an existing backend interface and address. `--network default` restores the
