@@ -12,17 +12,30 @@ def query(command, *args):
     return json.loads(result.stdout)
 
 
+def rows_of(data):
+    """The rows to choose from: the default (no adapter) first."""
+    return [{'interface': '', 'address': ''}] + data['interfaces']
+
+
+def label(row, default='Default / local testing'):
+    return '%s · %s/%s' % (row['interface'], row['address'], row['prefix']) if row['interface'] else default
+
+
+def is_selected(row, selected):
+    return all(row.get(k) == (selected or {}).get(k) for k in ('interface', 'address'))
+
+
 def choose(command, surface=None):
     import pygame
     data = query(command, 'list')
-    rows = [{'interface': '', 'address': ''}] + data['interfaces']
+    rows = rows_of(data)
     own_window = surface is None
     if own_window:
         pygame.display.init()
         pygame.font.init()
         surface = pygame.display.set_mode((640, min(560, 220 + 36 * len(rows))), pygame.RESIZABLE)
         pygame.display.set_caption('DJS-1000 emulator · Network adapter')
-    selected = next((i for i, row in enumerate(rows) if all(row.get(k) == data['selected'].get(k) for k in ('interface', 'address'))), 0)
+    selected = next((i for i, row in enumerate(rows) if is_selected(row, data['selected'])), 0)
     offset, message, clock = 0, '', pygame.time.Clock()
     font = pygame.font.SysFont('arial', 20, bold=True)
     small = pygame.font.SysFont('arial', 16)
@@ -43,7 +56,7 @@ def choose(command, surface=None):
                 row = rows[i]
                 rect = pygame.Rect(16, 132 + (i - offset) * 36, width - 32, 34)
                 pygame.draw.rect(surface, (45, 65, 40) if i == selected else (26, 26, 26), rect)
-                title = '%s · %s/%s' % (row['interface'], row['address'], row['prefix']) if row['interface'] else 'Default / local testing (existing networking)'
+                title = label(row, 'Default / local testing (existing networking)')
                 text(title, rect.x + 8, rect.y + 7, face=small)
                 rectangles.append((rect, i))
             apply = pygame.Rect(width - 250, height - 50, 130, 34)

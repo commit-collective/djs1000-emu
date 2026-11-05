@@ -91,7 +91,7 @@ class NetworkSelection(unittest.TestCase):
 
     def test_configuration_is_explicit_and_running_match_is_checked(self):
         emu = start.Emulator(None, 7310)
-        with patch.object(start, 'network_query', return_value={}) as query:
+        with patch.object(start, 'network_query', return_value={'DJSDEV_INTERFACE': '', 'DJSDEV_ADDRESS': ''}) as query:
             self.assertFalse(emu.configure_network(['helper']))
             self.assertIn("DJSDEV_INTERFACE=''", emu.env)
         with patch.object(start, 'network_query', return_value={'DJSDEV_INTERFACE': 'eth2', 'DJSDEV_ADDRESS': '169.254.10.5'}):

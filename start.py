@@ -166,10 +166,9 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
         return (['wsl.exe'] + (['-d', self.distro] if self.distro else []) + ['--'] + command) if WINDOWS else command
 
     def configure_network(self, command):
-        environment = network_query(command, 'environment')
-        keys = ('DJSDEV_INTERFACE', 'DJSDEV_ADDRESS', 'DJSDEV_NETMASK', 'DJSDEV_BROADCAST', 'DJSDEV_IFINDEX')
-        self.env += ''.join(' %s=%s' % (key, shlex.quote(environment.get(key, ''))) for key in keys)
-        return bool(environment)
+        environment = network_query(command, 'environment')        # every name, empty when none is chosen
+        self.env += ''.join(' %s=%s' % (key, shlex.quote(value)) for key, value in environment.items())
+        return bool(environment.get('DJSDEV_INTERFACE'))
 
     def network_matches(self, command):
         code, pid = self.sh('pids_of EP113_Main_R | head -1')

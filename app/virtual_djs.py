@@ -68,6 +68,7 @@ import audio  # noqa: E402
 import layout as L  # noqa: E402
 from link import Link  # noqa: E402
 from bench import request as bench_request  # noqa: E402
+import network_picker  # noqa: E402
 from mods import Mods  # noqa: E402
 from capture import AUDIO_BITRATE, Capture  # noqa: E402
 
@@ -648,9 +649,8 @@ class Deck:
         if self.rec:
             self.say('Stop recording before opening network setup.')
             return
-        from network_picker import query
         try:
-            self.network_menu = query(self.network_command, 'list')
+            self.network_menu = network_picker.query(self.network_command, 'list')
             self.network_offset = 0
             self.menu_open = True
         except (OSError, ValueError, subprocess.SubprocessError) as error:
@@ -660,15 +660,14 @@ class Deck:
         self.network_menu = None
 
     def select_network(self, row):
-        from network_picker import query
         try:
-            self.network_menu['selected'] = query(self.network_command, 'select', row['interface'], row['address'])
+            self.network_menu['selected'] = network_picker.query(self.network_command, 'select', row['interface'], row['address'])
             self.say('Network choice saved. Save your project and restart the emulator to apply it.')
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             self.say(str(error))
 
     def network_items(self):
-        rows = [{'interface': '', 'address': ''}] + self.network_menu['interfaces']
+        rows = network_picker.rows_of(self.network_menu)
         count = max(1, (self.win.get_height() - STATUS_H - 24) // MENU_ROW - 4)
         self.network_offset = max(0, min(self.network_offset, max(0, len(rows) - count)))
         def page(direction):
@@ -678,9 +677,8 @@ class Deck:
         if self.network_offset:
             items.append(('Previous adapters', 'action', None, lambda: page(-1)))
         for row in rows[self.network_offset:self.network_offset + count]:
-            label = '%s · %s/%s' % (row['interface'], row['address'], row['prefix']) if row['interface'] else 'Default / local testing'
-            state = lambda row=row: all(row.get(k) == self.network_menu['selected'].get(k) for k in ('interface', 'address'))
-            items.append((label, 'check', state, lambda row=row: self.select_network(row)))
+            state = lambda row=row: network_picker.is_selected(row, self.network_menu['selected'])
+            items.append((network_picker.label(row), 'check', state, lambda row=row: self.select_network(row)))
         if self.network_offset + count < len(rows):
             items.append(('More adapters', 'action', None, lambda: page(1)))
         return items

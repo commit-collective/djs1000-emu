@@ -11,6 +11,12 @@ import subprocess
 import tempfile
 
 
+# What run.sh passes to the shim (shim/network.h), from the fields of the chosen row. Every name is always given, empty
+# when nothing is chosen, so a value left in the caller's environment cannot leak in.
+KEYS = {'DJSDEV_INTERFACE': 'interface', 'DJSDEV_ADDRESS': 'address', 'DJSDEV_NETMASK': 'netmask',
+        'DJSDEV_BROADCAST': 'broadcast', 'DJSDEV_IFINDEX': 'index'}
+
+
 def interfaces():
     result = subprocess.run(['ip', '-j', '-4', 'address', 'show'], capture_output=True,
                             text=True, timeout=10, check=True)
@@ -81,15 +87,11 @@ def main():
             print(json.dumps(save(args.home, args.interface, args.address)))
         else:
             chosen = resolve(selection, interfaces()) if selection['interface'] else {}
-            environment = {} if not chosen else {
-                'DJSDEV_INTERFACE': chosen['interface'], 'DJSDEV_ADDRESS': chosen['address'],
-                'DJSDEV_NETMASK': chosen['netmask'], 'DJSDEV_BROADCAST': chosen['broadcast'],
-                'DJSDEV_IFINDEX': str(chosen['index'])}
+            environment = {key: str(chosen[field]) if chosen else '' for key, field in KEYS.items()}
             if args.action == 'matches':
                 data = Path('/proc/%d/environ' % int(args.interface)).read_bytes().split(b'\0')
                 current = dict(part.decode().split('=', 1) for part in data if b'=' in part and part.startswith(b'DJSDEV_'))
-                print(json.dumps(all(current.get(key, '') == environment.get(key, '') for key in
-                                     ('DJSDEV_INTERFACE', 'DJSDEV_ADDRESS', 'DJSDEV_NETMASK', 'DJSDEV_BROADCAST', 'DJSDEV_IFINDEX'))))
+                print(json.dumps(all(current.get(key, '') == value for key, value in environment.items())))
             else:
                 print(json.dumps(environment))
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
