@@ -38,6 +38,15 @@ def interfaces():
     return rows
 
 
+def wsl_mode():
+    """WSL's networking mode ('nat', 'mirrored'...), or '' outside WSL or on a WSL too old to say."""
+    try:
+        result = subprocess.run(['wslinfo', '--networking-mode'], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    return result.stdout.strip().lower() if result.returncode == 0 else ''
+
+
 def read(home):
     try:
         data = json.loads((home / 'network.json').read_text())
@@ -83,7 +92,7 @@ def main():
     try:
         selection = read(args.home) if args.action != 'select' else None
         if args.action == 'list':
-            print(json.dumps({'interfaces': interfaces(), 'selected': selection}))
+            print(json.dumps({'interfaces': interfaces(), 'selected': selection, 'wsl_mode': wsl_mode()}))
         elif args.action == 'select':
             print(json.dumps(save(args.home, args.interface, args.address)))
         else:

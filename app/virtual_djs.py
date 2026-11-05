@@ -668,12 +668,15 @@ class Deck:
 
     def network_items(self):
         rows = network_picker.rows_of(self.network_menu)
-        count = max(1, (self.win.get_height() - STATUS_H - 24) // MENU_ROW - 4)
+        notes = 1 + bool(network_picker.hint(self.network_menu))      # the rows above the adapters, besides < Tools and paging
+        count = max(1, (self.win.get_height() - STATUS_H - 24) // MENU_ROW - 3 - notes)
         self.network_offset = max(0, min(self.network_offset, max(0, len(rows) - count)))
         def page(direction):
             self.network_offset = max(0, min(len(rows) - count, self.network_offset + direction * count))
         items = [('< Tools', 'action', None, self.network_back),
                  ('Saved choice applies after restart', 'note', None, None)]
+        if network_picker.hint(self.network_menu):
+            items.append((network_picker.hint(self.network_menu), 'note', None, None))
         if self.network_offset:
             items.append(('Previous adapters', 'action', None, lambda: page(-1)))
         for row in rows[self.network_offset:self.network_offset + count]:
