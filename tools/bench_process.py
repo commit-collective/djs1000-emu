@@ -20,6 +20,22 @@ def identity(pid):
         return None
 
 
+PAGE = 'http://127.0.0.1:8750/'
+
+
+def other_bench():
+    """Whether a Deckbench answers on its page's port: its state, or its refusal without the token."""
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(PAGE + 'api/state', timeout=2) as reply:
+            return 'decks' in json.load(reply)
+    except urllib.error.HTTPError as error:
+        return error.code == 401 and b'token' in error.read()
+    except (OSError, ValueError):
+        return False
+
+
 def owned(run):
     try:
         state = json.loads((run / 'deckbench-owned.json').read_text())
@@ -80,6 +96,10 @@ def ensure(repo, run, audio_port):
         if not ready.exists():
             gone = process.poll() is not None
             stop(run)
+            if gone and other_bench():
+                raise RuntimeError('A Deckbench this emulator did not start already answers at %s (with mirrored WSL '
+                                   'networking a Windows one counts too). Use it with --bench-url %s (add '
+                                   '#token=... if it has one), stop it, or use --no-bench.' % (PAGE, PAGE))
             with log_path.open('rb') as log:
                 log.seek(began_at)
                 said = [line for line in log.read().decode('utf-8', 'replace').splitlines() if line.strip()][-4:]
