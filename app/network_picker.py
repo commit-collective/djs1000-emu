@@ -35,9 +35,9 @@ def choose(command, surface=None):
             offset = max(0, min(offset, max(0, len(rows) - visible)))
             surface.fill((12, 12, 12))
             text('DJ network adapter', 20, 18)
-            text('Choose an interface/address on the Linux backend' + (' (WSL).' if data['wsl'] else '.'), 20, 53, face=small)
+            text('Choose an interface/address available to the emulator backend.', 20, 53, face=small)
             text('Applies after restart. Save your project before restarting.', 20, 77, face=small)
-            text('This does not configure Windows, WSL networking or firewall rules.', 20, 101, face=small)
+            text('This does not change host or VM networking, addresses or firewall rules.', 20, 101, face=small)
             rectangles = []
             for i in range(offset, min(len(rows), offset + visible)):
                 row = rows[i]
