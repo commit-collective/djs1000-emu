@@ -89,6 +89,29 @@ On Windows, the emulator's backend lives in WSL, even though its window is on
 Windows. A Windows Deckbench seeing the CDJs does not prove that WSL can see
 them. Default WSL NAT does not carry the necessary LAN broadcasts. Configure
 and verify a suitable mirrored or bridged network before hardware testing.
+
+To give WSL the Windows adapters (mirrored networking):
+
+1. Create or edit `%UserProfile%\.wslconfig` with:
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+2. Run `wsl --shutdown` in PowerShell. It stops everything running in WSL, so
+   save your project first.
+3. Allow inbound connections to WSL, in an administrator PowerShell. The ID is
+   the one Windows' Hyper-V firewall gives WSL:
+   ```powershell
+   Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
+   ```
+4. Start the emulator again. **Tools > Network adapter** now lists the Windows
+   adapters, the DJ one included.
+
+Mirrored mode lists the adapters. Pro DJ Link through it is not validated yet:
+check that the players are seen. WSL and Windows then share their ports, so a
+Windows program cannot listen on a port a WSL program already uses (Deckbench
+on 8750 in both, for example). See Microsoft's
+[WSL networking guide](https://learn.microsoft.com/en-us/windows/wsl/networking).
 Open **Tools > Network adapter** in the virtual deck and select a row, or
 run `python start.py --network-picker` before starting. The picker lists
 active IPv4 addresses visible to the Linux backend, including separate aliases.
