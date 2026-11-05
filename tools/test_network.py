@@ -101,6 +101,12 @@ class Submenu(unittest.TestCase):
 
 
 class Configuration(unittest.TestCase):
+    def test_nat_mode_says_where_the_windows_adapters_are(self):
+        from app import network_picker
+        self.assertIn('mirrored', network_picker.hint({'wsl_mode': 'nat'}))
+        for mode in ('mirrored', '', None):
+            self.assertEqual(network_picker.hint({'wsl_mode': mode}), '')
+
     def test_reset_can_recover_invalid_saved_json(self):
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder) / 'network.json').write_text('invalid json')

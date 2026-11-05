@@ -12,6 +12,14 @@ def query(command, *args):
     return json.loads(result.stdout)
 
 
+NAT_HINT = 'WSL is in NAT mode: Windows adapters appear with mirrored networking (docs/running.md)'
+
+
+def hint(data):
+    """What to say above the rows: why the Windows adapters are missing, when WSL hides them."""
+    return NAT_HINT if data.get('wsl_mode') == 'nat' else ''
+
+
 def rows_of(data):
     """The rows to choose from: the default (no adapter) first."""
     return [{'interface': '', 'address': ''}] + data['interfaces']
@@ -50,7 +58,7 @@ def choose(command, surface=None):
             text('DJ network adapter', 20, 18)
             text('Choose an adapter available to the emulator backend.', 20, 53, face=small)
             text('Applies after restart. Save your project before restarting.', 20, 77, face=small)
-            text('Host and VM network settings are unchanged.', 20, 101, face=small)
+            text(hint(data) or 'Host and VM network settings are unchanged.', 20, 101, face=small)
             rectangles = []
             for i in range(offset, min(len(rows), offset + visible)):
                 row = rows[i]
