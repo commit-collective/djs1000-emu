@@ -388,7 +388,9 @@ def main():
         sys.exit(str(error))
     if physical_network and bench_url is None:
         no_bench, emu.manage_bench = True, False
-        say('DJ adapter chosen: the emulator joins your players, and no Deckbench of its own is started.')
+        say('DJ adapter chosen: the emulator joins your players, and no Deckbench of its own is started. '
+            'To watch the network too, run one yourself (python -m deckbench --observe --dj-interface NAME) '
+            'and add --bench-url http://127.0.0.1:8750/.')
     ours = not emu.running()
     if not ours and not emu.network_matches(network_command):
         sys.exit('Network selection changed. Save your project, run start.py stop, then start again.')
