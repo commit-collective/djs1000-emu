@@ -23,7 +23,8 @@ def interfaces():
     rows = []
     for item in json.loads(result.stdout):
         name = item['ifname']
-        if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,15}', name) or 'UP' not in item.get('flags', []):
+        flags = item.get('flags', [])
+        if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,15}', name) or 'UP' not in flags or 'LOOPBACK' in flags:   # WSL puts a DNS address on lo
             continue
         for address in item.get('addr_info', []):
             if address.get('family') != 'inet':
