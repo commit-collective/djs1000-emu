@@ -388,7 +388,7 @@ def main():
         sys.exit(str(error))
     if physical_network and bench_url is None:
         no_bench, emu.manage_bench = True, False
-        say('Selected backend DJ adapter. Automatic loopback Deckbench is disabled.')
+        say('DJ adapter chosen: the emulator joins your players, and no Deckbench of its own is started.')
     ours = not emu.running()
     if not ours and not emu.network_matches(network_command):
         sys.exit('Network selection changed. Save your project, run start.py stop, then start again.')
@@ -422,8 +422,8 @@ def main():
         bench = '' if no_bench else bench_url if bench_url is not None else emu.deckbench()
         if bench:
             say("Pro DJ Link decks (deckbench): %s" % bench)
-        else:
-            say("Deckbench disabled. Real players require a reachable DJ network." if no_bench or bench_url == '' else
+        elif not physical_network:                  # (with an adapter, that was said above)
+            say("No Deckbench, as asked: only real players on the network are seen." if no_bench or bench_url == '' else
                 "No Pro DJ Link decks: %s" % emu.bench_why)
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
                                 "--port", str(emu.port), "--bench", bench or '',
@@ -433,7 +433,7 @@ def main():
         code = 130
     if ours and not keep:
         emu.stop()
-        say("Emulator stopped.")
+        say("Deck closed. Emulator stopped.")
     else:
         say("Emulator left running. Stop it with: start.py stop")
     return code
