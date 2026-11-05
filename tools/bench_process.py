@@ -64,21 +64,29 @@ def ensure(repo, run, audio_port):
             pid = None
     if not pid:
         ready.unlink(missing_ok=True)
-        with (run / 'deckbench.log').open('ab') as log:
+        log_path = run / 'deckbench.log'
+        with log_path.open('ab') as log:
+            began_at = log.tell()                   # what this start writes, for the message if it fails
             process = subprocess.Popen([sys.executable, '-m', 'deckbench', '--numbers', '1,2,3,4',
                                         '--audio-port', str(audio_port), '--ready-file', str(ready)],
                                        cwd=repo, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                                        start_new_session=True)
         state = {'pid': process.pid, 'start': identity(process.pid)}
         (run / 'deckbench-owned.json').write_text(json.dumps(state))
-        deadline = time.monotonic() + 12
+        # A checkout on a Windows drive (/mnt/c) loads slowly in WSL: give the first start time.
+        deadline = time.monotonic() + 30
         while not ready.exists() and time.monotonic() < deadline and process.poll() is None:
             time.sleep(.05)
         if not ready.exists():
+            gone = process.poll() is not None
             stop(run)
-            raise RuntimeError('The local bench could not start. Another bench may own port 8750. '
-                               'Use --bench-url for an existing bench or --no-bench for hardware-only use. '
-                               'See %s' % (run / 'deckbench.log'))
+            with log_path.open('rb') as log:
+                log.seek(began_at)
+                said = [line for line in log.read().decode('utf-8', 'replace').splitlines() if line.strip()][-4:]
+            raise RuntimeError('The local bench %s. %s'
+                               'Use --bench-url for an existing bench or --no-bench for hardware-only use. See %s'
+                               % ('stopped before it was ready' if gone else 'was not ready after 30 s',
+                                  ('It said: ' + ' / '.join(said).rstrip('.') + '. ') if said else '', log_path))
     return json.loads(ready.read_text())['http'].replace('0.0.0.0', '127.0.0.1')
 
 
