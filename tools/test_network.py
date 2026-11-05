@@ -25,7 +25,7 @@ class Picker(unittest.TestCase):
         import pygame
         from app import network_picker
         row = {'interface': 'eth2', 'address': '169.254.10.5', 'prefix': 16}
-        data = {'interfaces': [row], 'selected': {'interface': '', 'address': ''}, 'wsl': True}
+        data = {'interfaces': [row], 'selected': {'interface': '', 'address': ''}}
         events = [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN),
                   pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN if save else pygame.K_ESCAPE)]
         with patch.object(network_picker, 'query', side_effect=[data, {}]) as query, patch.object(pygame.event, 'get', return_value=events):

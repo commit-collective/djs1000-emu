@@ -76,8 +76,7 @@ def main():
     try:
         selection = read(args.home) if args.action != 'select' else None
         if args.action == 'list':
-            print(json.dumps({'interfaces': interfaces(), 'selected': selection,
-                              'wsl': 'microsoft' in Path('/proc/version').read_text().lower()}))
+            print(json.dumps({'interfaces': interfaces(), 'selected': selection}))
         elif args.action == 'select':
             print(json.dumps(save(args.home, args.interface, args.address)))
         else:

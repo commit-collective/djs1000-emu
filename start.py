@@ -16,7 +16,7 @@ stops the emulator.
   --port N        the deck link's port (default 7310)
   --no-bench      do not start or attach to Deckbench (for real hardware)
   --bench-url URL use an existing bench without starting or stopping it
-  --network-picker choose a Linux/WSL network adapter before starting
+  --network-picker choose a backend network adapter before starting
   --network NAME@IPv4 select an adapter/address, or default for local testing
 
 Anything else goes to the deck (app/virtual_djs.py), whose options are listed

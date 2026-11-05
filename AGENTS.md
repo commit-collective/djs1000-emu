@@ -21,6 +21,8 @@
 - Keep the README a first-run guide. Put command catalogues and implementation
   detail in the relevant document. Do not describe untested platforms as either
   working or impossible. Distinguish main, the latest tag and the live site.
+- Keep shared UI wording platform-neutral. Host and VM setup details belong
+  in platform documentation, not adapter labels or general instructions.
 - Before launching or stopping anything, check for an active test or recording
   session. Do not overlap them or stop processes owned by another session.
   Use `python start.py stop`, never a blanket process kill.
