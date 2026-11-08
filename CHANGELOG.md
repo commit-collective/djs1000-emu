@@ -4,6 +4,11 @@ Newest first. A release is a tagged commit.
 
 ## Unreleased
 
+- Add a Lima template, `scripts/lima/djs1000.yaml`, for trying the emulator in a
+  Linux VM on a Mac, with the steps and what to report in the running guide.
+  It registers QEMU for 32-bit ARM programs, which Ubuntu leaves out on arm64.
+  Not tried on a Mac yet.
+
 - Keep adapter selection in a compact Tools submenu, with a saved-choice
   checkmark and restart note. Use the main UI's system font instead of the
   bundled bold font for the optional pre-launch picker.

@@ -1,0 +1,55 @@
+# A Linux VM for the DJS-1000 emulator on macOS, untested. See docs/running.md.
+#
+#   limactl start scripts/lima/djs1000.yaml
+#   limactl shell djs1000
+#
+# Ubuntu 24.04 on the Mac's own architecture, with the packages setup needs.
+
+minimumLimaVersion: "1.0.0"
+
+images:
+- location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+  arch: "aarch64"
+- location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+  arch: "x86_64"
+
+cpus: 4
+memory: "4GiB"
+disk: "20GiB"
+
+# No shared folders: the emulator runs from the VM's own disk.
+# Copy the update and the key in with `limactl copy`.
+mounts: []
+
+# The deck link, Deckbench's audio and Deckbench's page, on the Mac's localhost.
+# Stop a Deckbench already running on the Mac first, or it holds port 8750.
+portForwards:
+- guestPort: 7310
+  hostIP: "127.0.0.1"
+- guestPort: 7320
+  hostIP: "127.0.0.1"
+- guestPort: 8750
+  hostIP: "127.0.0.1"
+
+provision:
+- mode: system
+  script: |
+    #!/bin/bash
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y qemu-user-static binfmt-support squashfs-tools p7zip-full \
+        gcc-arm-linux-gnueabihf gdb-multiarch python3 openssl xvfb iproute2 git
+    # The programs the app starts reach QEMU through the kernel's binfmt handler.
+    # On arm64, Ubuntu leaves the 32-bit ARM one out, as if the chip ran 32-bit
+    # code itself. Apple Silicon cannot, so install the copy Ubuntu ships.
+    if [ ! -e /proc/sys/fs/binfmt_misc/qemu-arm ]; then
+        cp /usr/share/doc/qemu-user-static/qemu-arm.conf /etc/binfmt.d/qemu-arm.conf
+        systemctl restart systemd-binfmt
+    fi
+
+# Real players: the default network is behind NAT and does not carry Pro DJ Link
+# broadcasts. A bridged network needs socket_vmnet on the Mac, set up as Lima's
+# networking guide describes, and then:
+# networks:
+# - lima: bridged

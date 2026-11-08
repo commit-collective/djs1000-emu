@@ -28,24 +28,80 @@ it. Running as root should not be necessary.
 
 ## macOS, untested
 
-The backend is Linux-specific, but QEMU user-mode can run the ARM application
-inside an ARM64 or x86-64 Linux VM. Ubuntu in Lima or OrbStack is a plausible
-route on either Apple Silicon or Intel. No Mac setup has been validated here.
+The backend is Linux-specific. On a Mac it runs inside a Linux VM, where QEMU
+user mode runs the ARM application as on any Linux. No Mac setup has been
+validated here.
 
-For the first attempt, run setup, the backend and Python tools **inside the
-Linux VM**, on its native filesystem. With Xvfb, no VM desktop is needed.
-Run `python start.py --no-deck` there and confirm scripted screenshots and
-audio before attempting a native Mac frontend.
+### Lima
 
-The current launcher treats non-Windows hosts as local Linux. It does not
-automatically start or manage a Mac VM. A deck running on macOS needs the
-backend's TCP port forwarded to it and the matching connection options.
-Check forwarding, audio devices and VM filesystem permissions separately.
-Pro DJ Link tests should run inside the same VM as the emulator because
-native macOS loopback broadcasts differ from Linux.
+[Lima](https://lima-vm.io) is the suggested VM. `scripts/lima/djs1000.yaml`
+makes an Ubuntu 24.04 VM on the Mac's own architecture, with the packages setup
+needs. It forwards the deck link (port 7310), Deckbench's audio (7320) and
+Deckbench's page (8750) to the Mac's localhost. The template is not tried on a
+Mac yet.
 
-This is an untested route, not evidence of incompatibility. Report the VM,
-guest architecture, package versions and what worked if you try it.
+```sh
+brew install lima
+limactl start scripts/lima/djs1000.yaml
+limactl copy /path/to/DJS1000.UPD djs1000:DJS1000.UPD
+limactl copy /path/to/aes256.key djs1000:aes256.key
+limactl shell djs1000
+```
+
+Then, inside the VM, from its home folder:
+
+```sh
+cd ~
+git clone https://github.com/commit-collective/djs1000-emu.git
+cd djs1000-emu
+scripts/setup.sh ~/DJS1000.UPD ~/aes256.key && rm ~/aes256.key
+python3 start.py --no-deck
+python3 tools/shot.py home.png
+```
+
+Setup keeps its own copy of the key, so the one copied in can go. The emulator
+and its files stay on the VM's own disk. The template shares no Mac folder.
+
+On Apple Silicon, the VM cannot run 32-bit ARM code natively, and Ubuntu's arm64
+packages leave out the handler that sends such programs to QEMU. The template
+installs it. Without it, the programs the app launches would fail to start.
+
+For the visible deck on the Mac, run it on its own rather than through the
+launcher. The launcher would try to start a backend on the Mac itself.
+
+```sh
+python3 -m pip install -r requirements.txt
+python3 app/virtual_djs.py
+```
+
+It connects to `127.0.0.1:7310`, which Lima forwards into the VM, and plays the
+sound on the Mac's audio devices.
+
+### OrbStack
+
+An OrbStack Ubuntu machine should work the same way. Install the packages from
+the template's provision script, the ARM handler included on Apple Silicon.
+OrbStack forwards the VM's ports to the Mac's localhost by itself.
+
+### Real players
+
+By default both VMs sit behind NAT, which does not carry Pro DJ Link broadcasts
+to the players. Lima can bridge the VM onto the Mac's network with
+`socket_vmnet`, as its networking guide describes. Then uncomment the
+`networks` lines at the end of the template. Run Deckbench and any Pro DJ Link
+tests inside the VM, next to the emulator. Native macOS loopback broadcasts
+differ from Linux.
+
+### Reporting a try
+
+This is an untested route, not evidence of incompatibility. If you try it,
+open an issue with:
+
+- the Mac's chip and macOS version, Lima or OrbStack and its version
+- whether setup finished, and `python3 start.py status` inside the VM
+- whether `tools/shot.py` gave a screenshot of the app
+- whether the deck on the Mac connected, and whether its sound played
+- with real players, how the VM was networked and whether they were seen
 
 ## Rebuilding
 
