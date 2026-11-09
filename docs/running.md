@@ -169,20 +169,21 @@ Windows program cannot listen on a port a WSL program already uses (Deckbench
 on 8750 in both, for example). See Microsoft's
 [WSL networking guide](https://learn.microsoft.com/en-us/windows/wsl/networking).
 
-With a DJ adapter chosen, the launcher starts no Deckbench of its own: its
-simulated decks live on the loopback, which the emulator no longer listens to,
-and an extra device on the real link could change what is being tested. To
-watch the network as well, run a Deckbench yourself in watching mode and point
-the launcher at it:
+With a DJ adapter chosen, the launcher's own Deckbench only watches that
+network. It runs in WSL beside the emulator, from the emulator's address, with
+no simulated decks: they would be extra devices on the real link. Its page
+shows the real players and the DJS. `--no-bench` leaves it out.
 
-```powershell
-python -m deckbench --observe --dj-interface "Ethernet 2"
-start.cmd --bench-url http://127.0.0.1:8750/
-```
+Do not run a Deckbench on Windows on the same computer at the same time. With
+mirrored networking, WSL and Windows share their ports, and a Windows Deckbench
+holds the Pro DJ Link ports, so the emulator no longer hears the players. In
+WSL, the emulator and its bench share those ports.
 
-With mirrored networking, that Deckbench shares the emulated DJS's address on
-the DJ network. Whether the players accept two devices at one address is not
-checked yet.
+The bench's observer and the DJS share one address on the DJ network. Whether
+the players accept two devices at one address is not checked yet. A packet a
+player sends to that address alone reaches only one of the two programs, while
+broadcasts reach both. If the DJS misbehaves only while the bench runs, start
+with `--no-bench`.
 
 Open **Tools > Network adapter** in the virtual deck and select a row, or
 run `python start.py --network-picker` before starting. The picker lists
@@ -202,9 +203,10 @@ Explicit selection maps the app's Ethernet identity to that adapter, sends
 Link UDP from its selected IP and uses its subnet broadcast address. The
 packet-socket stand-in ignores sources outside that subnet. This is not an
 OS-level network sandbox. No interface addressing, routes or firewall rules
-are changed. A selected physical adapter disables automatic loopback Deckbench
-startup. Use `--bench-url` to attach to a separately managed bench on that
-network. An older local bench already running is left alone.
+are changed. A selected physical adapter makes the launcher's own Deckbench
+watch that adapter instead of simulating decks on the loopback. A launcher-owned
+bench running in the other mode is restarted. Use `--bench-url` to attach to a
+separately managed bench instead.
 
 These paths have firmware-free Linux identity and UDP source-routing checks.
 Real-player discovery and timing through a selected Linux/WSL adapter still

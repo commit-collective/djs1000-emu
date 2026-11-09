@@ -4,6 +4,12 @@ Newest first. A release is a tagged commit.
 
 ## Unreleased
 
+- With a DJ adapter chosen, the launcher starts its Deckbench again, as a bench
+  that only watches that network from the emulator's address, with no
+  simulated decks. It shows the real players and the DJS on one computer.
+  A Deckbench on Windows took the ports the emulator needs in mirrored WSL.
+  `--no-bench` leaves it out. Not tried with real players yet.
+
 - Add a Lima template, `scripts/lima/djs1000.yaml`, for trying the emulator in a
   Linux VM on a Mac, with the steps and what to report in the running guide.
   It registers QEMU for 32-bit ARM programs, which Ubuntu leaves out on arm64.

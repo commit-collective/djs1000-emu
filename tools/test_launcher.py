@@ -51,6 +51,30 @@ class BenchOwnership(unittest.TestCase):
             kill.assert_not_called()
             self.assertIn('--ready-file', launch.call_args.args[0])
 
+    def test_with_a_dj_adapter_the_bench_only_watches_it(self):
+        ready = self.run / 'deckbench-ready.json'
+        line = bench_process.command(7320, ready, {'address': '169.254.10.5', 'netmask': '255.255.0.0',
+                                                   'broadcast': '169.254.255.255'})
+        self.assertIn('--observe', line)
+        self.assertEqual(line[line.index('--bind') + 1], '169.254.10.5')
+        self.assertEqual(line[line.index('--broadcast') + 1], '169.254.255.255')
+        self.assertNotIn('--numbers', line)
+        self.assertIn('--numbers', bench_process.command(7320, ready))
+
+    def test_the_launcher_asks_for_a_watching_bench_with_a_dj_adapter(self):
+        emu = start.Emulator(None, 7310)
+        emu._repo = '/tmp/emulator'
+        emu.network = {'DJSDEV_INTERFACE': 'eth1', 'DJSDEV_ADDRESS': '169.254.10.5', 'DJSDEV_NETMASK': '255.255.0.0',
+                       'DJSDEV_BROADCAST': '169.254.255.255'}
+        emu.sh = Mock(return_value=(0, 'http://127.0.0.1:8750/'))
+        with patch.object(start, 'WINDOWS', False), patch.object(start.os.path, 'isfile', return_value=True):
+            self.assertEqual(emu.deckbench(), 'http://127.0.0.1:8750/')
+        self.assertIn('--observe 169.254.10.5 255.255.0.0 169.254.255.255', emu.sh.call_args.args[0])
+        emu.network = {}
+        with patch.object(start, 'WINDOWS', False), patch.object(start.os.path, 'isfile', return_value=True):
+            emu.deckbench()
+        self.assertNotIn('--observe', emu.sh.call_args.args[0])
+
     def test_stop_invokes_only_the_owned_bench_helper(self):
         emu = start.Emulator(None, 7310)
         emu._repo = '/tmp/emulator'
@@ -123,6 +147,13 @@ class LinuxOwnership(unittest.TestCase):
                 pid = bench_process.owned(run)
                 self.assertIsNotNone(pid)
                 bench_process.ensure(repo, run, 0)
+                self.assertEqual(bench_process.owned(run), pid)
+                observe = {'address': '127.0.0.5', 'netmask': '255.0.0.0', 'broadcast': '127.255.255.255'}
+                bench_process.ensure(repo, run, 0, observe)          # another mode: started again
+                os.waitpid(pid, 0)
+                pid = bench_process.owned(run)
+                self.assertIsNotNone(pid)
+                bench_process.ensure(repo, run, 0, observe)
                 self.assertEqual(bench_process.owned(run), pid)
                 bench_process.stop(run)
                 self.assertIsNone(bench_process.owned(run))

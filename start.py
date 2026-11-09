@@ -14,7 +14,8 @@ stops the emulator.
   --distro NAME   the WSL distribution to run it in (default: $DJS_WSL_DISTRO,
                   else WSL's default one)
   --port N        the deck link's port (default 7310)
-  --no-bench      do not start or attach to Deckbench (for real hardware)
+  --no-bench      do not start or attach to Deckbench (with a DJ adapter,
+                  the one that watches it is left out too)
   --bench-url URL use an existing bench without starting or stopping it
   --network-picker choose a backend network adapter before starting
   --network NAME@IPv4 select an adapter/address, or default for local testing
@@ -63,6 +64,7 @@ class Emulator:
         self.port = port
         self.window = window
         self.manage_bench = True
+        self.network = {}                # the chosen DJ adapter (DJSDEV_* values), empty for local testing
         self.env = env                   # more environment for run.sh: "NAME=value ..."
         slot = os.environ.get("DJS_SLOT", "")
         self.tag = "s" + slot if slot != "" else ""
@@ -151,8 +153,13 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
             there = out.splitlines()[-1]
         else:
             there = here
-        code, out = self.sh('python3 %s ensure --repo %s --run "${DJS_HOME:-$HOME/djs}/run" --audio-port %d' %
-                            (shlex.quote(self.repo() + '/tools/bench_process.py'), shlex.quote(there), AUDIO_PORT))
+        observe = ''
+        if self.network.get('DJSDEV_INTERFACE'):         # a real link: a bench that only watches it, no simulated decks
+            observe = ' --observe ' + ' '.join(shlex.quote(self.network.get(key, '')) for key in
+                                                ('DJSDEV_ADDRESS', 'DJSDEV_NETMASK', 'DJSDEV_BROADCAST'))
+        code, out = self.sh('python3 %s ensure --repo %s --run "${DJS_HOME:-$HOME/djs}/run" --audio-port %d%s' %
+                            (shlex.quote(self.repo() + '/tools/bench_process.py'), shlex.quote(there), AUDIO_PORT,
+                             observe))
         if code or not out.startswith("http"):
             self.bench_why = out or "deckbench did not start (see deckbench.log in the emulator's run folder)."
             return None
@@ -167,6 +174,7 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
 
     def configure_network(self, command):
         environment = network_query(command, 'environment')        # every name, empty when none is chosen
+        self.network = dict(environment)
         self.env += ''.join(' %s=%s' % (key, shlex.quote(value)) for key, value in environment.items())
         return bool(environment.get('DJSDEV_INTERFACE'))
 
@@ -386,11 +394,9 @@ def main():
         physical_network = emu.configure_network(network_command)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         sys.exit(str(error))
-    if physical_network and bench_url is None:
-        no_bench, emu.manage_bench = True, False
-        say('DJ adapter chosen: the emulator joins your players, and no Deckbench of its own is started. '
-            'To watch the network too, run one yourself (python -m deckbench --observe --dj-interface NAME) '
-            'and add --bench-url http://127.0.0.1:8750/.')
+    if physical_network and emu.manage_bench:
+        say('DJ adapter chosen: the emulator joins your players. Its Deckbench only watches that network, from the '
+            "emulator's address, with no simulated decks. --no-bench leaves it out.")
     ours = not emu.running()
     if not ours and not emu.network_matches(network_command):
         sys.exit('Network selection changed. Save your project, run start.py stop, then start again.')
@@ -424,9 +430,9 @@ def main():
         bench = '' if no_bench else bench_url if bench_url is not None else emu.deckbench()
         if bench:
             say("Pro DJ Link decks (deckbench): %s" % bench)
-        elif not physical_network:                  # (with an adapter, that was said above)
+        else:
             say("No Deckbench, as asked: only real players on the network are seen." if no_bench or bench_url == '' else
-                "No Pro DJ Link decks: %s" % emu.bench_why)
+                "No Deckbench: %s" % emu.bench_why)
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
                                 "--port", str(emu.port), "--bench", bench or '',
                                 '--network-command', json.dumps(network_command)] + (["--usb", usb] if usb else [])

@@ -69,13 +69,34 @@ def stop(run):
         (run / name).unlink(missing_ok=True)
 
 
-def ensure(repo, run, audio_port):
+def command(audio_port, ready, observe=None):
+    """Deckbench's command line. With `observe` (the chosen DJ adapter's address, netmask and broadcast), a bench that
+    only watches that network, from the unit's own address: no simulated decks on a real link. Otherwise the usual
+    simulated decks on the loopback, switched off until the page turns them on."""
+    if observe:
+        return [sys.executable, '-m', 'deckbench', '--observe', '--bind', observe['address'],
+                '--netmask', observe['netmask'], '--broadcast', observe['broadcast'], '--ready-file', str(ready)]
+    return [sys.executable, '-m', 'deckbench', '--numbers', '1,2,3,4', '--audio-port', str(audio_port),
+            '--ready-file', str(ready)]
+
+
+def mode_of(observe):
+    return 'observe %s' % observe['address'] if observe else 'decks'
+
+
+def ensure(repo, run, audio_port, observe=None):
     run.mkdir(parents=True, exist_ok=True)
     ready = run / 'deckbench-ready.json'
+    mode = mode_of(observe)
     pid = owned(run)
     if pid:
         began = (run / 'deckbench-owned.json').stat().st_mtime
-        if not ready.exists() or any(path.stat().st_mtime > began for path in (repo / 'deckbench').rglob('*.py')):
+        try:
+            was = json.loads((run / 'deckbench-owned.json').read_text()).get('mode', 'decks')
+        except (OSError, ValueError, AttributeError):
+            was = None
+        if (was != mode or not ready.exists() or
+                any(path.stat().st_mtime > began for path in (repo / 'deckbench').rglob('*.py'))):
             stop(run)
             pid = None
     if not pid:
@@ -83,11 +104,10 @@ def ensure(repo, run, audio_port):
         log_path = run / 'deckbench.log'
         with log_path.open('ab') as log:
             began_at = log.tell()                   # what this start writes, for the message if it fails
-            process = subprocess.Popen([sys.executable, '-m', 'deckbench', '--numbers', '1,2,3,4',
-                                        '--audio-port', str(audio_port), '--ready-file', str(ready)],
+            process = subprocess.Popen(command(audio_port, ready, observe),
                                        cwd=repo, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                                        start_new_session=True)
-        state = {'pid': process.pid, 'start': identity(process.pid)}
+        state = {'pid': process.pid, 'start': identity(process.pid), 'mode': mode}
         (run / 'deckbench-owned.json').write_text(json.dumps(state))
         # A checkout on a Windows drive (/mnt/c) loads slowly in WSL: give the first start time.
         deadline = time.monotonic() + 30
@@ -116,7 +136,10 @@ def main():
     parser.add_argument('--run', required=True, type=Path)
     parser.add_argument('--repo', type=Path)
     parser.add_argument('--audio-port', type=int, default=7320)
+    parser.add_argument('--observe', nargs=3, metavar=('ADDRESS', 'NETMASK', 'BROADCAST'),
+                        help="watch the chosen DJ adapter's network instead of simulating decks")
     args = parser.parse_args()
+    observe = dict(zip(('address', 'netmask', 'broadcast'), args.observe)) if args.observe else None
     try:
         import fcntl
         run = args.run.resolve()
@@ -126,7 +149,7 @@ def main():
             if args.action == 'stop':
                 stop(run)
             else:
-                print(ensure(args.repo.resolve(), run, args.audio_port))
+                print(ensure(args.repo.resolve(), run, args.audio_port, observe))
     except (OSError, ValueError, RuntimeError) as error:
         print(str(error), file=sys.stderr)
         return 1
