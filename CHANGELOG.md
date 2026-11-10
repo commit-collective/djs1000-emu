@@ -7,9 +7,13 @@ Newest first. A release is a tagged commit.
 - The launcher's Deckbench starts at once after one was closed. Windows keeps a closed page's port for about two
   minutes, which with mirrored WSL also held 8750 in WSL: the page then goes on a free port, which the deck is given.
 
-- The app's clock holds still while the deck plays its sound. The deck's correction followed what waited to be
-  played from moment to moment, so a DJS synced to a CDJ swung by about 3 BPM, where the unit swings by 0.1. It is now
-  the sound card's rate measured over a minute, with a small, slow trim. Checked in a simulation (`tools/test_pace.py`).
+- The app keeps the host's clock again, for its sound as for the link, as the unit has one clock. The deck keeps
+  what waits to be played steady by leaving out or doubling a frame now and then, which is not heard. `--pace` still
+  paces the app to the sound card. With it by default, a DJS synced to a CDJ swung by 3 BPM and more, where the unit
+  swings by 0.1. Checked in a simulation (`tools/test_pace.py`).
+- The launcher says when `systemd-timesyncd` runs in WSL. It and WSL both keep WSL's clock, and when Windows' clock is
+  apart from internet time they pull it to and fro by some 7 %, which made the app's tempo swing. The running guide
+  says how to turn it off.
 
 - With a DJ adapter chosen, the launcher starts a Deckbench that only watches
   that network, with no simulated decks. The emulator passes it a copy of

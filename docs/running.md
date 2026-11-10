@@ -244,6 +244,20 @@ adopt or terminate a separately launched bench occupying port 8750. Stop a
 legacy local bench manually after checking its identity if upgrading from a
 launcher that did not record ownership.
 
+### WSL's clock
+
+The emulated app keeps WSL's clock. WSL keeps it in step with Windows' clock, and Ubuntu's `systemd-timesyncd` keeps it
+to an internet server. When the two are apart, often by most of a second, they pull it to and fro: it runs some 7 %
+slow or fast for seconds and is stepped by up to a second. Tempo in the app swings with it, and a DJS synced to a
+player swings by several BPM. The launcher says so when that service runs. Leave the clock to WSL, once, in WSL:
+
+```sh
+sudo systemctl disable --now systemd-timesyncd
+```
+
+WSL's clock then follows Windows' (`w32tm /resync`, in an administrator PowerShell, sets that one from the internet).
+`sudo systemctl enable --now systemd-timesyncd` undoes it.
+
 `scripts/run.sh 3600` runs the backend for an hour. Use 0 for no time limit.
 `python app/virtual_djs.py` opens a frontend separately.
 

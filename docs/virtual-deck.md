@@ -44,8 +44,9 @@ keyboard key.
 
 The right of the status line has some readings, and a TOOLS button (F8) with a menu. The readings are the master's level (a bar with a
 held peak, and a red mark for a sample at full scale), how fast the sound arrives (`×1.00` is real time: the emulator runs a little
-fast or slow, and below about 0.97 it is not keeping up, which is when the sound drops out. The deck keeps it at
-`×1.00` by pacing the app to its sound card, see `--no-pace`), and how much sound waits to be played
+fast or slow, and below about 0.97 it is not keeping up, which is when the sound drops out. The deck keeps what
+waits steady by leaving out or doubling a frame now and then, or with `--pace` by pacing the app to its sound card),
+and how much sound waits to be played
 against how much is asked (`waits 218 of 250 ms`, see `--audio-buffer`). The sound device's name, on the left, turns orange once the sound
 has cut: hovering it says how many times the sound ran dry (the app was late with it), how many times the deck was too busy
 to ask for it in time, and how many times too much waited and the oldest was cut. The hint gets shorter, then smaller, when
@@ -125,8 +126,10 @@ Sound, all at 44.1 kHz stereo:
   MASTER / PHONES switch in the status line, or Tab, chooses (`--listen
   phones` starts on the headphones). `--no-audio` plays nothing
   and shows no switch, `--mute` plays nothing too but shows the switch as if a sound device were there (for a recording)
-- the main device's sound card sets the app's pace (the shim's waits are corrected to keep what waits steady).
-  `--no-pace` leaves the app's time to the host's clock
+- the app keeps the host's clock, as the unit keeps one clock for its sound and the link. The deck keeps what waits
+  steady by leaving out or doubling a frame of sound now and then, which is not heard. `--pace` paces the app to the
+  main device's sound card instead: steadier sound, but a DJS synced to a player swings (`--no-pace`, the default
+  now, is still taken)
 - `--headphones NAME` names a second device that plays the headphone output
   all the time
 - `--audio-buffer MS` (default 250) is how much sound waits before playing starts. The app is emulated and gives its sound

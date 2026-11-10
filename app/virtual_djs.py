@@ -1777,8 +1777,11 @@ def main():
     ap.add_argument("--height", type=int, default=0, help="window height in pixels")
     ap.add_argument("--audio", metavar="NAME", help="play on the device whose name has NAME in it")
     ap.add_argument("--no-audio", action="store_true", help="do not play the app's sound")
-    ap.add_argument("--no-pace", action="store_true",
-                    help="leave the app's time to the host's clock, not to the sound card's (see docs/emulation.md)")
+    ap.add_argument("--pace", action="store_true",
+                    help="give the app the sound card's time, not the host's: steadier sound, but a DJS synced to a "
+                         "player then has two clocks and swings (see docs/emulation.md)")
+    ap.add_argument("--no-pace", action="store_true", help="the host's clock for the app, the default now (kept for "
+                    "older command lines)")
     ap.add_argument("--audio-buffer", type=int, default=audio.BUFFER_MS, metavar="MS",
                     help="sound to have waiting before playing starts, in milliseconds (default %d): more is steadier and later"
                          % audio.BUFFER_MS)
@@ -1866,7 +1869,8 @@ def main():
         w = face_w + L.LCD_W + 2 * DOCK_PAD       # a recording does not depend on the size of the desktop
     w = args.width or w
     link = Link(args.host, args.port, audio=play)
-    if master and hasattr(master, "pace") and not args.no_pace:
+    if master and hasattr(master, "pace") and args.pace and not args.no_pace:
+        master.slipping = False          # the app's time follows the sound card: nothing to slip
         def pacer():                     # the sound card is the app's clock: see pace() in audio.py and "pace" in the shim
             while True:
                 time.sleep(0.5)

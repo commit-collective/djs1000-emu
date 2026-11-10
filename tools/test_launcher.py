@@ -94,6 +94,15 @@ class BenchOwnership(unittest.TestCase):
         self.assertEqual(start.bench_address([row('eth2', '169.254.7.7')], environment)['address'], '169.254.7.7')
         self.assertIsNone(start.bench_address([], {'DJSDEV_INTERFACE': ''}))
 
+    def test_the_two_clock_keepers_of_wsl_are_said(self):
+        emu = start.Emulator(None, 7310)
+        for out, said in (("active\n", True), ("inactive\n", False), ("", False)):
+            emu.sh = Mock(return_value=(0 if said else 3, out))
+            with patch.object(start, 'WINDOWS', True):
+                self.assertEqual(emu.clock_fought(), said, out)
+        with patch.object(start, 'WINDOWS', False):
+            self.assertFalse(emu.clock_fought())                    # on Linux the service is the only one
+
     def test_stop_invokes_only_the_owned_bench_helper(self):
         emu = start.Emulator(None, 7310)
         emu._repo = '/tmp/emulator'

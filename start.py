@@ -209,6 +209,16 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
         code, pid = self.sh('pids_of EP113_Main_R | head -1')
         return not code and pid.isdecimal() and network_query(command, 'matches', pid)
 
+    def clock_fought(self):
+        """Whether two services keep WSL's clock: WSL itself (to Windows' clock) and the distribution's
+        systemd-timesyncd (to an internet server). When Windows' clock and the server's are apart they pull it to and
+        fro, running it some 7 % slow or fast for seconds and stepping it by up to a second: the app's time, and a DJS
+        synced to a player, swing with it. Only in WSL: on Linux the service is the only one."""
+        if not WINDOWS:
+            return False
+        code, out = self.sh("systemctl is-active systemd-timesyncd 2> /dev/null")
+        return out.strip().splitlines()[-1:] == ["active"]
+
     def feeds(self):
         """Whether the running emulator sends its copy of the link (it was started with DJSDEV_TAP)."""
         code, pid = self.sh('pids_of EP113_Main_R | head -1')
@@ -428,6 +438,10 @@ def main():
         physical_network = emu.configure_network(network_command)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         sys.exit(str(error))
+    if emu.clock_fought():
+        say("WSL's clock is kept by WSL and by systemd-timesyncd at once, which pull it to and fro: the app's time "
+            "swings, and so does a DJS synced to a player. Leave it to WSL, once, in WSL: "
+            "sudo systemctl disable --now systemd-timesyncd (docs/running.md).")
     if physical_network and emu.manage_bench:
         if emu.bench_row:
             say('DJ adapter chosen: the emulator joins your players. Its Deckbench only watches that network, from %s '

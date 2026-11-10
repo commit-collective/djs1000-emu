@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import audio  # noqa: E402
 
 
-def player(buffer_ms=audio.BUFFER_MS):
+def player(buffer_ms=audio.BUFFER_MS, slipping=False):
     """A Player without its SDL device: what pace() and the sound card's calls need."""
     p = audio.Player.__new__(audio.Player)
     p.closed = False
@@ -32,6 +32,7 @@ def player(buffer_ms=audio.BUFFER_MS):
     p._stats = None
     p._fed = p._played = 0
     p._pace_state()
+    p.slipping = slipping
     return p
 
 
@@ -64,6 +65,48 @@ def run(card_speed, seconds, app_block=512, dt=0.5, jitter=False):
         now += step
         clock[0] = now
     return p, history
+
+
+def run_slipping(card_speed, seconds, app_block=512, jitter=True):
+    """The default: the app on the host's clock (no correction), the deck slipping frames. What waited, each 0.5 s."""
+    import random
+    rng = random.Random(2)
+    p, now, card_due, app_due, mark = player(slipping=True), 0.0, 0.0, 0.0, 0.5
+    clock = [0.0]
+    p._clock = lambda: clock[0]
+    late_by, waits = 0.0, []
+    view = bytearray(audio.PERIOD * audio.FRAME)
+    step = 1.0 / audio.RATE * 64
+    while now < seconds:
+        if app_due <= now:
+            p.feed(bytes(app_block * audio.FRAME))
+            app_due += app_block / audio.RATE
+        if card_due + late_by <= now:
+            p._fill(None, view)
+            card_due += audio.PERIOD / (audio.RATE * card_speed)
+            late_by = (0.12 if rng.random() < 0.05 else rng.uniform(0, 0.03)) if jitter else 0.0
+        if mark <= now:
+            waits.append((now, p.waiting_ms(), p.slip_ppm))
+            mark += 0.5
+        now += step
+        clock[0] = now
+    return p, waits
+
+
+class Slipping(unittest.TestCase):
+    def test_the_deck_keeps_what_waits_and_the_app_keeps_its_clock(self):
+        for speed in (1.0001, 1.0005, 1.0, 0.999, 1.003):        # sound cards a little fast or slow against the host
+            with self.subTest(card=speed):
+                p, waits = run_slipping(speed, 400)
+                late = [w for t, w, _ in waits if t >= 200]
+                self.assertLess(abs(sum(late) / len(late) - audio.BUFFER_MS), 100, late[-10:])
+                self.assertEqual((p.dry, p.dropped), (0, 0))
+                self.assertEqual(p.ppm, 0)                               # nothing asked of the app's clock
+                needed = abs(speed - 1) * 1e6
+                slipped = [s for t, _, s in waits if t >= 200]
+                self.assertLess(abs(abs(sum(slipped) / len(slipped)) - needed), max(400, 0.2 * needed), slipped[-10:])
+                if speed == 1.0:                                         # the same clocks: next to no slip
+                    self.assertLess(p.slips / 400, 2)
 
 
 class Pace(unittest.TestCase):

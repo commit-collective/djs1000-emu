@@ -178,7 +178,8 @@ class Player:
                 span, fed, played = now - self._stats_at, self._fed, self._played
                 self._stats_at, self._fed, self._played = now, 0, 0
                 print(f"audio: came x{fed / RATE / span:.4f}, played x{played / RATE / span:.4f}, waits {self.waiting_ms()} ms, "
-                      f"pace {self.ppm:+d} ppm, dry {self.dry}, late {self.late}, dropped {self.dropped} ({self.dropped_ms} ms)",
+                      f"pace {self.ppm:+d} ppm, slips {self.slip_ppm:+d} ppm ({self.slips}), dry {self.dry}, late {self.late}, "
+                      f"dropped {self.dropped} ({self.dropped_ms} ms)",
                       file=sys.stderr, flush=True)
 
     def reset(self):
@@ -186,7 +187,20 @@ class Player:
             self._buf.clear()
             self._playing = False
 
-    # The correction is the app's clock: it must move as little as a crystal does. An app that follows another player's
+    # How the deck keeps what waits where it is wanted, by default: by itself, a frame of sound left out or played twice
+    # now and then (a few hundredths of a percent, which is not heard), and the app keeps the host's clock. The unit has
+    # one clock for its sound and for the link: an app whose sound followed the sound card while the link's beats came
+    # on the host's clock had two, and a DJS synced to a CDJ never settled. (--pace instead: pace() below.)
+    # How many: from what waits, at its lowest of each second (SDL's late calls only raise it), smoothed, by a slow
+    # control that settles in a minute or two without overshooting it. What waits moves by a few frames a second at
+    # the clocks' difference, so there is no hurry, and a quick one would slip back and forth with each late call.
+    SLIP_LOW = 1.0                       # seconds over which the lowest of what waits is taken
+    SLIP_SMOOTH = 10.0                   # seconds over which those lows are smoothed
+    SLIP_PPM_PER_MS = 15.0               # ppm for each millisecond more (or less) than wanted waiting
+    SLIP_PPM_PER_MS_S = 0.1              # and for each millisecond held a second: no difference is left, slowly
+    SLIP_LIMIT = 4000                    # ppm at most in all: a few frames in each of SDL's blocks
+
+    # With --pace, the correction is the app's clock: it must move as little as a crystal does. An app that follows another player's
     # tempo (SYNC) corrects its own for each change of it, and a correction that followed what waits, which comes and goes
     # by a block of SDL's (46 ms) at each call, made a DJS synced to a CDJ swing by 3 BPM. So its main part is the sound
     # card's own rate, measured over a minute (what SDL takes, at that rate, whatever waits), and what waits is kept
@@ -204,6 +218,14 @@ class Player:
         self._marks = []                 # (time, frames taken) at each pace(), over RATE_WINDOW
         self._waits_ms = None            # what waits beyond what is wanted, smoothed (ms)
         self.ppm = 0                     # the last correction
+        self.slipping = True             # the deck keeps what waits by slipping frames (off with --pace)
+        self._level = None               # what waits, smoothed (bytes), for the slips
+        self._slip = 0.0                 # frames owed: + to leave out, - to play twice
+        self._low = None                 # the lowest of what waits this second (bytes), and when that second began
+        self._low_at = 0.0
+        self._slip_i = 0.0               # the slow part of slip_ppm (the clocks' steady difference)
+        self.slip_ppm = 0
+        self.slips = 0
 
     def pace(self, dt, now=None):
         """How much longer (ppm, + or -) the app's blocks are to take for its sound to come at the sound card's pace,
@@ -264,6 +286,8 @@ class Player:
         with self._lock:
             if not self._playing and len(self._buf) >= self._start:
                 self._playing = True
+            if self._playing and self.slipping:
+                self._slip_frames(want // FRAME)
             have = min(want, len(self._buf)) if self._playing else 0
             have -= have % FRAME
             if have:
@@ -280,6 +304,29 @@ class Player:
                 self.dry += 1
         if have < want:
             view[have:] = bytes(want - have)
+
+    def _slip_frames(self, frames):
+        """Leaves a frame out, or plays one twice, as often as keeps what waits where it is wanted (with the lock)."""
+        now = self._clock()
+        level = len(self._buf)
+        self._low = level if self._low is None else min(self._low, level)
+        if now - self._low_at >= self.SLIP_LOW:
+            span, self._low_at = (now - self._low_at if self._low_at else self.SLIP_LOW), now
+            smooth = min(1.0, span / self.SLIP_SMOOTH)
+            self._level = self._low if self._level is None else self._level + (self._low - self._level) * smooth
+            self._low = None
+            error_ms = (self._level - self._start) * 1000.0 / (RATE * FRAME)
+            self._slip_i = max(-self.SLIP_LIMIT, min(self.SLIP_LIMIT, self._slip_i + self.SLIP_PPM_PER_MS_S * error_ms * span))
+            self.slip_ppm = int(max(-self.SLIP_LIMIT, min(self.SLIP_LIMIT, self._slip_i + self.SLIP_PPM_PER_MS * error_ms)))
+        self._slip = max(-8.0, min(8.0, self._slip + self.slip_ppm * frames / 1e6))
+        while self._slip >= 1 and len(self._buf) > (frames + 1) * FRAME:      # too much waits: one frame left out
+            del self._buf[:FRAME]
+            self._slip -= 1
+            self.slips += 1
+        while self._slip <= -1 and len(self._buf) >= FRAME:                   # too little: one played twice
+            self._buf[:0] = self._buf[:FRAME]
+            self._slip += 1
+            self.slips += 1
 
     def close(self):
         """Nothing is asked of SDL here: pausing or closing a device waits

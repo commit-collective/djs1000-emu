@@ -21,13 +21,15 @@ thing to answer. Roughly in the order the app asks:
 4. **The sound devices.** The app would not finish starting, and the panel looked dead. The cause was the audio device and
    not the panel. The shim now gives the app three ALSA devices on `null`, each with exactly two channels, 24-bit samples
    and 64-frame periods, and paces the output to 44.1 kHz.
-   That pace is kept by the host's clock, and WSL's can run several percent fast against the sound card (7 % was measured).
-   Time in the app, its sequencer included, would run that much fast and the deck would cut the sound to catch up.
-   So a deck that plays the sound sends a correction (`pace <ppm>` on the deck link) that keeps what waits to be played
-   steady: the sound card is the clock, as the DAC is on the unit. `--no-pace` leaves it to the host's clock.
-   The deck measures the sound card's rate over a minute and sends it as the correction, with a small, slow trim for
-   what waits: the app's clock then moves as little as a crystal does. (A DJS synced to a CDJ follows every move of its
-   own clock, and a correction that followed what waits from moment to moment made its tempo swing by 3 BPM.)
+   That pace is kept by the host's clock, the same the app reads the time on, so it has one clock for its sound and for
+   the link, as the unit has. The virtual deck's sound card runs a little apart from it (a few hundredths of a percent):
+   the deck leaves a frame of sound out, or plays one twice, as often as keeps what waits to be played steady, which is
+   not heard. `--pace` makes the sound card the app's clock instead (`pace <ppm>` on the deck link): steadier sound, but
+   then the app's sound and the link's beats are on two clocks, and a DJS synced to a player swings.
+   In WSL the host's clock is steady only when one service keeps it. WSL keeps it to Windows' clock, and Ubuntu's
+   `systemd-timesyncd` to an internet server: when the two are apart, as by 0.8 s once, they pull it to and fro, some
+   7 % slow or fast for seconds and stepped by up to a second. That was measured as "WSL's clock 7 % fast", and it
+   made a synced DJS swing by 3 to 10 BPM. The launcher says so when that service runs (see the running guide).
 5. **Storage.** The USB stick is a folder of the host, announced to the app through the unit's own `/proc` message queues.
    The data partition and the pad calibration file are made by `run.sh`.
 6. **A screen.** The app draws through X, so `run.sh` starts a hidden Xvfb. The shim drops the request to close the window,
