@@ -426,6 +426,7 @@ def main():
         physical_network = emu.configure_network(network_command)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         sys.exit(str(error))
+    said = False
     if physical_network and emu.manage_bench:
         if emu.bench_row:
             say('DJ adapter chosen: the emulator joins your players. Its Deckbench only watches that network, from %s '
@@ -435,7 +436,7 @@ def main():
             # A bench on the emulator's own address takes the players' messages meant for the DJS: none is started, and
             # one an earlier start left there is stopped
             emu.stop_bench()
-            no_bench, emu.manage_bench = True, False
+            no_bench, emu.manage_bench, said = True, False, True
             say("DJ adapter chosen: the emulator joins your players, with no Deckbench of its own. On the emulator's "
                 "address it would take the players' messages to the DJS (master, sync). Give the adapter a second address "
                 'on the same network and the launcher starts one there (docs/running.md), or use --bench-url.')
@@ -472,7 +473,7 @@ def main():
         bench = '' if no_bench else bench_url if bench_url is not None else emu.deckbench()
         if bench:
             say("Pro DJ Link decks (deckbench): %s" % bench)
-        else:
+        elif not said:                              # (why there is none with a DJ adapter was said above)
             say("No Deckbench, as asked: only real players on the network are seen." if no_bench or bench_url == '' else
                 "No Deckbench: %s" % emu.bench_why)
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),
