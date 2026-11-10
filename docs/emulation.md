@@ -25,6 +25,9 @@ thing to answer. Roughly in the order the app asks:
    Time in the app, its sequencer included, would run that much fast and the deck would cut the sound to catch up.
    So a deck that plays the sound sends a correction (`pace <ppm>` on the deck link) that keeps what waits to be played
    steady: the sound card is the clock, as the DAC is on the unit. `--no-pace` leaves it to the host's clock.
+   The deck measures the sound card's rate over a minute and sends it as the correction, with a small, slow trim for
+   what waits: the app's clock then moves as little as a crystal does. (A DJS synced to a CDJ follows every move of its
+   own clock, and a correction that followed what waits from moment to moment made its tempo swing by 3 BPM.)
 5. **Storage.** The USB stick is a folder of the host, announced to the app through the unit's own `/proc` message queues.
    The data partition and the pad calibration file are made by `run.sh`.
 6. **A screen.** The app draws through X, so `run.sh` starts a hidden Xvfb. The shim drops the request to close the window,

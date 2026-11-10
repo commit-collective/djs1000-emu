@@ -4,6 +4,10 @@ Newest first. A release is a tagged commit.
 
 ## Unreleased
 
+- The app's clock holds still while the deck plays its sound. The deck's correction followed what waited to be
+  played from moment to moment, so a DJS synced to a CDJ swung by about 3 BPM, where the unit swings by 0.1. It is now
+  the sound card's rate measured over a minute, with a small, slow trim. Checked in a simulation (`tools/test_pace.py`).
+
 - With a DJ adapter chosen, the launcher starts a Deckbench that only watches
   that network, with no simulated decks. The emulator passes it a copy of
   every Pro DJ Link packet it hears and sends (`DJSDEV_TAP`), so the bench sees

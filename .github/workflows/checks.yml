@@ -42,3 +42,5 @@ jobs:
         run: python tools/test_network.py
       - name: Exercise virtual deck controls
         run: python tools/deck_selftest.py
+      - name: Check the pace of the app's clock
+        run: python tools/test_pace.py

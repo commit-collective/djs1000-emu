@@ -158,9 +158,7 @@ class Player:
         self._stats = os.environ.get("DJS_AUDIO_STATS")   # a line on stderr every 10 s: what waits, what came and went
         self._stats_at = time.monotonic()
         self._fed = self._played = 0
-        self._sum = self._count = 0      # what waited, summed at each call of SDL's thread while playing (for pace())
-        self._integral = 0.0             # the slow part of the correction, in ppm
-        self.ppm = 0                     # the last correction
+        self._pace_state()
         self._dev = sdl_audio.AudioDevice(device, 0, RATE, sdl_audio.AUDIO_F32, 2, block, 0,
                                           self._fill)
         self._dev.pause(0)
@@ -188,19 +186,56 @@ class Player:
             self._buf.clear()
             self._playing = False
 
-    def pace(self, dt):
-        """How much longer (ppm, + or -) the app's blocks are to take for what waits to stay at what is wanted: the sound
-        card is the clock. Called every dt seconds. A proportional part for what waits now, an integral one for the
-        steady difference of the two clocks (WSL's ran 7 % fast once). None while nothing plays."""
+    # The correction is the app's clock: it must move as little as a crystal does. An app that follows another player's
+    # tempo (SYNC) corrects its own for each change of it, and a correction that followed what waits, which comes and goes
+    # by a block of SDL's (46 ms) at each call, made a DJS synced to a CDJ swing by 3 BPM. So its main part is the sound
+    # card's own rate, measured over a minute (what SDL takes, at that rate, whatever waits), and what waits is kept
+    # where it is wanted by a small, slow trim.
+    RATE_WINDOW = 60.0                   # seconds of the sound card's pace measured
+    TRIM_PPM_PER_MS = 5.0                # the trim for each millisecond more (or less) than wanted waiting, smoothed
+    TRIM_LIMIT = 500                     # ppm: at most 0.05 %
+    TRIM_SMOOTH = 20.0                   # seconds over which what waits is smoothed for the trim
+
+    def _pace_state(self):
+        self._sum = self._count = 0      # what waited, summed at each call of SDL's thread while playing (for pace())
+        self._taken = 0                  # frames SDL has taken, all told: the sound card's clock
+        self._taken_at = 0.0             # when it last took some: a measure is between two of its calls, not of pace()'s
+        self._clock = time.monotonic
+        self._marks = []                 # (time, frames taken) at each pace(), over RATE_WINDOW
+        self._waits_ms = None            # what waits beyond what is wanted, smoothed (ms)
+        self.ppm = 0                     # the last correction
+
+    def pace(self, dt, now=None):
+        """How much longer (ppm, + or -) the app's blocks are to take for its sound to come at the sound card's pace,
+        what waits staying at what is wanted: the sound card is the clock, as the DAC is on the unit. Called every dt
+        seconds. None while nothing plays."""
+        now = self._clock() if now is None else now
         with self._lock:
-            n, total = self._count, self._sum
+            n, total, taken, taken_at = self._count, self._sum, self._taken, self._taken_at
             self._sum = self._count = 0
             target = self._start
         if not n:
             return None
+        self._marks.append((taken_at, taken))
+        while len(self._marks) > 2 and taken_at - self._marks[1][0] >= self.RATE_WINDOW:
+            del self._marks[0]
+        base = self.ppm
+        if len(self._marks) >= 4 and taken_at - self._marks[0][0] >= 2.0:
+            # the sound card's rate: the slope of what it took against when, fitted to all the marks, so that one call
+            # of SDL's that came late (the deck drawing) moves it little
+            ts = [t for t, _ in self._marks]
+            fs = [f for _, f in self._marks]
+            mt, mf = sum(ts) / len(ts), sum(fs) / len(fs)
+            spread = sum((t - mt) ** 2 for t in ts)
+            if spread > 0:
+                rate = sum((t - mt) * (f - mf) for t, f in zip(ts, fs)) / spread
+                if rate > 0:
+                    base = (RATE / rate - 1.0) * 1e6
         error_ms = (total / n - target) * 1000.0 / (RATE * FRAME)     # + : too much waits, the app is ahead
-        self._integral = max(-150000.0, min(150000.0, self._integral + 100.0 * error_ms * dt))
-        self.ppm = int(max(-200000.0, min(200000.0, self._integral + 300.0 * error_ms)))
+        smooth = min(1.0, dt / self.TRIM_SMOOTH)
+        self._waits_ms = error_ms if self._waits_ms is None else self._waits_ms + (error_ms - self._waits_ms) * smooth
+        trim = max(-self.TRIM_LIMIT, min(self.TRIM_LIMIT, self.TRIM_PPM_PER_MS * self._waits_ms))
+        self.ppm = int(max(-200000.0, min(200000.0, base + trim)))
         return self.ppm
 
     def waiting_ms(self):
@@ -222,7 +257,7 @@ class Player:
     def _fill(self, dev, view):
         view = memoryview(view).cast("B")   # SDL's buffer, to be filled
         want = len(view)
-        now = time.monotonic()
+        now = self._clock()
         if self._last and now - self._last > 2.0 * self._period and self._playing:
             self.late += 1
         self._last = now
@@ -235,6 +270,8 @@ class Player:
                 view[:have] = self._buf[:have]
                 del self._buf[:have]
             self._played += want // FRAME
+            self._taken += want // FRAME
+            self._taken_at = now
             if self._playing:
                 self._sum += len(self._buf)
                 self._count += 1
