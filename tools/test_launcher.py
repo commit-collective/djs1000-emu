@@ -61,19 +61,34 @@ class BenchOwnership(unittest.TestCase):
         self.assertNotIn('--numbers', line)
         self.assertIn('--numbers', bench_process.command(7320, ready))
 
-    def test_the_launcher_asks_for_a_watching_bench_with_a_dj_adapter(self):
+    def test_the_launcher_asks_for_a_watching_bench_on_another_address(self):
         emu = start.Emulator(None, 7310)
         emu._repo = '/tmp/emulator'
         emu.network = {'DJSDEV_INTERFACE': 'eth1', 'DJSDEV_ADDRESS': '169.254.10.5', 'DJSDEV_NETMASK': '255.255.0.0',
                        'DJSDEV_BROADCAST': '169.254.255.255'}
         emu.sh = Mock(return_value=(0, 'http://127.0.0.1:8750/'))
         with patch.object(start, 'WINDOWS', False), patch.object(start.os.path, 'isfile', return_value=True):
+            self.assertIsNone(emu.deckbench())                       # none on the emulator's own address
+            self.assertIn("emulator's own address", emu.bench_why)
+            emu.sh.assert_not_called()
+            emu.bench_row = {'interface': 'eth1', 'address': '169.254.10.6', 'netmask': '255.255.0.0',
+                             'broadcast': '169.254.255.255'}
             self.assertEqual(emu.deckbench(), 'http://127.0.0.1:8750/')
-        self.assertIn('--observe 169.254.10.5 255.255.0.0 169.254.255.255', emu.sh.call_args.args[0])
-        emu.network = {}
+        self.assertIn('--observe 169.254.10.6 255.255.0.0 169.254.255.255', emu.sh.call_args.args[0])
+        emu.network = {}                                             # local testing: the simulated decks, as before
         with patch.object(start, 'WINDOWS', False), patch.object(start.os.path, 'isfile', return_value=True):
             emu.deckbench()
         self.assertNotIn('--observe', emu.sh.call_args.args[0])
+
+    def test_the_benchs_address_is_another_one_on_the_same_network(self):
+        environment = {'DJSDEV_INTERFACE': 'eth1', 'DJSDEV_ADDRESS': '169.254.10.5', 'DJSDEV_NETMASK': '255.255.0.0'}
+        row = lambda name, address, prefix=16: {'interface': name, 'address': address, 'prefix': prefix,
+                                                'netmask': '255.255.0.0', 'broadcast': '169.254.255.255'}
+        self.assertIsNone(start.bench_address([row('eth1', '169.254.10.5'), row('eth0', '192.168.1.4')], environment))
+        self.assertEqual(start.bench_address([row('eth2', '169.254.7.7'), row('eth1', '169.254.10.5'),
+                                              row('eth1', '169.254.10.6')], environment)['address'], '169.254.10.6')
+        self.assertEqual(start.bench_address([row('eth2', '169.254.7.7')], environment)['address'], '169.254.7.7')
+        self.assertIsNone(start.bench_address([], {'DJSDEV_INTERFACE': ''}))
 
     def test_stop_invokes_only_the_owned_bench_helper(self):
         emu = start.Emulator(None, 7310)

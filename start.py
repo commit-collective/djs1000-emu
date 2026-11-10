@@ -58,6 +58,22 @@ pids_of() {
 '''
 
 
+def bench_address(rows, environment):
+    """An address of this computer on the chosen DJ adapter's network other than the emulator's, for its bench: a row
+    of network_backend's list, the same adapter's first, or None. A bench on the emulator's own address would take
+    what players send to that address (master hand-off, sync, status): a socket bound to the address gets it before
+    the emulator's, bound to any."""
+    import ipaddress
+    try:
+        network = ipaddress.IPv4Interface('%s/%s' % (environment['DJSDEV_ADDRESS'], environment['DJSDEV_NETMASK'])).network
+    except (KeyError, ValueError):
+        return None
+    others = [row for row in rows if row.get('address') != environment['DJSDEV_ADDRESS']
+              and row.get('broadcast') and ipaddress.IPv4Address(row['address']) in network]
+    others.sort(key=lambda row: row.get('interface') != environment.get('DJSDEV_INTERFACE'))
+    return others[0] if others else None
+
+
 class Emulator:
     def __init__(self, distro, port, window=False, env=""):
         self.distro = distro
@@ -65,6 +81,7 @@ class Emulator:
         self.window = window
         self.manage_bench = True
         self.network = {}                # the chosen DJ adapter (DJSDEV_* values), empty for local testing
+        self.bench_row = None            # another address of that network, for a bench that watches it (see bench_address)
         self.env = env                   # more environment for run.sh: "NAME=value ..."
         slot = os.environ.get("DJS_SLOT", "")
         self.tag = "s" + slot if slot != "" else ""
@@ -155,8 +172,13 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
             there = here
         observe = ''
         if self.network.get('DJSDEV_INTERFACE'):         # a real link: a bench that only watches it, no simulated decks
-            observe = ' --observe ' + ' '.join(shlex.quote(self.network.get(key, '')) for key in
-                                                ('DJSDEV_ADDRESS', 'DJSDEV_NETMASK', 'DJSDEV_BROADCAST'))
+            row = self.bench_row
+            if not row:
+                self.bench_why = ("a bench on the emulator's own address would take the players' messages to the DJS "
+                                  "(master, sync, their status). Give the DJ adapter a second address on the same network "
+                                  "for it (docs/running.md), or run one on another computer and add --bench-url.")
+                return None
+            observe = ' --observe ' + ' '.join(shlex.quote(str(row[key])) for key in ('address', 'netmask', 'broadcast'))
         code, out = self.sh('python3 %s ensure --repo %s --run "${DJS_HOME:-$HOME/djs}/run" --audio-port %d%s' %
                             (shlex.quote(self.repo() + '/tools/bench_process.py'), shlex.quote(there), AUDIO_PORT,
                              observe))
@@ -175,6 +197,12 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
     def configure_network(self, command):
         environment = network_query(command, 'environment')        # every name, empty when none is chosen
         self.network = dict(environment)
+        self.bench_row = None
+        if environment.get('DJSDEV_INTERFACE'):
+            try:
+                self.bench_row = bench_address(network_query(command, 'list').get('interfaces', []), environment)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                self.bench_row = None                                # no bench then, the emulator still starts
         self.env += ''.join(' %s=%s' % (key, shlex.quote(value)) for key, value in environment.items())
         return bool(environment.get('DJSDEV_INTERFACE'))
 
@@ -213,6 +241,10 @@ tail -n 15 "$RUN/emulator.log"; exit 1
 """ % (self.port, "1" if self.window else "", self.env, self.repo(), self.running_cmd))
         if code:
             sys.exit("the emulator did not start:\n" + out)
+
+    def stop_bench(self):
+        """Stops the bench this launcher started, if it runs (only that one)."""
+        self.sh('python3 %s stop --run "${DJS_HOME:-$HOME/djs}/run"' % shlex.quote(self.repo() + '/tools/bench_process.py'))
 
     def stop(self):
         # A slot ends its own processes only (they carry its tag). The bench is the network tests', started by the
@@ -395,8 +427,18 @@ def main():
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         sys.exit(str(error))
     if physical_network and emu.manage_bench:
-        say('DJ adapter chosen: the emulator joins your players. Its Deckbench only watches that network, from the '
-            "emulator's address, with no simulated decks. --no-bench leaves it out.")
+        if emu.bench_row:
+            say('DJ adapter chosen: the emulator joins your players. Its Deckbench only watches that network, from %s '
+                '(a second address of the adapter), with no simulated decks. --no-bench leaves it out.'
+                % emu.bench_row['address'])
+        else:
+            # A bench on the emulator's own address takes the players' messages meant for the DJS: none is started, and
+            # one an earlier start left there is stopped
+            emu.stop_bench()
+            no_bench, emu.manage_bench = True, False
+            say("DJ adapter chosen: the emulator joins your players, with no Deckbench of its own. On the emulator's "
+                "address it would take the players' messages to the DJS (master, sync). Give the adapter a second address "
+                'on the same network and the launcher starts one there (docs/running.md), or use --bench-url.')
     ours = not emu.running()
     if not ours and not emu.network_matches(network_command):
         sys.exit('Network selection changed. Save your project, run start.py stop, then start again.')

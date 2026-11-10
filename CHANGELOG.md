@@ -4,11 +4,14 @@ Newest first. A release is a tagged commit.
 
 ## Unreleased
 
-- With a DJ adapter chosen, the launcher starts its Deckbench again, as a bench
-  that only watches that network from the emulator's address, with no
-  simulated decks. It shows the real players and the DJS on one computer.
-  A Deckbench on Windows took the ports the emulator needs in mirrored WSL.
-  `--no-bench` leaves it out. Not tried with real players yet.
+- With a DJ adapter chosen, the launcher starts a Deckbench that only watches
+  that network, with no simulated decks, when the adapter has a second address
+  on the same network. It runs from that address. On the emulator's own
+  address, as a first version did, it took the players' master hand-off and
+  status meant for the DJS, so the players could not take the master back.
+  With one address none starts, and one left from before is stopped. A
+  Deckbench on Windows took the ports the emulator needs in mirrored WSL.
+  Not tried with real players yet.
 
 - Add a Lima template, `scripts/lima/djs1000.yaml`, for trying the emulator in a
   Linux VM on a Mac, with the steps and what to report in the running guide.

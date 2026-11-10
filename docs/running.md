@@ -170,20 +170,26 @@ on 8750 in both, for example). See Microsoft's
 [WSL networking guide](https://learn.microsoft.com/en-us/windows/wsl/networking).
 
 With a DJ adapter chosen, the launcher's own Deckbench only watches that
-network. It runs in WSL beside the emulator, from the emulator's address, with
-no simulated decks: they would be extra devices on the real link. Its page
-shows the real players and the DJS. `--no-bench` leaves it out.
+network, with no simulated decks: they would be extra devices on the real link.
+It needs an address of its own on the DJ network. Players send some messages to
+one address only: the master hand-off, sync commands and their status. A bench
+on the emulator's address would get them instead of the DJS, which then loses
+the master and cannot take it back. So the launcher starts the bench only when
+the adapter has a second address on the same network, and runs it there. With
+one address, it starts none and says so. `--no-bench` leaves it out either way.
+
+To give the bench an address on Windows, the DJ adapter needs a fixed address,
+with a second one added. In **Control Panel > Network Connections**, open the
+adapter's **Properties**, then **Internet Protocol Version 4**. Choose **Use the
+following IP address** with an address on the players' network (for example
+169.254.10.5, mask 255.255.0.0, when the players use 169.254 addresses), then
+**Advanced** and **Add** a second one (169.254.10.6). With mirrored networking,
+WSL sees both after `wsl --shutdown`. Choose the first in **Tools > Network
+adapter**: the bench takes the other. This is not tried with players yet.
 
 Do not run a Deckbench on Windows on the same computer at the same time. With
 mirrored networking, WSL and Windows share their ports, and a Windows Deckbench
-holds the Pro DJ Link ports, so the emulator no longer hears the players. In
-WSL, the emulator and its bench share those ports.
-
-The bench's observer and the DJS share one address on the DJ network. Whether
-the players accept two devices at one address is not checked yet. A packet a
-player sends to that address alone reaches only one of the two programs, while
-broadcasts reach both. If the DJS misbehaves only while the bench runs, start
-with `--no-bench`.
+holds the Pro DJ Link ports, so the emulator no longer hears the players.
 
 Open **Tools > Network adapter** in the virtual deck and select a row, or
 run `python start.py --network-picker` before starting. The picker lists
@@ -204,8 +210,9 @@ Link UDP from its selected IP and uses its subnet broadcast address. The
 packet-socket stand-in ignores sources outside that subnet. This is not an
 OS-level network sandbox. No interface addressing, routes or firewall rules
 are changed. A selected physical adapter makes the launcher's own Deckbench
-watch that adapter instead of simulating decks on the loopback. A launcher-owned
-bench running in the other mode is restarted. Use `--bench-url` to attach to a
+watch that adapter, from a second address of it, instead of simulating decks on
+the loopback. Without a second address there is none, and a launcher-owned bench
+left from an earlier start is stopped. Use `--bench-url` to attach to a
 separately managed bench instead.
 
 These paths have firmware-free Linux identity and UDP source-routing checks.
