@@ -69,18 +69,19 @@ def stop(run):
         (run / name).unlink(missing_ok=True)
 
 
-def command(audio_port, ready, observe=None, feed=None):
+def command(audio_port, ready, observe=None, feed=None, http_port=None):
     """Deckbench's command line. With `observe` (an address of the DJ adapter's network other than the unit's, its
     netmask and broadcast), a bench that only watches that network from there: no simulated decks on a real link.
     With `feed` (address:port), one that watches it through the copy the emulator sends there, binding nothing of the
     link. Otherwise the usual simulated decks on the loopback, switched off until the page turns them on."""
+    page = ['--http-port', str(http_port)] if http_port is not None else []
     if feed:
-        return [sys.executable, '-m', 'deckbench', '--feed', feed, '--ready-file', str(ready)]
+        return [sys.executable, '-m', 'deckbench', '--feed', feed, '--ready-file', str(ready)] + page
     if observe:
         return [sys.executable, '-m', 'deckbench', '--observe', '--bind', observe['address'],
-                '--netmask', observe['netmask'], '--broadcast', observe['broadcast'], '--ready-file', str(ready)]
+                '--netmask', observe['netmask'], '--broadcast', observe['broadcast'], '--ready-file', str(ready)] + page
     return [sys.executable, '-m', 'deckbench', '--numbers', '1,2,3,4', '--audio-port', str(audio_port),
-            '--ready-file', str(ready)]
+            '--ready-file', str(ready)] + page
 
 
 def mode_of(observe, feed=None):
@@ -102,12 +103,17 @@ def ensure(repo, run, audio_port, observe=None, feed=None):
                 any(path.stat().st_mtime > began for path in (repo / 'deckbench').rglob('*.py'))):
             stop(run)
             pid = None
-    if not pid:
+    # Its page on 8750, as always. A port a bench closed a moment ago can stay held for two minutes or so (Windows
+    # keeps a closed connection's port, and with mirrored networking that holds the port in WSL too, whatever
+    # wsl --shutdown does): when nothing answers there, the page goes on any free port, which the deck is given.
+    for http_port in (None, 0):
+        if pid:
+            break
         ready.unlink(missing_ok=True)
         log_path = run / 'deckbench.log'
         with log_path.open('ab') as log:
             began_at = log.tell()                   # what this start writes, for the message if it fails
-            process = subprocess.Popen(command(audio_port, ready, observe, feed),
+            process = subprocess.Popen(command(audio_port, ready, observe, feed, http_port),
                                        cwd=repo, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                                        start_new_session=True)
         state = {'pid': process.pid, 'start': identity(process.pid), 'mode': mode}
@@ -116,20 +122,23 @@ def ensure(repo, run, audio_port, observe=None, feed=None):
         deadline = time.monotonic() + 30
         while not ready.exists() and time.monotonic() < deadline and process.poll() is None:
             time.sleep(.05)
-        if not ready.exists():
-            gone = process.poll() is not None
-            stop(run)
-            if gone and other_bench():
-                raise RuntimeError('A Deckbench this emulator did not start already answers at %s (with mirrored WSL '
-                                   'networking a Windows one counts too). Use it with --bench-url %s (add '
-                                   '#token=... if it has one), stop it, or use --no-bench.' % (PAGE, PAGE))
-            with log_path.open('rb') as log:
-                log.seek(began_at)
-                said = [line for line in log.read().decode('utf-8', 'replace').splitlines() if line.strip()][-4:]
-            raise RuntimeError('The local bench %s. %s'
-                               'Use --bench-url for an existing bench or --no-bench for hardware-only use. See %s'
-                               % ('stopped before it was ready' if gone else 'was not ready after 30 s',
-                                  ('It said: ' + ' / '.join(said).rstrip('.') + '. ') if said else '', log_path))
+        if ready.exists():
+            break
+        gone = process.poll() is not None
+        stop(run)
+        if gone and other_bench():
+            raise RuntimeError('A Deckbench this emulator did not start already answers at %s (with mirrored WSL '
+                               'networking a Windows one counts too). Use it with --bench-url %s (add '
+                               '#token=... if it has one), stop it, or use --no-bench.' % (PAGE, PAGE))
+        with log_path.open('rb') as log:
+            log.seek(began_at)
+            said = [line for line in log.read().decode('utf-8', 'replace').splitlines() if line.strip()][-4:]
+        if gone and http_port is None and any('page cannot listen' in line for line in said):
+            continue                                # 8750 still held by a closed one: any free port
+        raise RuntimeError('The local bench %s. %s'
+                           'Use --bench-url for an existing bench or --no-bench for hardware-only use. See %s'
+                           % ('stopped before it was ready' if gone else 'was not ready after 30 s',
+                              ('It said: ' + ' / '.join(said).rstrip('.') + '. ') if said else '', log_path))
     return json.loads(ready.read_text())['http'].replace('0.0.0.0', '127.0.0.1')
 
 

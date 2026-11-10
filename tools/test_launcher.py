@@ -182,5 +182,31 @@ class LinuxOwnership(unittest.TestCase):
                     os.waitpid(pid, 0)
 
 
+@unittest.skipUnless(sys.platform.startswith('linux'), 'needs Linux process identity')
+class HeldPage(unittest.TestCase):
+    def test_a_page_port_still_held_moves_the_page_to_a_free_one(self):
+        """8750 held a little while after a bench closed (Windows keeps the port, with mirrored WSL): any free port."""
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder) / 'repo'
+            package = repo / 'deckbench'
+            package.mkdir(parents=True)
+            (package / '__init__.py').write_text('')
+            (package / '__main__.py').write_text(
+                'import json,sys,time\nfrom pathlib import Path\n'
+                "if '--http-port' not in sys.argv:\n"
+                "    sys.exit('deckbench: the page cannot listen on 127.0.0.1:8750 (Address already in use).')\n"
+                "ready=Path(sys.argv[sys.argv.index('--ready-file')+1])\n"
+                "ready.write_text(json.dumps({'http':'http://127.0.0.1:41234/'}))\n"
+                'while True: time.sleep(.1)\n')
+            run = Path(folder) / 'run'
+            try:
+                with patch.object(bench_process, 'other_bench', return_value=False):
+                    self.assertEqual(bench_process.ensure(repo, run, 0, feed='127.0.0.1:7330'), 'http://127.0.0.1:41234/')
+                pid = bench_process.owned(run)
+                self.assertIsNotNone(pid)
+            finally:
+                bench_process.stop(run)
+
+
 if __name__ == '__main__':
     unittest.main()

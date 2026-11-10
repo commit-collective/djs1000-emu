@@ -4,6 +4,9 @@ Newest first. A release is a tagged commit.
 
 ## Unreleased
 
+- The launcher's Deckbench starts at once after one was closed. Windows keeps a closed page's port for about two
+  minutes, which with mirrored WSL also held 8750 in WSL: the page then goes on a free port, which the deck is given.
+
 - The app's clock holds still while the deck plays its sound. The deck's correction followed what waited to be
   played from moment to moment, so a DJS synced to a CDJ swung by about 3 BPM, where the unit swings by 0.1. It is now
   the sound card's rate measured over a minute, with a small, slow trim. Checked in a simulation (`tools/test_pace.py`).
