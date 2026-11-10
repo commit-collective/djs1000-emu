@@ -1506,6 +1506,101 @@ static int link_frame(unsigned char *out, int port, const unsigned char *from_ip
     return 14 + ip_len;
 }
 
+/* The feed: with DJSDEV_TAP set (address:port, as start.py sets it with a DJ adapter), a copy of each Pro DJ Link
+ * datagram the app is given or sends goes there, one JSON object a UDP datagram, as Deckbench's captures keep them:
+ * {"src": the sender, "port": the Pro DJ Link port, "hex": the datagram, "to": where it was sent, for the app's own}.
+ * A Deckbench started with --feed watches the link through it and binds nothing of it, so it takes none of what the
+ * players send to the unit's address (the master hand-off, sync, their status). Without DJSDEV_TAP, nothing. */
+static volatile int tap_fd = -2;                /* -2: not looked at yet, -1: no feed */
+static unsigned char tap_to[16];
+
+static int tap_text(char *out, int at, const char *text)
+{
+    while (*text) {
+        out[at++] = *text++;
+    }
+    return at;
+}
+
+static int tap_number(char *out, int at, unsigned v)
+{
+    char digits[12];
+    int n = 0;
+
+    do {
+        digits[n++] = '0' + v % 10;
+        v /= 10;
+    } while (v);
+    while (n) {
+        out[at++] = digits[--n];
+    }
+    return at;
+}
+
+static int tap_ip(char *out, int at, const unsigned char ip[4])
+{
+    int i;
+
+    for (i = 0; i < 4; i++) {
+        if (i) {
+            out[at++] = '.';
+        }
+        at = tap_number(out, at, ip[i]);
+    }
+    return at;
+}
+
+static void tap(const unsigned char from[4], int port, const unsigned char *data, int n, const unsigned char *to)
+{
+    static const char hex[] = "0123456789abcdef";
+    ssize_t (*real)(int, const void *, size_t, int, const void *, unsigned);
+    char out[3400];
+    int at = 0, i;
+
+    if (tap_fd == -2) {
+        const char *value = getenv("DJSDEV_TAP");
+        unsigned a, b, c, d, p;
+        int fd = -1;
+
+        if (value && sscanf(value, "%u.%u.%u.%u:%u", &a, &b, &c, &d, &p) == 5 && a < 256 && b < 256 && c < 256
+            && d < 256 && p > 0 && p < 65536) {
+            for (i = 0; i < 16; i++) {
+                tap_to[i] = 0;
+            }
+            tap_to[0] = AF_INET;
+            tap_to[2] = p >> 8;
+            tap_to[3] = p;
+            tap_to[4] = a, tap_to[5] = b, tap_to[6] = c, tap_to[7] = d;
+            fd = socket(AF_INET, SOCK_DGRAM, 0);
+            if (fd >= 0) {
+                fprintf(stderr, "[djsdev] Pro DJ Link: a copy of each datagram goes to %s (DJSDEV_TAP)\n", value);
+            }
+        }
+        tap_fd = fd;
+    }
+    if (tap_fd < 0 || n <= 0 || n > 1600) {
+        return;
+    }
+    at = tap_text(out, at, "{\"src\":\"");
+    at = tap_ip(out, at, from);
+    at = tap_text(out, at, "\",\"port\":");
+    at = tap_number(out, at, (unsigned)port);
+    at = tap_text(out, at, ",\"hex\":\"");
+    for (i = 0; i < n; i++) {
+        out[at++] = hex[data[i] >> 4];
+        out[at++] = hex[data[i] & 15];
+    }
+    out[at++] = '"';
+    if (to) {
+        at = tap_text(out, at, ",\"to\":\"");
+        at = tap_ip(out, at, to);
+        out[at++] = '"';
+    }
+    out[at++] = '}';
+    real = dlsym(RTLD_NEXT, "sendto");
+    real(tap_fd, out, at, 0x4000 /* MSG_NOSIGNAL */ | 0x40 /* MSG_DONTWAIT */, tap_to, 16);
+}
+
 static void *link_listener(void *arg)
 {
     int port = (int)(long)arg, one = 1, fd, i;
@@ -1561,6 +1656,7 @@ static void *link_listener(void *arg)
             }
             continue;
         }
+        tap(sa + 4, port, buf, n, 0);         /* what the app is given, for a Deckbench that watches (DJSDEV_TAP) */
         len = link_frame(frame, port, sa + 4, sa + 2, buf, n);
         for (i = 0; i < PACKET_FDS; i++) {
             if (packet_fd[i]) {
@@ -1702,6 +1798,9 @@ ssize_t recvfrom(int fd, void *buf, size_t n, int flags, void *addr, unsigned *a
     ssize_t (*real)(int, void *, size_t, int, void *, unsigned *) = dlsym(RTLD_NEXT, "recvfrom");
     ssize_t r = real(fd, buf, n, flags, addr, alen);
 
+    if (r > 0 && fd >= 0 && fd < MAX_FD && link_port[fd] > 0 && addr && ((unsigned char *)addr)[0] == AF_INET) {
+        tap((unsigned char *)addr + 4, link_port[fd], buf, (int)r, 0);     /* sent to the unit's own sockets */
+    }
     if (r > 0x0a && fd >= 0 && fd < MAX_FD && link_port[fd] > 0) {
         int port = link_port[fd] - 50000, kind = ((unsigned char *)buf)[0x0a];
         int size = r > 0x200 ? 3 : r > 0x100 ? 2 : r > 0x40 ? 1 : 0;
@@ -1726,6 +1825,11 @@ ssize_t sendto(int fd, const void *buf, size_t n, int flags, const void *addr, u
 
         if (port >= 50000 && port <= 50002) {
             static unsigned char sent[3][256];
+            unsigned char me[4];
+
+            if (network_ip("DJSDEV_ADDRESS", me) || (own_ip_known && memcpy(me, own_ip, 4))) {
+                tap(me, port, buf, (int)n, a + 4);        /* what the unit sends, for the watching Deckbench */
+            }
 
             if (!sent[port - 50000][kind]++) {
                 fprintf(stderr, "[djsdev] the app sends to %d.%d.%d.%d:%d: type 0x%02x, %d bytes\n",

@@ -39,6 +39,7 @@ from app.bench import request as bench_request
 from app.network_picker import query as network_query
 
 REPO = os.path.dirname(os.path.abspath(__file__))
+FEED = "127.0.0.1:7330"                 # where the emulator sends its copy of the link, for a Deckbench that watches it
 AUDIO_PORT = 7320                       # where deckbench serves its decks' sound (the deck's --input-tcp takes it)
 WINDOWS = os.name == "nt"
 # Several emulators can run at once, each in a slot (DJS_SLOT=N in the environment of whatever starts them, as the
@@ -173,12 +174,10 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
         observe = ''
         if self.network.get('DJSDEV_INTERFACE'):         # a real link: a bench that only watches it, no simulated decks
             row = self.bench_row
-            if not row:
-                self.bench_why = ("a bench on the emulator's own address would take the players' messages to the DJS "
-                                  "(master, sync, their status). Give the DJ adapter a second address on the same network "
-                                  "for it (docs/running.md), or run one on another computer and add --bench-url.")
-                return None
-            observe = ' --observe ' + ' '.join(shlex.quote(str(row[key])) for key in ('address', 'netmask', 'broadcast'))
+            if row:                                 # a second address: a bench of its own there
+                observe = ' --observe ' + ' '.join(shlex.quote(str(row[key])) for key in ('address', 'netmask', 'broadcast'))
+            else:                                   # else through the emulator's copy of the link (DJSDEV_TAP)
+                observe = ' --feed ' + FEED
         code, out = self.sh('python3 %s ensure --repo %s --run "${DJS_HOME:-$HOME/djs}/run" --audio-port %d%s' %
                             (shlex.quote(self.repo() + '/tools/bench_process.py'), shlex.quote(there), AUDIO_PORT,
                              observe))
@@ -209,6 +208,13 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
     def network_matches(self, command):
         code, pid = self.sh('pids_of EP113_Main_R | head -1')
         return not code and pid.isdecimal() and network_query(command, 'matches', pid)
+
+    def feeds(self):
+        """Whether the running emulator sends its copy of the link (it was started with DJSDEV_TAP)."""
+        code, pid = self.sh('pids_of EP113_Main_R | head -1')
+        if code or not pid.isdecimal():
+            return False
+        return self.sh("tr '\\0' '\\n' < /proc/%s/environ | grep -q '^DJSDEV_TAP='" % pid)[0] == 0
 
     def running(self):
         return self.sh(self.running_cmd)[0] == 0
@@ -241,10 +247,6 @@ tail -n 15 "$RUN/emulator.log"; exit 1
 """ % (self.port, "1" if self.window else "", self.env, self.repo(), self.running_cmd))
         if code:
             sys.exit("the emulator did not start:\n" + out)
-
-    def stop_bench(self):
-        """Stops the bench this launcher started, if it runs (only that one)."""
-        self.sh('python3 %s stop --run "${DJS_HOME:-$HOME/djs}/run"' % shlex.quote(self.repo() + '/tools/bench_process.py'))
 
     def stop(self):
         # A slot ends its own processes only (they carry its tag). The bench is the network tests', started by the
@@ -426,20 +428,19 @@ def main():
         physical_network = emu.configure_network(network_command)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         sys.exit(str(error))
-    said = False
     if physical_network and emu.manage_bench:
         if emu.bench_row:
             say('DJ adapter chosen: the emulator joins your players. Its Deckbench only watches that network, from %s '
                 '(a second address of the adapter), with no simulated decks. --no-bench leaves it out.'
                 % emu.bench_row['address'])
         else:
-            # A bench on the emulator's own address takes the players' messages meant for the DJS: none is started, and
-            # one an earlier start left there is stopped
-            emu.stop_bench()
-            no_bench, emu.manage_bench, said = True, False, True
-            say("DJ adapter chosen: the emulator joins your players, with no Deckbench of its own. On the emulator's "
-                "address it would take the players' messages to the DJS (master, sync). Give the adapter a second address "
-                'on the same network and the launcher starts one there (docs/running.md), or use --bench-url.')
+            # On the emulator's own address a bench would take the players' messages meant for the DJS: it watches
+            # through the emulator's copy of the link instead, and binds nothing of it
+            emu.env += ' DJSDEV_TAP=' + FEED
+            say("DJ adapter chosen: the emulator joins your players. Its Deckbench watches the link through the "
+                "emulator, which passes it a copy of what it hears and sends: it shows the DJS and your players, and "
+                'takes nothing meant for the DJS. It presses no buttons on them: give the adapter a second address for '
+                'that (docs/running.md). --no-bench leaves it out.')
     ours = not emu.running()
     if not ours and not emu.network_matches(network_command):
         sys.exit('Network selection changed. Save your project, run start.py stop, then start again.')
@@ -451,6 +452,9 @@ def main():
         say("The running emulator is older than its shim (shim/djsdev.c changed). Restarting it.")
         emu.stop()
         ours = True
+    if not ours and 'DJSDEV_TAP=' in emu.env and not emu.feeds():
+        say("The running emulator was started without its copy of the link, so Deckbench will show no device. Save "
+            "your project, run start.py stop, then start again.")
     if ours:
         say("Starting the emulator...", end=" ")
         began = time.time()
@@ -473,7 +477,7 @@ def main():
         bench = '' if no_bench else bench_url if bench_url is not None else emu.deckbench()
         if bench:
             say("Pro DJ Link decks (deckbench): %s" % bench)
-        elif not said:                              # (why there is none with a DJ adapter was said above)
+        else:
             say("No Deckbench, as asked: only real players on the network are seen." if no_bench or bench_url == '' else
                 "No Deckbench: %s" % emu.bench_why)
         code = subprocess.call([sys.executable, os.path.join(REPO, "app", "virtual_djs.py"),

@@ -171,12 +171,21 @@ on 8750 in both, for example). See Microsoft's
 
 With a DJ adapter chosen, the launcher's own Deckbench only watches that
 network, with no simulated decks: they would be extra devices on the real link.
-It needs an address of its own on the DJ network. Players send some messages to
-one address only: the master hand-off, sync commands and their status. A bench
-on the emulator's address would get them instead of the DJS, which then loses
-the master and cannot take it back. So the launcher starts the bench only when
-the adapter has a second address on the same network, and runs it there. With
-one address, it starts none and says so. `--no-bench` leaves it out either way.
+Players send some messages to one address only: the master hand-off, sync
+commands and their status. A bench listening on the emulator's address would get
+them instead of the DJS, which then loses the master and cannot take it back. So
+the bench never listens there:
+
+- With one address on the adapter (the usual case), the emulator passes the
+  bench a copy of every Pro DJ Link packet it hears and sends (`DJSDEV_TAP`),
+  and the bench watches the link through it (Deckbench's `--feed`). It shows the
+  DJS and the players, and opens no Pro DJ Link port. It cannot press the
+  players' buttons or read their tracks' titles and waveforms.
+- With a second address of the adapter on the same network, the bench runs from
+  that address as a device of its own, and can do those too.
+
+`--no-bench` leaves it out either way. An emulator already running from an
+earlier start without the copy is said so: stop it and start again.
 
 To give the bench an address on Windows, the DJ adapter needs a fixed address,
 with a second one added. In **Control Panel > Network Connections**, open the
@@ -210,9 +219,9 @@ Link UDP from its selected IP and uses its subnet broadcast address. The
 packet-socket stand-in ignores sources outside that subnet. This is not an
 OS-level network sandbox. No interface addressing, routes or firewall rules
 are changed. A selected physical adapter makes the launcher's own Deckbench
-watch that adapter, from a second address of it, instead of simulating decks on
-the loopback. Without a second address there is none, and a launcher-owned bench
-left from an earlier start is stopped. Use `--bench-url` to attach to a
+watch that adapter instead of simulating decks on the loopback: from a second
+address of it, or else through the emulator's copy of the link. A launcher-owned
+bench running in another mode is restarted. Use `--bench-url` to attach to a
 separately managed bench instead.
 
 These paths have firmware-free Linux identity and UDP source-routing checks.

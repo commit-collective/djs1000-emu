@@ -60,6 +60,10 @@ class BenchOwnership(unittest.TestCase):
         self.assertEqual(line[line.index('--broadcast') + 1], '169.254.255.255')
         self.assertNotIn('--numbers', line)
         self.assertIn('--numbers', bench_process.command(7320, ready))
+        feed = bench_process.command(7320, ready, feed='127.0.0.1:7330')
+        self.assertEqual(feed[feed.index('--feed') + 1], '127.0.0.1:7330')
+        self.assertNotIn('--bind', feed)
+        self.assertNotEqual(bench_process.mode_of(None, '127.0.0.1:7330'), bench_process.mode_of(None))
 
     def test_the_launcher_asks_for_a_watching_bench_on_another_address(self):
         emu = start.Emulator(None, 7310)
@@ -68,9 +72,9 @@ class BenchOwnership(unittest.TestCase):
                        'DJSDEV_BROADCAST': '169.254.255.255'}
         emu.sh = Mock(return_value=(0, 'http://127.0.0.1:8750/'))
         with patch.object(start, 'WINDOWS', False), patch.object(start.os.path, 'isfile', return_value=True):
-            self.assertIsNone(emu.deckbench())                       # none on the emulator's own address
-            self.assertIn("emulator's own address", emu.bench_why)
-            emu.sh.assert_not_called()
+            self.assertEqual(emu.deckbench(), 'http://127.0.0.1:8750/')  # no second address: through the feed
+            self.assertIn('--feed ' + start.FEED, emu.sh.call_args.args[0])
+            self.assertNotIn('--observe', emu.sh.call_args.args[0])
             emu.bench_row = {'interface': 'eth1', 'address': '169.254.10.6', 'netmask': '255.255.0.0',
                              'broadcast': '169.254.255.255'}
             self.assertEqual(emu.deckbench(), 'http://127.0.0.1:8750/')

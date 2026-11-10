@@ -5,13 +5,14 @@ Newest first. A release is a tagged commit.
 ## Unreleased
 
 - With a DJ adapter chosen, the launcher starts a Deckbench that only watches
-  that network, with no simulated decks, when the adapter has a second address
-  on the same network. It runs from that address. On the emulator's own
-  address, as a first version did, it took the players' master hand-off and
-  status meant for the DJS, so the players could not take the master back.
-  With one address none starts, and one left from before is stopped. A
-  Deckbench on Windows took the ports the emulator needs in mirrored WSL.
-  Not tried with real players yet.
+  that network, with no simulated decks. The emulator passes it a copy of
+  every Pro DJ Link packet it hears and sends (`DJSDEV_TAP`), so the bench sees
+  the DJS and the players without listening on the link. A first version
+  listened on the emulator's own address and took the players' master hand-off
+  and status meant for the DJS, so they could not take the master back. With
+  a second address of the adapter, the bench runs from there instead, as a
+  device of its own. Checked on the loopback with simulated decks, not yet
+  with real players.
 
 - Add a Lima template, `scripts/lima/djs1000.yaml`, for trying the emulator in a
   Linux VM on a Mac, with the steps and what to report in the running guide.

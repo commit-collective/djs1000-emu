@@ -69,10 +69,13 @@ def stop(run):
         (run / name).unlink(missing_ok=True)
 
 
-def command(audio_port, ready, observe=None):
-    """Deckbench's command line. With `observe` (the chosen DJ adapter's address, netmask and broadcast), a bench that
-    only watches that network, from the unit's own address: no simulated decks on a real link. Otherwise the usual
-    simulated decks on the loopback, switched off until the page turns them on."""
+def command(audio_port, ready, observe=None, feed=None):
+    """Deckbench's command line. With `observe` (an address of the DJ adapter's network other than the unit's, its
+    netmask and broadcast), a bench that only watches that network from there: no simulated decks on a real link.
+    With `feed` (address:port), one that watches it through the copy the emulator sends there, binding nothing of the
+    link. Otherwise the usual simulated decks on the loopback, switched off until the page turns them on."""
+    if feed:
+        return [sys.executable, '-m', 'deckbench', '--feed', feed, '--ready-file', str(ready)]
     if observe:
         return [sys.executable, '-m', 'deckbench', '--observe', '--bind', observe['address'],
                 '--netmask', observe['netmask'], '--broadcast', observe['broadcast'], '--ready-file', str(ready)]
@@ -80,14 +83,14 @@ def command(audio_port, ready, observe=None):
             '--ready-file', str(ready)]
 
 
-def mode_of(observe):
-    return 'observe %s' % observe['address'] if observe else 'decks'
+def mode_of(observe, feed=None):
+    return 'feed %s' % feed if feed else 'observe %s' % observe['address'] if observe else 'decks'
 
 
-def ensure(repo, run, audio_port, observe=None):
+def ensure(repo, run, audio_port, observe=None, feed=None):
     run.mkdir(parents=True, exist_ok=True)
     ready = run / 'deckbench-ready.json'
-    mode = mode_of(observe)
+    mode = mode_of(observe, feed)
     pid = owned(run)
     if pid:
         began = (run / 'deckbench-owned.json').stat().st_mtime
@@ -104,7 +107,7 @@ def ensure(repo, run, audio_port, observe=None):
         log_path = run / 'deckbench.log'
         with log_path.open('ab') as log:
             began_at = log.tell()                   # what this start writes, for the message if it fails
-            process = subprocess.Popen(command(audio_port, ready, observe),
+            process = subprocess.Popen(command(audio_port, ready, observe, feed),
                                        cwd=repo, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                                        start_new_session=True)
         state = {'pid': process.pid, 'start': identity(process.pid), 'mode': mode}
@@ -138,6 +141,7 @@ def main():
     parser.add_argument('--audio-port', type=int, default=7320)
     parser.add_argument('--observe', nargs=3, metavar=('ADDRESS', 'NETMASK', 'BROADCAST'),
                         help="watch the chosen DJ adapter's network instead of simulating decks")
+    parser.add_argument('--feed', metavar='ADDRESS:PORT', help="watch the link through the emulator's copy of it")
     args = parser.parse_args()
     observe = dict(zip(('address', 'netmask', 'broadcast'), args.observe)) if args.observe else None
     try:
@@ -149,7 +153,7 @@ def main():
             if args.action == 'stop':
                 stop(run)
             else:
-                print(ensure(args.repo.resolve(), run, args.audio_port, observe))
+                print(ensure(args.repo.resolve(), run, args.audio_port, observe, args.feed))
     except (OSError, ValueError, RuntimeError) as error:
         print(str(error), file=sys.stderr)
         return 1
