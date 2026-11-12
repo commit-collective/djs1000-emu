@@ -4,48 +4,31 @@ Newest first. A release is a tagged commit.
 
 ## Unreleased
 
+- Choose a Linux/WSL backend adapter and IPv4 address from the Tools menu, a compact submenu with a checkmark on the
+  saved choice, or with `--network-picker`. The saved choice applies after a restart. Link UDP is routed through that
+  identity without changing the system's networking.
+- With a DJ adapter chosen, the launcher starts a Deckbench that only watches that network, with no simulated decks.
+  The emulator passes it a copy of every Pro DJ Link packet it hears and sends (`DJSDEV_TAP`), so the bench sees the
+  DJS and the players without listening on the link. With a second address of the adapter, the bench runs from there
+  instead, as a device of its own. Without a DJ adapter, the local Deckbench with its simulated decks starts as before,
+  unless an external bench is given.
+- Use `--no-bench` for hardware-only sessions, or `--bench-url URL` to attach to an existing Deckbench without starting
+  another. The `--bench` alias remains accepted.
+- The launcher tracks its local Deckbench by process identity rather than matching unrelated bench command lines.
+  Stopping the emulator leaves external benches alone. After upgrading, a local bench started by the old launcher is
+  untracked: stop that process by hand once, or attach with `--bench-url`. `start.py stop` leaves untracked benches
+  alone.
 - The launcher's Deckbench starts at once after one was closed. Windows keeps a closed page's port for about two
   minutes, which with mirrored WSL also held 8750 in WSL: the page then goes on a free port, which the deck is given.
-
-- The app keeps the host's clock again, for its sound as for the link, as the unit has one clock. The deck keeps
-  what waits to be played steady by leaving out or doubling a frame now and then, which is not heard. `--pace` still
-  paces the app to the sound card. With it by default, a DJS synced to a CDJ swung by 3 BPM and more, where the unit
-  swings by 0.1. Checked in a simulation (`tools/test_pace.py`).
+- The app keeps the host's clock, for its sound as for the link, as the unit has one clock. The deck keeps what waits
+  to be played steady by leaving out or doubling a frame now and then, which is not heard. `--pace` still paces the app
+  to the sound card. With that by default, a DJS synced to a CDJ swung by 3 BPM and more, where the unit swings by 0.1.
 - The launcher says when `systemd-timesyncd` runs in WSL. It and WSL both keep WSL's clock, and when Windows' clock is
   apart from internet time they pull it to and fro by some 7 %, which made the app's tempo swing. The running guide
   says how to turn it off.
-
-- With a DJ adapter chosen, the launcher starts a Deckbench that only watches
-  that network, with no simulated decks. The emulator passes it a copy of
-  every Pro DJ Link packet it hears and sends (`DJSDEV_TAP`), so the bench sees
-  the DJS and the players without listening on the link. A first version
-  listened on the emulator's own address and took the players' master hand-off
-  and status meant for the DJS, so they could not take the master back. With
-  a second address of the adapter, the bench runs from there instead, as a
-  device of its own. Checked on the loopback with simulated decks, not yet
-  with real players.
-
-- Add a Lima template, `scripts/lima/djs1000.yaml`, for trying the emulator in a
-  Linux VM on a Mac, with the steps and what to report in the running guide.
-  It registers QEMU for 32-bit ARM programs, which Ubuntu leaves out on arm64.
+- Add a Lima template, `scripts/lima/djs1000.yaml`, for trying the emulator in a Linux VM on a Mac, with the steps and
+  what to report in the running guide. It registers QEMU for 32-bit ARM programs, which Ubuntu leaves out on arm64.
   Not tried on a Mac yet.
-
-- Keep adapter selection in a compact Tools submenu, with a saved-choice
-  checkmark and restart note. Use the main UI's system font instead of the
-  bundled bold font for the optional pre-launch picker.
-
-- Choose a Linux/WSL backend adapter and IPv4 address from Tools or
-  `--network-picker`, applying the saved choice after restart. Route Link UDP
-  through that identity without changing OS networking. Explicit selection
-  disables automatic loopback Deckbench unless an external bench is supplied.
-  Firmware-free routing checks pass. Physical-network validation is pending.
-- Use `--no-bench` for hardware-only sessions or `--bench-url URL` to attach
-  to an existing Deckbench without starting another. The `--bench` alias remains accepted.
-- Track the launcher's local Deckbench by process identity rather than matching
-  unrelated bench command lines. Stopping the emulator leaves external benches alone.
-- After upgrading, a local bench started by the old launcher is untracked.
-  Stop that specific process manually once, or attach with `--bench-url`.
-  `start.py stop` deliberately leaves untracked benches alone.
 
 ## v0.3.1
 

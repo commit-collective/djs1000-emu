@@ -17,7 +17,8 @@ and nothing of Pioneer's may go anywhere. **Do not tag or push until the user sa
 4. **`CHANGELOG.md`.** Rename "Not yet released" to `## vX.Y.Z` (the workflow fails without an entry for the tag). Write what
    changed for whoever runs the emulator, and the environment it was tried on (WSL2, Ubuntu 24.04). Plain short sentences,
    wrapped near 120 columns, no semicolons. Check the docs and comments hold no firmware address, no Ghidra symbol and no
-   cipher detail: this repo is public.
+   cipher detail: this repo is public. A feature new in this release is described as it works now: a fix to it
+   before the release amends its line, never a line of its own. A fix line is only for a bug a published release had.
 5. **Ask, then tag and push:** `git tag vX.Y.Z`, `git push`, `git push --tags` (a plain push does not send tags). The workflow
    makes the GitHub release from the changelog entry, with the lines of each paragraph joined by `tools/release_notes.py`.
    To write the notes of a tag again after a changelog fix: Actions, release notes, Run workflow.

@@ -18,6 +18,8 @@ There is no CI (the emulator needs the firmware), so this is run by hand on the 
    `DJS_HOME=~/djs-fresh scripts/run.sh 75` and see the app start. Delete the home.
 4. `CHANGELOG.md`: rename "Not yet released" to `## vX.Y.Z` and say what changed for whoever runs the emulator (the
    workflow fails without an entry for the tag). Say which environment it was tried on (WSL2 on Ubuntu 24.04, Linux).
+   A feature new in this release is described as it works now: a fix to it before the release amends its line, never
+   a line of its own. A fix line is only for a bug a published release had.
 
 ## The tag
 
