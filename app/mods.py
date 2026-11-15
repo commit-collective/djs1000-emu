@@ -8,9 +8,12 @@ is djs1000-mods.txt on the USB drive, a line a mod:
 
     name = on    # what it does
 
-which the app reads again while it runs, so that changing on to off there, or back, takes effect at once. A mod
-with no line is on, unless its status is "wip" (work in progress: off until the line says on, and the app has to
-restart for it). No list, no mods: the firmware is stock, or the patch carries none.
+which the app reads again while it runs in the emulator, so that changing on to off there, or back, takes effect
+at once. A mod with no line is on, unless its status is "wip" (work in progress: off until the line says on, and the
+app has to restart for it). No list, no mods: the firmware is stock, or the patch carries none.
+
+The file is in the drive's djs1000-mods folder, where the mods keep their files. Older patches kept it at the top of
+the drive, and the first start of a newer one moves it into the folder: the folder's is used once there is one.
 """
 import json
 import os
@@ -19,17 +22,28 @@ import threading
 import time
 
 FILE = "djs1000-mods.txt"
+FOLDER = "djs1000-mods"
 LINE = re.compile(r"^(\s*)([A-Za-z0-9_.-]+)(\s*=\s*)(on|off)\b(.*)$")
+
+
+def stick_file(usb, name):
+    """A file of the mods on the drive: in their folder if the drive has one, else at the top (an older patch)."""
+    folder = os.path.join(usb, FOLDER)
+    return os.path.join(folder if os.path.isdir(folder) else usb, name)
 
 
 class Mods:
     def __init__(self, folder, modlist=None):
-        self.path = os.path.join(folder, FILE) if folder else None
+        self.usb = folder
         self.modlist = modlist
         self.items = []                  # a dict for each mod: name, on, title, group, page, needs, requires, status
         self._seen = None
-        if self.path and self.modlist:
+        if self.usb and self.modlist:
             threading.Thread(target=self._watch, daemon=True).start()
+
+    @property
+    def path(self):
+        return stick_file(self.usb, FILE) if self.usb else None
 
     def _watch(self):
         # On Windows the folder is in WSL, and a look at it can take a while:

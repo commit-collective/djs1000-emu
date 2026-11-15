@@ -79,6 +79,12 @@ SHAPE = "portrait"
 CAPTION_X, BACKGROUND = "(w-text_w)/2", None            # BACKGROUND: None (black), or a function (i, fps, seconds) -> its filter lines
 
 
+# Where the reel's stick has the mods' settings: their folder if it has one (a copy of a stick of this version),
+# else the top, which the patch's first start moves into the folder.
+SETTINGS_AT = ('[ -d "$D/usb/djs1000-mods" ] && echo "$D/usb/djs1000-mods/djs1000-mods.txt" '
+               '|| echo "$D/usb/djs1000-mods.txt"')
+
+
 def landscape():
     """The pictures for a 1920x1080 video (--shape landscape): the same cards, side by side. The caption is above them and the small
     text below. In `play` the face is on the left at the height that is left and the app's screen is on the right, in the middle of it.
@@ -533,7 +539,7 @@ done
         cmd += '''U="${DJS_USB_SRC:-$HOME/djs/usb}"
 [ -d "$U" ] || { echo "no stick in $U"; exit 1; }
 cp -a "$U/." "$D/usb/" || exit 1
-rm -f "$D"/usb/*.log "$D"/usb/*.log.old "$D"/usb/djs1000-trace.txt "$D"/usb/djs1000-report.txt
+for W in "$D/usb" "$D/usb/djs1000-mods"; do rm -f "$W"/*.log "$W"/*.log.old "$W"/djs1000-trace.txt "$W"/djs1000-report.txt; done
 '''
     if kit:
         cmd += '''python3 '%s/tools/make_test_kit.py' "$D/usb/PIONEER DJ SAMPLER/Samples/Test Kit"
@@ -546,11 +552,12 @@ cp -a "$U/Projects/$N.prj" "$D/usb/PIONEER DJ SAMPLER/Projects/" || exit 1
 [ -d "$U/Samples/$N" ] && { cp -a "$U/Samples/$N" "$D/usb/PIONEER DJ SAMPLER/Samples/" || exit 1; }
 ''' % usb_project
     if mirror_settings:                       # the settings of your own stick, as the recording had them
-        cmd += '''S="${DJS_USB_SRC:-$HOME/djs/usb}/djs1000-mods.txt"; [ -f "$S" ] && cp "$S" "$D/usb/"
-'''
+        cmd += '''U="${DJS_USB_SRC:-$HOME/djs/usb}"; S="$U/djs1000-mods/djs1000-mods.txt"; [ -f "$S" ] || S="$U/djs1000-mods.txt"
+[ -f "$S" ] && cp "$S" "$(%s)"
+''' % SETTINGS_AT
     if mod_settings:                          # what the mods read from the stick: `key = value` lines, the rest is as they start
         text = "".join("%s = %s\n" % (k, v) for k, v in mod_settings.items())
-        cmd += "cat > \"$D/usb/djs1000-mods.txt\" << 'MODS_EOF'\n" + text + "MODS_EOF\n"
+        cmd += "cat > \"$(%s)\" << 'MODS_EOF'\n" % SETTINGS_AT + text + "MODS_EOF\n"
     if patch:
         cmd += '''P='%s'; command -v wslpath > /dev/null && P=$(wslpath -a "$P")
 cp "$P" "$D/usb/autoexec.bin"

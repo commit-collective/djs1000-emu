@@ -75,7 +75,7 @@ and the least time it lasts:
 
 An episode can use a project of your own from the stick (`~/djs/usb`, or `$DJS_USB_SRC`) instead of one of the unit's: `USB_PROJECT = "Rodeo"`
 copies that project and its samples (`Samples/Rodeo`) to the reel's stick and opens it from USB. `MOD_SETTINGS = {"track-echo": "on"}`
-writes lines of the mods' `djs1000-mods.txt` on that stick, for a mod that starts off or a setting the project needs.
+writes lines of the mods' `djs1000-mods/djs1000-mods.txt` on that stick, for a mod that starts off or a setting the project needs.
 
 `do` names a function `do_pads(ctx)` in the same file. It plays the panel through `ctx` (`press`, `touch`, `wait`, `say`, and
 `ctx.s`, the session). Use `ctx.press` and `ctx.touch` while a project plays: the session's own waits for the screen to hold still,

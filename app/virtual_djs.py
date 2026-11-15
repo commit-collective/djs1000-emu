@@ -69,7 +69,7 @@ import layout as L  # noqa: E402
 from link import Link  # noqa: E402
 from bench import request as bench_request  # noqa: E402
 import network_picker  # noqa: E402
-from mods import Mods  # noqa: E402
+from mods import Mods, stick_file  # noqa: E402
 from capture import AUDIO_BITRATE, Capture  # noqa: E402
 
 CAPTURES = os.path.join(os.path.dirname(HERE), "demo", "captures")      # where REC puts its files (demo/ is git-ignored: media is never committed)
@@ -226,10 +226,14 @@ class InputWatch:
     PATTERN = re.compile(rb"input-select: input ([0-9a-fA-F]{8})")
 
     def __init__(self, usb, tell):
-        self.path = os.path.join(usb, "djs1000-mods-app.log")
+        self.usb = usb
         self.tell = tell
         self.closed = False
         threading.Thread(target=self._run, daemon=True).start()
+
+    @property
+    def path(self):
+        return stick_file(self.usb, "djs1000-mods-app.log")     # in the mods' folder, or at the top for an older patch
 
     def _size(self):
         try:
@@ -238,12 +242,12 @@ class InputWatch:
             return 0
 
     def _run(self):
-        pos = self._size()
+        pos, at = self._size(), self.path
         while not self.closed:
             time.sleep(0.25)
             size = self._size()
-            if size < pos:                               # a new log: the emulator started again
-                pos = 0
+            if size < pos or self.path != at:            # a new log: the emulator started again, or the log moved
+                pos, at = 0, self.path
             if size > pos:
                 try:
                     with open(self.path, "rb") as f:

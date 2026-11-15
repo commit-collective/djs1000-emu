@@ -80,7 +80,7 @@ When the patch on the USB folder carries mods (`autoexec.bin` from the
 djs1000-mods project), the panel lists them above the reminder, grouped as the
 mods' website groups them, each with an ON / OFF switch, its title and its key.
 The mouse on a row shows the mod's text (the website's own words, then what it
-needs) under the list. A click on a switch rewrites the mod's line in `djs1000-mods.txt` on the
+needs) under the list. A click on a switch rewrites the mod's line in `djs1000-mods/djs1000-mods.txt` on the
 USB folder, which the mods read again as the app runs: no restart. The list
 of mods is the patch's own (`modlist.txt` in it, which the emulator opens at
 each start: a name, a title, a group, the page text, what it needs and a status
@@ -147,7 +147,7 @@ Sound, all at 44.1 kHz stereo:
   is on the deck's beat, with no sound card or microphone
   of its own. With Deckbench as the input, the 5th knob of LIVE SAMPLING (INPUT SOURCE, the mod `input-select`) picks the deck that is
   heard: the unit would send the choice as MIDI on its DIN output, which the emulator has none of, so the deck reads it from the mod's log on
-  the stick (`djs1000-mods-app.log`, needs `--usb`) and tells Deckbench (`POST /api/audio/source/N`). Until the knob is turned every playing deck is heard
+  the stick (`djs1000-mods/djs1000-mods-app.log`, needs `--usb`) and tells Deckbench (`POST /api/audio/source/N`). Until the knob is turned every playing deck is heard
 - `--list-audio` prints the playback and recording devices
 
 ## How it is made
