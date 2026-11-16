@@ -39,7 +39,8 @@ off, and a little shade under the controls. It costs a third of a second once at
 and the keys are made once and kept. `--face flat` (or `$DJS_FACE=flat`) is the first look: dark grey plastic and flat controls. Hold the mouse on keys and pads (a pad
 plays harder the lower you press it), turn knobs with the wheel or by
 dragging, click the selector to push it, and use the mouse as a finger on
-the screen. The status line names the control under the mouse and its
+the screen. The wheel anywhere but over a knob, the screen included, turns
+the selector to browse. The status line names the control under the mouse and its
 keyboard key.
 
 The right of the status line has some readings, and a TOOLS button (F8) with a menu. The readings are the master's level (a bar with a

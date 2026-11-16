@@ -24,7 +24,7 @@ panel's would:
   keys, pads       hold the mouse button. A pad plays harder the lower you
                    press it
   knobs, selector  mouse wheel, or drag up and down. A click pushes the
-                   selector
+                   selector. The wheel anywhere else turns the selector
   screen           the mouse is a finger, on the face and on the large copy
   keyboard         the keys printed in the status line under the mouse
 
@@ -1139,9 +1139,11 @@ class Deck:
             if rect.collidepoint(pos) and key in self.track_rects:
                 self.scroll[key] = min(self.track_rects[key][2], max(0, self.scroll[key] - dy * ROW))
                 return
+        if self.menu_open or not dy:
+            return
         what = self.find(pos)
-        if what and what[0] == "knob" and dy:
-            self.turn(what[1], dy)
+        # Over a knob the wheel turns it. Anywhere else, the screen included, it turns the selector (BROWSE).
+        self.turn(what[1] if what and what[0] == "knob" else 0, dy)
 
     def key(self, event, down):
         if down and event.key == pygame.K_ESCAPE and self.menu_open:

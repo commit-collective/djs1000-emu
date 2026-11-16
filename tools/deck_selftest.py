@@ -73,6 +73,9 @@ def deck_checks(link):
         deck = virtual_djs.Deck(link, size, (FakePlayer(), None), None, [0])
         deck.pump()
         deck.draw()
+        sent = len(link.sent)
+        deck.wheel(deck.lcd_rect.center, -1)            # the wheel over the screen turns the selector, to browse
+        assert link.sent[sent:] == ["enc 0 -1"], link.sent[sent:]
         k, ox = deck.scale, deck.ox                      # the unit begins ox from the window's edge
         points = [((key.bounds()[0] + key.bounds()[2]) / 2 * k + ox, (key.bounds()[1] + key.bounds()[3]) / 2 * k)
                   for key in L.KEYS]
