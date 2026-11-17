@@ -1,4 +1,4 @@
-# A Linux VM for the DJS-1000 emulator on macOS, untested. See docs/running.md.
+# A Linux VM for the DJS-1000 emulator on macOS. See docs/running.md.
 #
 #   limactl start scripts/lima/djs1000.yaml
 #   limactl shell djs1000
@@ -16,6 +16,11 @@ images:
 cpus: 4
 memory: "4GiB"
 disk: "20GiB"
+
+# The emulator needs no containers.
+containerd:
+  system: false
+  user: false
 
 # No shared folders: the emulator runs from the VM's own disk.
 # Copy the update and the key in with `limactl copy`.
@@ -46,6 +51,13 @@ provision:
     if [ ! -e /proc/sys/fs/binfmt_misc/qemu-arm ]; then
         cp /usr/share/doc/qemu-user-static/qemu-arm.conf /etc/binfmt.d/qemu-arm.conf
         systemctl restart systemd-binfmt
+    fi
+    # Ubuntu keeps unprivileged user namespaces from regular programs, which the
+    # backend runs in. Without them it falls back to PRoot, and Ubuntu's arm64
+    # PRoot crashes. This VM is only for the emulator, so allow them.
+    if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+        echo kernel.apparmor_restrict_unprivileged_userns=0 > /etc/sysctl.d/60-djs1000-userns.conf
+        sysctl -p /etc/sysctl.d/60-djs1000-userns.conf
     fi
 
 # Real players: the default network is behind NAT and does not carry Pro DJ Link

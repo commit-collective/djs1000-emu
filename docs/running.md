@@ -26,19 +26,21 @@ The backend uses an unprivileged user namespace and chroot. If the kernel
 disallows that, install `proot` for the slower fallback. `DJS_PROOT=1` forces
 it. Running as root should not be necessary.
 
-## macOS, untested
+## macOS
 
 The backend is Linux-specific. On a Mac it runs inside a Linux VM, where QEMU
-user mode runs the ARM application as on any Linux. No Mac setup has been
-validated here.
+user mode runs the ARM application as on any Linux. One setup has been
+reported working: an Apple Silicon Mac on macOS 27.2, Lima 2.2 with Apple's
+Virtualization framework, Ubuntu 24.04 arm64 and QEMU 8.2. The firmware booted,
+and sample loading, sequencing, effects and audio capture worked, with the deck
+running on the Mac. Intel Macs, OrbStack and real players have not been tried.
 
 ### Lima
 
 [Lima](https://lima-vm.io) is the suggested VM. `scripts/lima/djs1000.yaml`
 makes an Ubuntu 24.04 VM on the Mac's own architecture, with the packages setup
 needs. It forwards the deck link (port 7310), Deckbench's audio (7320) and
-Deckbench's page (8750) to the Mac's localhost. The template is not tried on a
-Mac yet.
+Deckbench's page (8750) to the Mac's localhost.
 
 ```sh
 brew install lima
@@ -65,6 +67,18 @@ and its files stay on the VM's own disk. The template shares no Mac folder.
 On Apple Silicon, the VM cannot run 32-bit ARM code natively, and Ubuntu's arm64
 packages leave out the handler that sends such programs to QEMU. The template
 installs it. Without it, the programs the app launches would fail to start.
+
+Ubuntu also keeps regular programs out of unprivileged user namespaces, which
+the backend runs in. It then falls back to PRoot, and Ubuntu's arm64 PRoot
+(5.1.0) crashes. The template lifts that limit, since the VM is only for the
+emulator. In a VM made from an older template, run this once:
+
+```sh
+echo kernel.apparmor_restrict_unprivileged_userns=0 | sudo tee /etc/sysctl.d/60-djs1000-userns.conf
+sudo sysctl -p /etc/sysctl.d/60-djs1000-userns.conf
+```
+
+A PRoot 5.5.0 built from source also works, with `DJS_PROOT=1`, but is slower.
 
 For the visible deck on the Mac, run it on its own rather than through the
 launcher. The launcher would try to start a backend on the Mac itself.
@@ -94,8 +108,7 @@ differ from Linux.
 
 ### Reporting a try
 
-This is an untested route, not evidence of incompatibility. If you try it,
-open an issue with:
+If you try another Mac setup, open an issue with:
 
 - the Mac's chip and macOS version, Lima or OrbStack and its version
 - whether setup finished, and `python3 start.py status` inside the VM

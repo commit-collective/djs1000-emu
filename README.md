@@ -19,8 +19,8 @@ scripted use. Mods use the same USB `autoexec.bin` workflow as the unit.
 - Linux, or Windows with WSL2 and Ubuntu 24.04.
 - Python 3. The visible deck also needs pygame-ce and Pillow.
 
-A Linux VM on a Mac is plausible but untested. This is not a native macOS
-backend. See [the proposed Mac setup](docs/running.md#macos-untested).
+On a Mac, the backend runs in a Linux VM, which has been reported working on
+Apple Silicon. See [the Mac setup](docs/running.md#macos).
 
 ## Quick start
 

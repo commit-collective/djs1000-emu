@@ -4,6 +4,8 @@ Newest first. A release is a tagged commit.
 
 ## Unreleased
 
+- The emulator is reported working on an Apple Silicon Mac through the Lima template. The template now turns
+  off containers and lets the backend use user namespaces, as Ubuntu's arm64 PRoot crashes.
 - The mouse wheel turns the selector, to browse, anywhere on the deck but over another knob, the screen included.
 - The virtual deck's mod switches and input watch use the mods' `djs1000-mods` folder on the stick, or its top for
   older patches.
