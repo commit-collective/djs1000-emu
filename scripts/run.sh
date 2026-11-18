@@ -22,16 +22,9 @@ shift || true
 # An emulator of a slot (see start.py) has a tag among the arguments of every process of its guest, and finds
 # and ends only those.
 TAG="${DJSDEV_TAG:-}"
-# The ids of the processes of this emulator whose command line matches the pattern (with a tag: those that have it in
-# their environment. The guest is run by proot or by a chroot, and the program is in the command line in both).
-pids_of() {
-    for p in $(pgrep -f "$1"); do
-        [ "$p" = "$$" ] && continue
-        if [ -z "$TAG" ] || grep -qaP "DJSDEV_TAG=$TAG\x00" "/proc/$p/environ" 2> /dev/null; then echo "$p"; fi
-    done
-}
+. "$REPO/scripts/guest-pids.sh"
 
-if [ -n "$(pids_of EP113_Main_R)" ]; then
+if [ -n "$(pids_of /root/pdj/EP113_Main_R)" ]; then
     echo "the emulator is already running: stop it first (python start.py stop)" >&2
     exit 1
 fi

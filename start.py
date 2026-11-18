@@ -48,15 +48,8 @@ WINDOWS = os.name == "nt"
 # it finds and ends its own and no other's. Without a slot there is one emulator, in ~/djs, on 7310.
 
 
-# A shell function: the ids of the processes whose command line matches the pattern, and, for a slot, which carry its tag.
-PIDS = r'''
-pids_of() {
-    for p in $(pgrep -f "$1"); do
-        [ "$p" = "$$" ] && continue
-        if [ -z "${DJSDEV_TAG:-}" ] || grep -qaP "DJSDEV_TAG=$DJSDEV_TAG\x00" "/proc/$p/environ" 2> /dev/null; then echo "$p"; fi
-    done
-}
-'''
+with open(os.path.join(REPO, "scripts", "guest-pids.sh"), encoding="utf-8") as _pid_file:
+    PIDS = _pid_file.read()
 
 
 def bench_address(rows, environment):
@@ -92,9 +85,9 @@ class Emulator:
         # processes are told from the others' by DJSDEV_TAG in their environment (every process of the guest has it).
         self.prelude = ('export DJS_HOME="$HOME/djs-%s" DJSDEV_TAG=%s\n' % (self.tag, self.tag)) if self.tag else ""
         self.prelude += PIDS
-        self.running_cmd = '[ -n "$(pids_of EP113_Main_R)" ]'
+        self.running_cmd = '[ -n "$(pids_of /root/pdj/EP113_Main_R)" ]'
         # The app, or the start-up before it (a stick's autoexec runs first).
-        self.starting_cmd = '[ -n "$(pids_of "EP113_Main_R|/opt/djsemu/init.sh")" ]'
+        self.starting_cmd = '[ -n "$(pids_of "/root/pdj/EP113_Main_R|/opt/djsemu/init.sh")" ]'
         if os.environ.get("DJS_PROOT"):
             self.env += " DJS_PROOT=1"       # proot in place of a chroot, see scripts/run.sh
         if os.environ.get("DJS_FAST_BOOT"):
@@ -206,7 +199,7 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
         return bool(environment.get('DJSDEV_INTERFACE'))
 
     def network_matches(self, command):
-        code, pid = self.sh('pids_of EP113_Main_R | head -1')
+        code, pid = self.sh('pids_of /root/pdj/EP113_Main_R | head -1')
         return not code and pid.isdecimal() and network_query(command, 'matches', pid)
 
     def clock_fought(self):
@@ -221,7 +214,7 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
 
     def feeds(self):
         """Whether the running emulator sends its copy of the link (it was started with DJSDEV_TAP)."""
-        code, pid = self.sh('pids_of EP113_Main_R | head -1')
+        code, pid = self.sh('pids_of /root/pdj/EP113_Main_R | head -1')
         if code or not pid.isdecimal():
             return False
         return self.sh("tr '\\0' '\\n' < /proc/%s/environ | grep -q '^DJSDEV_TAP='" % pid)[0] == 0
@@ -243,7 +236,7 @@ if command -v rsync > /dev/null; then rsync -a "$HOME/djs/root/" "$DJS_HOME/root
         """Whether the running emulator started before the shim's source (or
         the script that builds it) last changed: it still has the old shim."""
         return self.sh("""
-PID=$(pids_of EP113_Main_R | head -1)
+PID=$(pids_of /root/pdj/EP113_Main_R | head -1)
 [ -n "$PID" ] && { [ '%s/shim/djsdev.c' -nt "/proc/$PID" ] || [ '%s/shim/network.h' -nt "/proc/$PID" ] || [ '%s/scripts/run.sh' -nt "/proc/$PID" ]; }
 """ % (self.repo(), self.repo(), self.repo()))[0] == 0
 
@@ -276,10 +269,10 @@ if [ -n "${DJSDEV_TAG:-}" ]; then
         sleep 0.3
     done
 else
-    kill $(pids_of EP113_Main_R) $(pids_of /opt/djsemu/init.sh) 2> /dev/null
+    kill $(pids_of /root/pdj/EP113_Main_R) $(pids_of /opt/djsemu/init.sh) 2> /dev/null
     for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
-    kill -9 $(pids_of EP113_Main_R) 2> /dev/null
-    pkill -9 -f 'qemu-arm-static.*libdjsdev.so'; pkill -9 -f 'qemu-binfmt/arm-binfmt'
+    kill -9 $(pids_of /root/pdj/EP113_Main_R) 2> /dev/null
+    kill -9 $(pids_of /opt/djsemu/init.sh) 2> /dev/null
 fi
 true
 """ % self.running_cmd)
