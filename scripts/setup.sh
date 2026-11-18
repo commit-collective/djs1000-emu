@@ -41,7 +41,7 @@ case "$DJS" in
 esac
 case "$HOME/" in "$DJS/"*) echo "DJS_HOME contains your home directory" >&2; exit 1 ;; esac
 case "$REPO/" in "$DJS/"*) echo "DJS_HOME contains the repository" >&2; exit 1 ;; esac
-if [ -d "$DJS" ] && [ -n "$(ls -A "$DJS")" ]; then
+if [ -d "$DJS" ] && [ -n "$(find "$DJS" -mindepth 1 -maxdepth 1 ! -name '.setup.*' -print -quit)" ]; then
     if [ "$REBUILD" != 1 ]; then
         echo "$DJS is not empty. Use --rebuild to back up and replace its firmware files." >&2
         exit 1
@@ -66,8 +66,14 @@ UPD="$(readlink -f "$UPD")"
 KEY="$(readlink -f "$KEY")"
 mkdir -p "$DJS"
 mkdir "$DJS/.setup-lock" || { echo "another setup may be running in $DJS" >&2; exit 1; }
+STAGE=
+cleanup() {
+    cd "$DJS"
+    case "$STAGE" in "$DJS"/.setup.*) rm -rf -- "$STAGE" ;; esac
+    rmdir "$DJS/.setup-lock"
+}
+trap cleanup EXIT
 STAGE="$(mktemp -d "$DJS/.setup.XXXXXXXX")"
-trap 'rmdir "$DJS/.setup-lock"; echo "Setup workspace: $STAGE"' EXIT
 cd "$STAGE"
 python3 "$REPO/tools/decrypt_upd.py" "$UPD" update.iso "$KEY"
 7z x -y -oiso update.iso >/dev/null
@@ -115,8 +121,5 @@ chmod 600 "$DJS/aes256.key"
 touch "$DJS/.djs1000-emu"
 echo "Previous files, if any: $BACKUP"
 cd "$DJS"
-# STAGE is an absolute mktemp directory under the verified workspace.
-case "$STAGE" in "$DJS"/.setup.*) rm -rf -- "$STAGE" ;; *) exit 1 ;; esac
-STAGE="complete"
 echo "ready: $DJS/root ($(du -sh root | cut -f1)), firmware $(cat iso/images/release.txt 2>/dev/null)"
 echo "run it: $REPO/scripts/run.sh 600"

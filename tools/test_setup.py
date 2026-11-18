@@ -81,6 +81,15 @@ fi
             self.assertNotEqual(run.returncode, 0)
             self.assertIn("unsafe DJS_HOME", run.stderr)
 
+    def test_first_setup_can_retry_after_extraction_fails(self):
+        self.env["FAIL_TAR"] = "corrupt"
+        self.assertNotEqual(self.run_setup().returncode, 0)
+        self.assertEqual(list(self.destination.iterdir()), [])
+        (self.destination / ".setup.old").mkdir()
+        del self.env["FAIL_TAR"]
+        retry = self.run_setup()
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+
     def test_existing_installation_requires_rebuild(self):
         self.existing()
         run = self.run_setup()
