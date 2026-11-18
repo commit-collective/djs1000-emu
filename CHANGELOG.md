@@ -4,22 +4,33 @@ Newest first. A release is a tagged commit.
 
 ## v0.4.0
 
-- Run the emulator on Apple Silicon with the included Lima template.
-- Turn the selector with the mouse wheel anywhere except over another knob.
-- Read mod settings from the stick's mods folder, with support for older patches at the top level.
-- Choose the backend network adapter in Tools or with `--network-picker`.
-- Watch real players in Deckbench when the emulator uses a DJ network adapter.
-- Attach an existing Deckbench with `--bench-url` or run the emulator alone with `--no-bench`.
-- Run separate emulator slots with independent Deckbench audio, packet feeds and browser pages.
-- Stop the selected emulator and its managed bench without interrupting other slots.
-- Wait for a slow emulator startup and retry a failed first setup.
-- Keep the deck open if video encoding fails and preserve settings when toggling mods.
-- Warn when WSL and systemd-timesyncd both adjust the backend clock.
+Tested on WSL2 with Ubuntu 24.04. The regression session comes out identical to the reference, the deck's self-test
+passes, setup was run from scratch into a new folder, and two test slots ran side by side. One user ran it on an Apple
+Silicon Mac through the Lima template.
+
+- On a Mac, the emulator runs in a Linux VM made from the Lima template, `scripts/lima/djs1000.yaml`.
+- The mouse wheel turns the selector anywhere on the deck but over another knob.
+- The deck's mod switches and input watch use the stick's `djs1000-mods` folder, or its top for older patches.
+- The backend's network adapter and address are chosen in the Tools menu or with `--network-picker`.
+- With a DJ adapter chosen, the launcher starts a Deckbench that watches the real players and the DJS.
+- `--bench-url URL` uses a Deckbench that is already running, and `--no-bench` runs without one.
+- The launcher's Deckbench takes a free port when a bench closed a moment ago still holds 8750.
+- The launcher says when `systemd-timesyncd` and WSL both set WSL's clock, which made the app's tempo swing.
+
+### Fixes
+
+- `start.py stop` ends only its own emulator, and no longer the test slots' ones.
+- Each test slot has its own Deckbench ports.
+- A first setup that failed can be run again without clearing the folder by hand.
+- A slow start is waited for, up to three minutes, and a failed start is stopped.
+- The deck stays open when the video encoder stops.
+- Switching a mod on the deck keeps the settings file whole, CRLF line endings included.
+- A script that stops reading the deck link no longer holds up the deck's screen and sound.
 
 ### Compatibility
 
-- The host clock now controls playback by default. Use `--pace` for sound-card pacing.
-- Stop a bench started by an older launcher manually once, or attach to it with `--bench-url`.
+- The app keeps the host's clock by default, as the unit has one clock. `--pace` paces it to the sound card instead.
+- A Deckbench started by an older launcher is not tracked. Stop it by hand once, or attach to it with `--bench-url`.
 
 ## v0.3.1
 

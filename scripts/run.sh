@@ -19,9 +19,10 @@ DJS="${DJS_HOME:-$HOME/djs}"
 ROOT=$DJS/root
 secs=${1:-60}
 shift || true
-# An emulator of a slot (see start.py) has a tag among the arguments of every process of its guest, and finds
-# and ends only those.
+# An emulator of a slot (see start.py) has a tag in the environment of every process of its guest, and finds
+# and ends only those. The main emulator has the same variable, empty, so that its stop finds its own.
 TAG="${DJSDEV_TAG:-}"
+export DJSDEV_TAG="$TAG"
 . "$REPO/scripts/guest-pids.sh"
 
 if [ -n "$(pids_of /root/pdj/EP113_Main_R)" ]; then

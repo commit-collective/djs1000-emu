@@ -136,7 +136,7 @@ scripts/setup.sh --rebuild /path/to/DJS1000.UPD
 Successful replacement keeps the previous `root`, `iso` and `update.iso` under
 a printed `previous.*` folder. Settings inside the old root stay in that
 backup, they are not automatically merged into the new root. USB and eMMC
-folders remain in place. Failed extraction leaves its workspace for diagnosis.
+folders remain in place. A failed extraction removes its workspace, so setup can be run again.
 Inspect backups before removing any of them.
 
 ## Real players and an existing Deckbench

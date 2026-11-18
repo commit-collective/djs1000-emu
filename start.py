@@ -248,15 +248,17 @@ RUN="${DJS_HOME:-$HOME/djs}/run"
 mkdir -p "$RUN"
 DJSDEV_PORT=%d DJS_WINDOW=%s %s setsid nohup bash %s/scripts/run.sh 0 > "$RUN/emulator.log" 2>&1 < /dev/null &
 runner=$!
-while kill -0 "$runner" 2>/dev/null; do
+for i in $(seq 1 360); do
+    kill -0 "$runner" 2>/dev/null || break
     %s && exit 0
     sleep 0.5
 done
-wait "$runner"
+kill -0 "$runner" 2>/dev/null && echo "no app after 3 minutes"
 kill -TERM -- "-$runner" 2>/dev/null || true
 tail -n 15 "$RUN/emulator.log"; exit 1
 """ % (self.port, "1" if self.window else "", self.env, shlex.quote(self.repo()), self.running_cmd))
         if code:
+            self.stop()
             sys.exit("the emulator did not start:\n" + out)
 
     def stop(self):
@@ -279,8 +281,12 @@ if [ -n "${DJSDEV_TAG:-}" ]; then
 else
     kill $(pids_of /root/pdj/EP113_Main_R) $(pids_of /opt/djsemu/init.sh) 2> /dev/null
     for i in 1 2 3 4 5 6 7 8 9 10; do %s || break; sleep 0.3; done
-    kill -9 $(pids_of /root/pdj/EP113_Main_R) 2> /dev/null
-    kill -9 $(pids_of /opt/djsemu/init.sh) 2> /dev/null
+    kill -9 $(pids_of /root/pdj/EP113_Main_R) $(pids_of /opt/djsemu/init.sh) 2> /dev/null
+    # What is left of the guest, such as a stick's script started on its own: every process with the empty tag.
+    for f in $(grep -laP "(?:^|\\x00)DJSDEV_TAG=\\x00" /proc/[0-9]*/environ 2> /dev/null); do
+        p=${f#/proc/}; p=${p%%/environ}
+        [ "$p" = "$$" ] || kill -9 "$p" 2> /dev/null
+    done
 fi
 true
 """ % self.running_cmd)
