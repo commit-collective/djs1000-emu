@@ -247,7 +247,13 @@ PID=$(pids_of /root/pdj/EP113_Main_R | head -1)
 RUN="${DJS_HOME:-$HOME/djs}/run"
 mkdir -p "$RUN"
 DJSDEV_PORT=%d DJS_WINDOW=%s %s setsid nohup bash '%s/scripts/run.sh' 0 > "$RUN/emulator.log" 2>&1 < /dev/null &
-for i in $(seq 1 30); do sleep 0.5; %s && exit 0; done
+runner=$!
+while kill -0 "$runner" 2>/dev/null; do
+    %s && exit 0
+    sleep 0.5
+done
+wait "$runner"
+kill -TERM -- "-$runner" 2>/dev/null || true
 tail -n 15 "$RUN/emulator.log"; exit 1
 """ % (self.port, "1" if self.window else "", self.env, self.repo(), self.running_cmd))
         if code:
