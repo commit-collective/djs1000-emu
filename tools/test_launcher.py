@@ -25,6 +25,13 @@ class BenchOwnership(unittest.TestCase):
     def command(self):
         return b'python3\0-m\0deckbench\0--ready-file\0' + bytes(str(self.run / 'deckbench-ready.json'), 'utf-8') + b'\0'
 
+    def test_storage_path_is_one_literal_shell_argument(self):
+        import shlex
+        path = "/tmp/DJ's set $1"
+        with patch.dict(os.environ, DJS_EMMC=path):
+            emu = start.Emulator(None, 7310)
+        self.assertIn("DJS_EMMC=" + path, shlex.split(emu.env))
+
     def test_two_slots_use_distinct_bench_ports(self):
         with patch.dict(os.environ, DJS_SLOT="98"):
             first = start.Emulator(None, 7408)

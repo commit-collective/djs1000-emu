@@ -95,7 +95,7 @@ class Emulator:
         if os.environ.get("DJS_FAST_BOOT"):
             self.env += " DJSDEV_DIRECT=1"   # see scripts/guest/init.sh
         if os.environ.get("DJS_EMMC"):
-            self.env += ' DJS_EMMC="%s"' % os.environ["DJS_EMMC"]   # the unit's internal storage: a folder in WSL, see scripts/run.sh
+            self.env += ' DJS_EMMC=' + shlex.quote(os.environ["DJS_EMMC"])   # the unit's internal storage: a folder in WSL, see scripts/run.sh
         self._repo = None
 
     def sh(self, script):
