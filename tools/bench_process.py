@@ -108,7 +108,7 @@ def ensure(repo, run, audio_port, observe=None, feed=None):
     # Its page on 8750, as always. A port a bench closed a moment ago can stay held for two minutes or so (Windows
     # keeps a closed connection's port, and with mirrored networking that holds the port in WSL too, whatever
     # wsl --shutdown does): when nothing answers there, the page goes on any free port, which the deck is given.
-    for http_port in (None, 0):
+    for http_port in ((0,) if os.environ.get("DJSDEV_TAG") else (None, 0)):
         if pid:
             break
         ready.unlink(missing_ok=True)
@@ -128,7 +128,7 @@ def ensure(repo, run, audio_port, observe=None, feed=None):
             break
         gone = process.poll() is not None
         stop(run)
-        if gone and other_bench():
+        if gone and http_port is None and other_bench():
             raise RuntimeError('A Deckbench this emulator did not start already answers at %s (with mirrored WSL '
                                'networking a Windows one counts too). Use it with --bench-url %s (add '
                                '#token=... if it has one), stop it, or use --no-bench.' % (PAGE, PAGE))
