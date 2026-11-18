@@ -4,6 +4,16 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 from urllib.request import Request
 
 
+def slot_ports(slot):
+    """Audio TCP and Link feed UDP ports of a launcher-managed bench."""
+    if not slot:
+        return 7320, 7330
+    if not slot.isascii() or not slot.isdecimal() or int(slot) > 22000:
+        raise ValueError("DJS_SLOT must be a number between 0 and 22000")
+    audio = 20000 + 2 * int(slot)
+    return audio, audio + 1
+
+
 def request(base, path, method='GET'):
     parts = urlsplit(base)
     if parts.scheme not in ('http', 'https') or not parts.hostname or parts.username or parts.password:

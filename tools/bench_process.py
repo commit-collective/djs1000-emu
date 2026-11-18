@@ -92,6 +92,8 @@ def ensure(repo, run, audio_port, observe=None, feed=None):
     run.mkdir(parents=True, exist_ok=True)
     ready = run / 'deckbench-ready.json'
     mode = mode_of(observe, feed)
+    if mode == "decks" and audio_port != 7320:
+        mode += " audio %d" % audio_port
     pid = owned(run)
     if pid:
         began = (run / 'deckbench-owned.json').stat().st_mtime

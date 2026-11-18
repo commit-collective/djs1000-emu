@@ -67,7 +67,7 @@ import art  # noqa: E402
 import audio  # noqa: E402
 import layout as L  # noqa: E402
 from link import Link  # noqa: E402
-from bench import request as bench_request  # noqa: E402
+from bench import request as bench_request, slot_ports  # noqa: E402
 import network_picker  # noqa: E402
 from mods import Mods, stick_file  # noqa: E402
 from capture import AUDIO_BITRATE, Capture  # noqa: E402
@@ -82,7 +82,7 @@ STATUS_H = 26
 MENU_ROW, MENU_W = 24, 252              # the tools menu: a row, and its width
 VELOCITIES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, None]      # the pad velocity setting: a share, or None for by where on the pad
 BENCH_URL = "http://127.0.0.1:8750/"     # where deckbench's page is (start.py starts it there)
-BENCH_AUDIO = "127.0.0.1:7320"           # and its decks' sound (--input-tcp, and the menu's "Sound in: deckbench")
+BENCH_AUDIO = "127.0.0.1:%d" % slot_ports(os.environ.get("DJS_SLOT"))[0]           # and its decks' sound (--input-tcp, and the menu's "Sound in: deckbench")
 ROW = 26                                 # a row of the side panel's lists
 HEAD = 28                                # a section's header
 DETAIL_H = 18 * 5 + 12                   # what the mods' list shows of the mod the mouse is on: its page text
@@ -838,15 +838,15 @@ class Deck:
                     f"dry {dry} (app late)  \u00b7  late {late} (deck busy)  \u00b7  cut {gone} ({ms} ms, too much waited)",
                     f"dry {dry}  \u00b7  late {late}  \u00b7  cut {gone}")
         if what[0] == "deck":
-            return {"on": f"fake CDJ {what[1]} on Pro DJ Link  ·  click to put it on the "
+            return {"on": f"fake CDJ {what[1]} on Pro DJ Link  Â·  click to put it on the "
                           "network or take it off",
-                    "play": f"fake CDJ {what[1]}  ·  play or stop it: a playing deck sends beats",
-                    "sync": f"fake CDJ {what[1]}  ·  sync on or off: a synced deck plays at the "
+                    "play": f"fake CDJ {what[1]}  Â·  play or stop it: a playing deck sends beats",
+                    "sync": f"fake CDJ {what[1]}  Â·  sync on or off: a synced deck plays at the "
                             "tempo master's tempo",
-                    "master": f"fake CDJ {what[1]}  ·  tempo master: it takes the role from "
+                    "master": f"fake CDJ {what[1]}  Â·  tempo master: it takes the role from "
                               "whoever has it (the unit included)"}[what[2]]
         if what[0] == "mod":
-            return f"mod {what[1]}  ·  click to switch it on or off, as the app runs"
+            return f"mod {what[1]}  Â·  click to switch it on or off, as the app runs"
         if what[0] == "fold":
             return "click to fold or unfold this section"
         if what[0] == "thumb":
@@ -863,7 +863,7 @@ class Deck:
             how = f"encoder {knob.enc}" if knob.enc is not None else \
                 f"frame word {knob.word:#x}" if knob.word is not None else \
                 "the level of the input the deck sends" if knob.gain else "not identified yet"
-            return "  ·  ".join(filter(None, [knob.name.replace("_", " "), how,
+            return "  Â·  ".join(filter(None, [knob.name.replace("_", " "), how,
                                                  knob.keycap and f"keys {knob.keycap}"]))
         key = L.KEYS[what[1]]
         if key.pad is not None:
@@ -872,7 +872,7 @@ class Deck:
             how = f"frame byte {key.bit[0]} bit {key.bit[1]}"
         else:
             how = "not identified yet"
-        return "  ·  ".join(filter(None, [key.name.replace("_", " "), how,
+        return "  Â·  ".join(filter(None, [key.name.replace("_", " "), how,
                                              key.keycap and f"key {key.keycap}"]))
 
     # ---- input ----------------------------------------------------------
@@ -1554,7 +1554,7 @@ class Deck:
         if mod["needs"]:
             notes.append(mod["needs"])
         for note in notes[:5 - len(lines)]:
-            lines.append((self.wrap("› " + note, room, 1)[0], (150, 152, 158)))
+            lines.append((self.wrap("â€º " + note, room, 1)[0], (150, 152, 158)))
         for i, (text, color) in enumerate(lines):
             win.blit(self.font.render(text, True, color), (x + 12, y + 8 + 18 * i))
 
@@ -1698,7 +1698,7 @@ class Deck:
         places = []
         chip_w = self.small.size("DECKBENCH")[0] + 14
         if self.bench:         # a button beside TOOLS (the two buttons together), with what its decks do on its left, in a place of the widest it says
-            places.append(("bench", chip_w + 8 + self.font.size("decks 4 on · 4 playing · master 4 · 4 with a file")[0]))
+            places.append(("bench", chip_w + 8 + self.font.size("decks 4 on Â· 4 playing Â· master 4 Â· 4 with a file")[0]))
         if self.rec:
             places.append(("rec", self.font.size("REC 00:00:00")[0] + 14))
         if self.link.connected:

@@ -35,7 +35,7 @@ import socket
 import subprocess
 import sys
 import time
-from app.bench import request as bench_request
+from app.bench import request as bench_request, slot_ports
 from app.network_picker import query as network_query
 
 REPO = os.path.dirname(os.path.abspath(__file__))
@@ -78,6 +78,8 @@ class Emulator:
         self.bench_row = None            # another address of that network, for a bench that watches it (see bench_address)
         self.env = env                   # more environment for run.sh: "NAME=value ..."
         slot = os.environ.get("DJS_SLOT", "")
+        self.audio_port, feed_port = slot_ports(slot)
+        self.feed = "127.0.0.1:%d" % feed_port
         self.tag = "s" + slot if slot != "" else ""
         if os.environ.get("DJS_PORT"):
             self.port = int(os.environ["DJS_PORT"])
@@ -170,9 +172,9 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
             if row:                                 # a second address: a bench of its own there
                 observe = ' --observe ' + ' '.join(shlex.quote(str(row[key])) for key in ('address', 'netmask', 'broadcast'))
             else:                                   # else through the emulator's copy of the link (DJSDEV_TAP)
-                observe = ' --feed ' + FEED
+                observe = ' --feed ' + self.feed
         code, out = self.sh('python3 %s ensure --repo %s --run "${DJS_HOME:-$HOME/djs}/run" --audio-port %d%s' %
-                            (shlex.quote(self.repo() + '/tools/bench_process.py'), shlex.quote(there), AUDIO_PORT,
+                            (shlex.quote(self.repo() + '/tools/bench_process.py'), shlex.quote(there), self.audio_port,
                              observe))
         if code or not out.startswith("http"):
             self.bench_why = out or "deckbench did not start (see deckbench.log in the emulator's run folder)."
@@ -443,7 +445,7 @@ def main():
         else:
             # On the emulator's own address a bench would take the players' messages meant for the DJS: it watches
             # through the emulator's copy of the link instead, and binds nothing of it
-            emu.env += ' DJSDEV_TAP=' + FEED
+            emu.env += ' DJSDEV_TAP=' + emu.feed
             say("DJ adapter chosen: the emulator joins your players. Its Deckbench watches the link through the "
                 "emulator, which passes it a copy of what it hears and sends: it shows the DJS and your players, and "
                 'takes nothing meant for the DJS. It presses no buttons on them: give the adapter a second address for '

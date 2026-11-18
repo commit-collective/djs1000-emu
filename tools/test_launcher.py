@@ -25,6 +25,14 @@ class BenchOwnership(unittest.TestCase):
     def command(self):
         return b'python3\0-m\0deckbench\0--ready-file\0' + bytes(str(self.run / 'deckbench-ready.json'), 'utf-8') + b'\0'
 
+    def test_two_slots_use_distinct_bench_ports(self):
+        with patch.dict(os.environ, DJS_SLOT="98"):
+            first = start.Emulator(None, 7408)
+        with patch.dict(os.environ, DJS_SLOT="99"):
+            second = start.Emulator(None, 7409)
+        self.assertNotEqual(first.feed, second.feed)
+        self.assertNotEqual(first.audio_port, second.audio_port)
+
     def test_recycled_pid_is_not_owned(self):
         with patch.object(bench_process, 'identity', return_value='another'), patch.object(Path, 'read_bytes', return_value=self.command()):
             self.assertIsNone(bench_process.owned(self.run))

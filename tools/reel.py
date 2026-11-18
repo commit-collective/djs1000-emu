@@ -982,7 +982,7 @@ def end_card(episode, tl, length):
     chain, y = [], END_Y
     for text, size, colour in card:
         chain.append("drawtext=fontfile=font.ttf:text='%s':x=(w-text_w)/2:y=%d:fontsize=%d:fontcolor=%s:enable='between(t,%.2f,%.2f)'"
-                     % (text.replace("'", "’").replace(":", "\\:"), y, int(round(size * SCALE)), colour, t0 + 0.2, t1))
+                     % (text.replace("'", "â€™").replace(":", "\\:"), y, int(round(size * SCALE)), colour, t0 + 0.2, t1))
         y += int(round(size * SCALE * 1.5))
     return chain
 
@@ -1037,7 +1037,7 @@ def record(args, episode, raw):
         # is the deck as it opens, whose screen and list of mods are as they are and the face as high as a desktop has room for
         cmd += ["--height", str(WINDOW_H)] if args.shape == "window" else ["--width", str(DECK_W), "--height", str(DECK_H)]
         # The unit's input: silence, or the simulated decks' sound when the episode records from them (INPUT = True, with deckbench)
-        cmd += ["--input-tcp", "127.0.0.1:%d" % start.AUDIO_PORT] if bench and getattr(episode, "INPUT", False) else ["--no-input"]
+        cmd += ["--input-tcp", "127.0.0.1:%d" % emu.audio_port] if bench and getattr(episode, "INPUT", False) else ["--no-input"]
         usb, modlist = emu.usb(), emu.modlist()
         if usb and mods:
             cmd += ["--usb", usb]
