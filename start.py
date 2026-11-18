@@ -7,18 +7,18 @@ stops the emulator.
     python start.py stop                          stop a running emulator
     python start.py status                        say whether one is running
 
-  --keep          leave the emulator running when the deck is closed
-  --no-deck       start the emulator only (and leave it running)
-  --window        show the app's own window too (it is hidden when Xvfb is
-                  installed: the deck shows its screen)
-  --distro NAME   the WSL distribution to run it in (default: $DJS_WSL_DISTRO,
-                  else WSL's default one)
-  --port N        the deck link's port (default 7310)
-  --no-bench      do not start or attach to Deckbench (with a DJ adapter,
-                  the one that watches it is left out too)
-  --bench-url URL use an existing bench without starting or stopping it
-  --network-picker choose a backend network adapter before starting
-  --network NAME@IPv4 select an adapter/address, or default for local testing
+  --keep                leave the emulator running when the deck is closed
+  --no-deck             start the emulator only (and leave it running)
+  --window              show the app's own window too (it is hidden when Xvfb is
+                        installed: the deck shows its screen)
+  --distro NAME         the WSL distribution to run it in (default: $DJS_WSL_DISTRO,
+                        else WSL's default one)
+  --port N              the deck link's port (default 7310)
+  --no-bench            do not start or attach to Deckbench (with a DJ adapter,
+                        the one that watches it is left out too)
+  --bench-url URL       use an existing bench without starting or stopping it
+  --network-picker      choose a backend network adapter before starting
+  --network NAME@IPv4   select an adapter/address, or default for local testing
 
 Anything else goes to the deck (app/virtual_djs.py), whose options are listed
 below (--help here prints them too).
@@ -116,7 +116,7 @@ class Emulator:
         """This repository's path as the emulator's side sees it."""
         if self._repo is None:
             if WINDOWS:
-                code, out = self.sh("wslpath -a '%s'" % REPO.replace("\\", "/"))
+                code, out = self.sh("wslpath -a %s" % shlex.quote(REPO.replace("\\", "/")))
                 if code or not out.startswith("/"):
                     sys.exit("WSL did not answer (%s). Is a distribution installed?" % (out or code))
                 self._repo = out.splitlines()[-1]
@@ -159,7 +159,7 @@ F="${DJS_HOME:-$HOME/djs}/run/autoexec/modlist.txt"
                               "folder, and the unit will see simulated Pro DJ Link decks." % here)
             return None
         if WINDOWS:
-            code, out = self.sh("wslpath -a '%s'" % here.replace("\\", "/"))
+            code, out = self.sh("wslpath -a %s" % shlex.quote(here.replace("\\", "/")))
             if code or not out.startswith("/"):
                 self.bench_why = "WSL could not find deckbench's folder (%s)." % (out or code)
                 return None
@@ -239,14 +239,14 @@ if command -v rsync > /dev/null; then rsync -a "$HOME/djs/root/" "$DJS_HOME/root
         the script that builds it) last changed: it still has the old shim."""
         return self.sh("""
 PID=$(pids_of /root/pdj/EP113_Main_R | head -1)
-[ -n "$PID" ] && { [ '%s/shim/djsdev.c' -nt "/proc/$PID" ] || [ '%s/shim/network.h' -nt "/proc/$PID" ] || [ '%s/scripts/run.sh' -nt "/proc/$PID" ]; }
-""" % (self.repo(), self.repo(), self.repo()))[0] == 0
+[ -n "$PID" ] && { [ %s/shim/djsdev.c -nt "/proc/$PID" ] || [ %s/shim/network.h -nt "/proc/$PID" ] || [ %s/scripts/run.sh -nt "/proc/$PID" ]; }
+""" % ((shlex.quote(self.repo()),) * 3))[0] == 0
 
     def start(self):
         code, out = self.sh("""
 RUN="${DJS_HOME:-$HOME/djs}/run"
 mkdir -p "$RUN"
-DJSDEV_PORT=%d DJS_WINDOW=%s %s setsid nohup bash '%s/scripts/run.sh' 0 > "$RUN/emulator.log" 2>&1 < /dev/null &
+DJSDEV_PORT=%d DJS_WINDOW=%s %s setsid nohup bash %s/scripts/run.sh 0 > "$RUN/emulator.log" 2>&1 < /dev/null &
 runner=$!
 while kill -0 "$runner" 2>/dev/null; do
     %s && exit 0
@@ -255,7 +255,7 @@ done
 wait "$runner"
 kill -TERM -- "-$runner" 2>/dev/null || true
 tail -n 15 "$RUN/emulator.log"; exit 1
-""" % (self.port, "1" if self.window else "", self.env, self.repo(), self.running_cmd))
+""" % (self.port, "1" if self.window else "", self.env, shlex.quote(self.repo()), self.running_cmd))
         if code:
             sys.exit("the emulator did not start:\n" + out)
 

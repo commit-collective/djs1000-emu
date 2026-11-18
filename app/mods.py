@@ -18,6 +18,7 @@ the drive, and the first start of a newer one moves it into the folder: the fold
 import json
 import os
 import re
+import tempfile
 import threading
 import time
 
@@ -108,10 +109,12 @@ class Mods:
             return False
         try:
             try:
-                with open(self.path, encoding="utf-8", errors="replace", newline="") as f:
-                    lines = f.read().split("\n")
-            except OSError:
-                lines = []
+                with open(self.path, encoding="utf-8", errors="surrogateescape", newline="") as f:
+                    content = f.read()
+            except FileNotFoundError:
+                content = ""
+            separator = "\r\n" if "\r\n" in content else "\n"
+            lines = content.split(separator) if content else []
             for i, line in enumerate(lines):
                 m = LINE.match(line.rstrip("\r"))
                 if m and m.group(2) == name:
@@ -122,8 +125,16 @@ class Mods:
                     lines.pop()
                 lines.append("%s = %s" % (name, "off" if on_now else "on"))
                 lines.append("")
-            with open(self.path, "w", encoding="utf-8", newline="") as f:
-                f.write("\n".join(lines))
+            with tempfile.NamedTemporaryFile(dir=os.path.dirname(self.path), delete=False,
+                                             mode="w", encoding="utf-8", errors="surrogateescape", newline="") as f:
+                temp = f.name
+                try:
+                    f.write(separator.join(lines))
+                    f.close()
+                    os.replace(temp, self.path)
+                finally:
+                    if os.path.exists(temp):
+                        os.unlink(temp)
         except OSError:
             return False
         self._seen = None

@@ -102,7 +102,8 @@ def ensure(repo, run, audio_port, observe=None, feed=None):
         except (OSError, ValueError, AttributeError):
             was = None
         if (was != mode or not ready.exists() or
-                any(path.stat().st_mtime > began for path in (repo / 'deckbench').rglob('*.py'))):
+                any(path.stat().st_mtime > began for path in (repo / 'deckbench').rglob('*')
+                    if path.is_file() and (path.suffix == '.py' or 'ui' in path.relative_to(repo).parts))):
             stop(run)
             pid = None
     # Its page on 8750, as always. A port a bench closed a moment ago can stay held for two minutes or so (Windows

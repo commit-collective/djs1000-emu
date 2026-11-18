@@ -341,6 +341,8 @@ class Recording:
     def _join(self, done):
         ffmpeg = shutil.which("ffmpeg")
         try:
+            if self.capture.error:
+                raise OSError("ffmpeg stopped during recording")
             master, rate = self.video + ".f32", self.video + ".rate"
             ratio = float(open(rate).read()) if os.path.exists(rate) else 1.0
             # the emulator's sound runs a little fast or slow against the clock (capture.py). The sound is kept as it is, at its own pitch
@@ -349,6 +351,8 @@ class Recording:
             sound = os.path.exists(master) and os.path.getsize(master) > 0
             final = self.base + ".mp4"
             if sound:
+                if not ffmpeg:
+                    raise FileNotFoundError("ffmpeg is missing")
                 raw = ["-f", "f32le", "-ar", "44100", "-ac", "2"]
                 wav = self.base + ".wav"
                 subprocess.check_call([ffmpeg, "-y", "-loglevel", "error"] + raw + ["-i", master, "-c:a", "pcm_s24le", wav])
@@ -1777,9 +1781,9 @@ class Deck:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--host", default="127.0.0.1", help="backend address (default 127.0.0.1)")
     ap.add_argument('--network-command', help=argparse.SUPPRESS)
-    ap.add_argument("--port", type=int, default=7310)
+    ap.add_argument("--port", type=int, default=7310, help="deck link port (default 7310)")
     ap.add_argument("--height", type=int, default=0, help="window height in pixels")
     ap.add_argument("--audio", metavar="NAME", help="play on the device whose name has NAME in it")
     ap.add_argument("--no-audio", action="store_true", help="do not play the app's sound")
@@ -1827,11 +1831,12 @@ def main():
                     help="the list of mods the patch carries (modlist.txt in the folder the emulator opened it in)")
     ap.add_argument("--hover", metavar="MOD",
                     help="start with this mod's text shown under the list of mods (for a picture)")
-    ap.add_argument("--record", metavar="MP4",
+    recording = ap.add_argument_group("Recording")
+    recording.add_argument("--record", metavar="MP4",
                     help="record the window as video and the master output as FILE.f32, until FILE.stop exists "
                          "(see app/capture.py, which tools/demo.py uses)")
-    ap.add_argument("--fps", type=int, default=0, help="frames a second of --record (25 by default) and of REC (30)")
-    ap.add_argument("--captures", metavar="DIR", default=CAPTURES,
+    recording.add_argument("--fps", type=int, default=0, help="frames a second of --record (25 by default) and of REC (30)")
+    recording.add_argument("--captures", metavar="DIR", default=CAPTURES,
                     help="where REC (in the tools menu, F7) puts its recordings: a video with its sound (.mp4) and the sound alone (.wav) "
                          "(default %s, which git ignores)" % CAPTURES)
     ap.add_argument("--width", type=int, default=0, help="window width in pixels")

@@ -2,38 +2,24 @@
 
 Newest first. A release is a tagged commit.
 
-## Unreleased
+## v0.4.0
 
-- The emulator is reported working on an Apple Silicon Mac through the Lima template. The template now turns
-  off containers and lets the backend use user namespaces, as Ubuntu's arm64 PRoot crashes.
-- The mouse wheel turns the selector, to browse, anywhere on the deck but over another knob, the screen included.
-- The virtual deck's mod switches and input watch use the mods' `djs1000-mods` folder on the stick, or its top for
-  older patches.
-- Choose a Linux/WSL backend adapter and IPv4 address from the Tools menu, a compact submenu with a checkmark on the
-  saved choice, or with `--network-picker`. The saved choice applies after a restart. Link UDP is routed through that
-  identity without changing the system's networking.
-- With a DJ adapter chosen, the launcher starts a Deckbench that only watches that network, with no simulated decks.
-  The emulator passes it a copy of every Pro DJ Link packet it hears and sends (`DJSDEV_TAP`), so the bench sees the
-  DJS and the players without listening on the link. With a second address of the adapter, the bench runs from there
-  instead, as a device of its own. Without a DJ adapter, the local Deckbench with its simulated decks starts as before,
-  unless an external bench is given.
-- Use `--no-bench` for hardware-only sessions, or `--bench-url URL` to attach to an existing Deckbench without starting
-  another. The `--bench` alias remains accepted.
-- The launcher tracks its local Deckbench by process identity rather than matching unrelated bench command lines.
-  Stopping the emulator leaves external benches alone. After upgrading, a local bench started by the old launcher is
-  untracked: stop that process by hand once, or attach with `--bench-url`. `start.py stop` leaves untracked benches
-  alone.
-- The launcher's Deckbench starts at once after one was closed. Windows keeps a closed page's port for about two
-  minutes, which with mirrored WSL also held 8750 in WSL: the page then goes on a free port, which the deck is given.
-- The app keeps the host's clock, for its sound as for the link, as the unit has one clock. The deck keeps what waits
-  to be played steady by leaving out or doubling a frame now and then, which is not heard. `--pace` still paces the app
-  to the sound card. With that by default, a DJS synced to a CDJ swung by 3 BPM and more, where the unit swings by 0.1.
-- The launcher says when `systemd-timesyncd` runs in WSL. It and WSL both keep WSL's clock, and when Windows' clock is
-  apart from internet time they pull it to and fro by some 7 %, which made the app's tempo swing. The running guide
-  says how to turn it off.
-- Add a Lima template, `scripts/lima/djs1000.yaml`, for trying the emulator in a Linux VM on a Mac, with the steps and
-  what to report in the running guide. It registers QEMU for 32-bit ARM programs, which Ubuntu leaves out on arm64.
-  Not tried on a Mac yet.
+- Run the emulator on Apple Silicon with the included Lima template.
+- Turn the selector with the mouse wheel anywhere except over another knob.
+- Read mod settings from the stick?s mods folder, with support for older patches at the top level.
+- Choose the backend network adapter in Tools or with `--network-picker`.
+- Watch real players in Deckbench when the emulator uses a DJ network adapter.
+- Attach an existing Deckbench with `--bench-url` or run the emulator alone with `--no-bench`.
+- Run separate emulator slots with independent Deckbench audio, packet feeds and browser pages.
+- Stop the selected emulator and its managed bench without interrupting other slots.
+- Wait for a slow emulator startup and retry a failed first setup.
+- Keep the deck open if video encoding fails and preserve settings when toggling mods.
+- Warn when WSL and systemd-timesyncd both adjust the backend clock.
+
+### Compatibility
+
+- The host clock now controls playback by default. Use `--pace` for sound-card pacing.
+- Stop a bench started by an older launcher manually once, or attach to it with `--bench-url`.
 
 ## v0.3.1
 

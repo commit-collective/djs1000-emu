@@ -116,6 +116,12 @@ If you try another Mac setup, open an issue with:
 - whether the deck on the Mac connected, and whether its sound played
 - with real players, how the VM was networked and whether they were seen
 
+## If the first start fails
+
+- Run the launcher in a terminal to see its error.
+- Read `$DJS_HOME/run/emulator.log` in the Linux backend. The default is `~/djs/run/emulator.log`.
+- If setup failed during extraction, check the update version and retry setup with your device key.
+
 ## Rebuilding
 
 Setup refuses a nonempty destination unless `--rebuild` is explicit and the
@@ -133,9 +139,7 @@ backup, they are not automatically merged into the new root. USB and eMMC
 folders remain in place. Failed extraction leaves its workspace for diagnosis.
 Inspect backups before removing any of them.
 
-## Manual launch
-
-### Real players and an existing Deckbench
+## Real players and an existing Deckbench
 
 The default launcher starts a local Deckbench with its simulated players off.
 For a real DJ setup, choose explicitly:
@@ -257,7 +261,7 @@ adopt or terminate a separately launched bench occupying port 8750. Stop a
 legacy local bench manually after checking its identity if upgrading from a
 launcher that did not record ownership.
 
-### WSL's clock
+## WSL's clock
 
 The emulated app keeps WSL's clock. WSL keeps it in step with Windows' clock, and Ubuntu's `systemd-timesyncd` keeps it
 to an internet server. When the two are apart, often by most of a second, they pull it to and fro: it runs some 7 %
@@ -270,6 +274,8 @@ sudo systemctl disable --now systemd-timesyncd
 
 WSL's clock then follows Windows' (`w32tm /resync`, in an administrator PowerShell, sets that one from the internet).
 `sudo systemctl enable --now systemd-timesyncd` undoes it.
+
+## Manual launch
 
 `scripts/run.sh 3600` runs the backend for an hour. Use 0 for no time limit.
 `python app/virtual_djs.py` opens a frontend separately.

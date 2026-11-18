@@ -14,7 +14,7 @@ scripted use. Mods use the same USB `autoexec.bin` workflow as the unit.
 
 ## Requirements
 
-- Your own **DJS1000.UPD, firmware 1.22**, and the device key.
+- The **DJS1000.UPD** file from Pioneer DJ?s DJS-1000 firmware 1.22 update and your device key.
   Neither is included. See [key and platform notes](docs/running.md).
 - Linux, or Windows with WSL2 and Ubuntu 24.04.
 - Python 3. The visible deck also needs pygame-ce and Pillow.

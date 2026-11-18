@@ -44,6 +44,7 @@ class Capture:
         self.audio_phones = open(path + ".f32p", "wb")     # the headphones, which carry what the input monitor plays
         self.began = None                # time.perf_counter() of the first frame
         self.next = None
+        self.error = None
         self.frames = 0
         self.samples = 0                 # frames of the master's sound written
         self._cmd_read = 0
@@ -53,6 +54,8 @@ class Capture:
 
     def frame(self, surface):
         """Takes the window as it is now: as many frames as the time since the last one asks for."""
+        if self.error:
+            return
         now = time.perf_counter()
         if self.began is None:
             self.began, self.next = now, now
@@ -62,7 +65,11 @@ class Capture:
             return                       # not yet time for another frame
         raw = pygame.image.tostring(surface, "RGB")
         while self.next <= now:
-            self.proc.stdin.write(raw)
+            try:
+                self.proc.stdin.write(raw)
+            except OSError as error:
+                self.error = error
+                return
             self.next += 1.0 / self.fps
             self.frames += 1
 

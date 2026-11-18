@@ -27,6 +27,7 @@ Run it on the host, like start.py. Needs Pillow.
 """
 import json
 import os
+import shlex
 import struct
 import sys
 import time
@@ -191,16 +192,16 @@ def run(name, patch=None):
         sys.exit("An emulator is running: stop it first (start.py stop).")
     code, text = emu.sh('''
 rm -rf "${DJS_HOME:-$HOME/djs}/regress"; mkdir -p "${DJS_HOME:-$HOME/djs}/regress/usb" "${DJS_HOME:-$HOME/djs}/regress/data"
-python3 '%s/tools/make_test_kit.py' "${DJS_HOME:-$HOME/djs}/regress/usb/PIONEER DJ SAMPLER/Samples/Test Kit"
-''' % emu.repo())
+python3 %s/tools/make_test_kit.py "${DJS_HOME:-$HOME/djs}/regress/usb/PIONEER DJ SAMPLER/Samples/Test Kit"
+''' % shlex.quote(emu.repo()))
     if code:
         sys.exit("could not prepare the fresh unit:\n" + text)
     if patch:
         # The path is the host's. Where the emulator lives it may read otherwise.
         code, text = emu.sh('''
-P='%s'; command -v wslpath > /dev/null && P=$(wslpath -a "$P")
+P=%s; command -v wslpath > /dev/null && P=$(wslpath -a "$P")
 cp "$P" "${DJS_HOME:-$HOME/djs}/regress/usb/autoexec.bin"
-''' % os.path.abspath(patch).replace("\\", "/"))
+''' % shlex.quote(os.path.abspath(patch).replace("\\", "/")))
         if code:
             sys.exit("could not put the patch on the drive:\n" + text)
     print("Recording the session '%s' on a fresh unit%s ..."

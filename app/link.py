@@ -20,6 +20,7 @@ import time
 class Link:
     def __init__(self, host="127.0.0.1", port=7310, audio=None):
         self.addr = (host, port)
+        self.audio_pos = [0, 0]
         self.audio = audio
         self.connected = False
         self._sock = None
@@ -31,7 +32,6 @@ class Link:
         self._stop = False
         threading.Thread(target=self._run, daemon=True).start()
 
-    audio_pos = [0, 0]          # of the last sound message, per output
 
     def send(self, line, log=True):
         """One command line. Dropped while the app is not there. log=False: not one of the steps REC keeps (the sound's pace)."""

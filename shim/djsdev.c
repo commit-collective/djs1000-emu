@@ -987,6 +987,8 @@ static void *deck_server(void *arg)
             close(fd);
             continue;
         }
+        long send_timeout[2] = {0, 250000}; /* ARM Linux timeval */
+        setsockopt(fd, 1 /* SOL_SOCKET */, 21 /* SO_SNDTIMEO */, send_timeout, sizeof(send_timeout));
         setsockopt(fd, 6 /* IPPROTO_TCP */, 1 /* TCP_NODELAY */, &one, sizeof(one));
         fprintf(stderr, "[djsdev] deck link: connected\n");
         deck_fresh[i] = 1;
@@ -1620,9 +1622,10 @@ static void *link_listener(void *arg)
     sa[3] = port;
     if (bind(fd, sa, sizeof(sa)) != 0) {
         fprintf(stderr, "[djsdev] Pro DJ Link: cannot listen on UDP %d\n", port);
+        close(fd);
         return 0;
     }
-    link_port[fd] = 0;                  /* ours: not what the app is given */
+    if (fd < MAX_FD) link_port[fd] = 0;  /* ours: not what the app is given */
     fprintf(stderr, "[djsdev] Pro DJ Link: listening on UDP %d\n", port);
     for (;;) {
         unsigned alen = sizeof(sa);
