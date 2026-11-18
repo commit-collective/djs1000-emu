@@ -6,7 +6,7 @@ Newest first. A release is a tagged commit.
 
 - Run the emulator on Apple Silicon with the included Lima template.
 - Turn the selector with the mouse wheel anywhere except over another knob.
-- Read mod settings from the stick?s mods folder, with support for older patches at the top level.
+- Read mod settings from the stick's mods folder, with support for older patches at the top level.
 - Choose the backend network adapter in Tools or with `--network-picker`.
 - Watch real players in Deckbench when the emulator uses a DJ network adapter.
 - Attach an existing Deckbench with `--bench-url` or run the emulator alone with `--no-bench`.
