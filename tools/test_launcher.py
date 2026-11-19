@@ -170,6 +170,14 @@ class NetworkSelection(unittest.TestCase):
             query.assert_called_once_with(['helper'], 'matches', '123')
 
 
+def reap(pid):
+    """Waits for a stopped bench, unless subprocess already did: it reaps what ended at the next Popen."""
+    try:
+        os.waitpid(pid, 0)
+    except ChildProcessError:
+        pass
+
+
 @unittest.skipUnless(sys.platform.startswith('linux'), 'needs Linux process identity')
 class LinuxOwnership(unittest.TestCase):
     def test_start_reuse_and_stop_only_the_recorded_child(self):
@@ -193,7 +201,7 @@ class LinuxOwnership(unittest.TestCase):
                 self.assertEqual(bench_process.owned(run), pid)
                 observe = {'address': '127.0.0.5', 'netmask': '255.0.0.0', 'broadcast': '127.255.255.255'}
                 bench_process.ensure(repo, run, 0, observe)          # another mode: started again
-                os.waitpid(pid, 0)
+                reap(pid)
                 pid = bench_process.owned(run)
                 self.assertIsNotNone(pid)
                 bench_process.ensure(repo, run, 0, observe)
@@ -203,7 +211,7 @@ class LinuxOwnership(unittest.TestCase):
             finally:
                 bench_process.stop(run)
                 if pid:
-                    os.waitpid(pid, 0)
+                    reap(pid)
 
 
 @unittest.skipUnless(sys.platform.startswith('linux'), 'needs Linux process identity')
