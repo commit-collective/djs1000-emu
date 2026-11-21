@@ -1,6 +1,6 @@
 # DJS-1000 emulator
 
-[![release](https://img.shields.io/github/v/release/commit-collective/djs1000-emu?display_name=tag)](https://github.com/commit-collective/djs1000-emu/releases)
+[![release](https://img.shields.io/github/v/release/commit-collective/djs1000-emulator?display_name=tag)](https://github.com/commit-collective/djs1000-emulator/releases)
 
 Run the Pioneer DJ DJS-1000's own application on your computer to develop
 mods, automate regression checks and debug its UI without hardware.
@@ -24,7 +24,7 @@ Apple Silicon. See [the Mac setup](docs/running.md#macos).
 
 ## Quick start
 
-Clone this repository or extract a [release](https://github.com/commit-collective/djs1000-emu/releases).
+Clone this repository or extract a [release](https://github.com/commit-collective/djs1000-emulator/releases).
 On Windows, run these first commands inside WSL Ubuntu. On Linux, use a terminal:
 
 ```sh
@@ -114,8 +114,8 @@ Use hardware to validate what the emulator cannot establish.
 
 ## Support
 
-[Report an emulator issue](https://github.com/commit-collective/djs1000-emu/issues/new?template=emulator.yml)
-or [a mods issue](https://github.com/commit-collective/djs1000-emu/issues/new?template=mods.yml).
+[Report an emulator issue](https://github.com/commit-collective/djs1000-emulator/issues/new?template=emulator.yml)
+or [a mods issue](https://github.com/commit-collective/djs1000-emulator/issues/new?template=mods.yml).
 Include the version, OS, steps and relevant log. Do not attach firmware, keys,
 dumps or vendor assets. Follow [Commit Collective](https://commitcollective.cc)
 or watch releases here for updates.

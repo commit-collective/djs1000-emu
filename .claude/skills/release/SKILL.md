@@ -1,6 +1,6 @@
 ---
 name: release
-description: Prepare a release of the DJS-1000 emulator (checks, changelog, tag). Use when asked to release, tag or cut a version of djs1000-emu. Prepares everything and stops before the tag and the push to ask.
+description: Prepare a release of the DJS-1000 emulator (checks, changelog, tag). Use when asked to release, tag or cut a version of djs1000-emulator. Prepares everything and stops before the tag and the push to ask.
 ---
 
 # Release the emulator

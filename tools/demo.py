@@ -274,7 +274,7 @@ def main():
                 scene_mods(sc)
             elif name == "prolink" and bench:
                 scene_prolink(sc, bench)
-        sc.caption("djs1000-emu: bring your own firmware")
+        sc.caption("djs1000-emulator: bring your own firmware")
         sc.wait(3.0)
         length = sc.now()
         open(raw + ".stop", "w").close()

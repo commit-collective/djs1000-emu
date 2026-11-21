@@ -1,4 +1,4 @@
-# djs1000-emu: working rules
+# djs1000-emulator: working rules
 
 - This repo is public. Its docs and code comments stay high level: byte-level protocols are fine, but no firmware addresses,
   no Ghidra symbols (`FUN_...`) and no cipher details. Those are kept outside the repo.

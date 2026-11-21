@@ -54,8 +54,8 @@ Then, inside the VM, from its home folder:
 
 ```sh
 cd ~
-git clone https://github.com/commit-collective/djs1000-emu.git
-cd djs1000-emu
+git clone https://github.com/commit-collective/djs1000-emulator.git
+cd djs1000-emulator
 scripts/setup.sh ~/DJS1000.UPD ~/aes256.key && rm ~/aes256.key
 python3 start.py --no-deck
 python3 tools/shot.py home.png
